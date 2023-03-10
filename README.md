@@ -12,14 +12,14 @@ Official pytorch implementation of [Grounding DINO](https://arxiv.org/abs/2303.0
 - Pure Transformer-based. 
 - COCO zero-shot **52.5 AP** (training without COCO data!). COCO fine-tune **63.0 AP**.
 
-![hero_figure](.asset\hero_figure.png)
+![hero_figure](.asset/hero_figure.png)
 
 
 ## Model
 
 Includes: a text backbone, an image backbone, a feature enhancer, a language-guided query selection, and a cross-modality decoder.
 
-![arch](.asset\arch.png)
+![arch](.asset/arch.png)
 
 
 # Links
