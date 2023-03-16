@@ -12,8 +12,15 @@ Official pytorch implementation of [Grounding DINO](https://arxiv.org/abs/2303.0
 - **High Performancce.** COCO zero-shot **52.5 AP** (training without COCO data!). COCO fine-tune **63.0 AP**.
 - **Flexible.** Collaboration with Stable Diffusion for Image Editting.
 
-![hero_figure](.asset/hero_figure.png)
 
+<iframe width="560" height="315" src="https://youtu.be/wxWDt5UiwY8" frameborder="0" allow="autoplay; encrypted-media" allowfullscreen></iframe>
+
+<details>
+<summary><font size="4">
+Description
+</font></summary>
+<img src=".asset/hero_figure.png" alt="ODinW" width="100%">
+</details>
 
 ## Results
 <details open>
