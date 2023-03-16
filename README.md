@@ -8,11 +8,41 @@
 Official pytorch implementation of [Grounding DINO](https://arxiv.org/abs/2303.05499). Code will be available soon!
 
 ## Highlight
-- SOTA Closed-Set Detection Model [DINO](https://github.com/IDEA-Research/DINO) => SOTA Open-Set Detection Model **Grounding DINO**
-- Pure Transformer-based. 
-- COCO zero-shot **52.5 AP** (training without COCO data!). COCO fine-tune **63.0 AP**.
+- **Open-Set Detection.** Detect **everything** with language!
+- **High Performancce.** COCO zero-shot **52.5 AP** (training without COCO data!). COCO fine-tune **63.0 AP**.
+- **Flexible.** Collaboration with Stable Diffusion for Image Editting.
 
 ![hero_figure](.asset/hero_figure.png)
+
+
+## Results
+<details open>
+<summary><font size="4">
+COCO Object Detection Results
+</font></summary>
+<img src=".asset/COCO.png" alt="COCO" width="100%">
+</details>
+
+<details open>
+<summary><font size="4">
+ODinW Object Detection Results
+</font></summary>
+<img src=".asset/ODinW.png" alt="ODinW" width="100%">
+</details>
+
+<details open>
+<summary><font size="4">
+Marrying Grounding DINO with <a href="https://github.com/Stability-AI/StableDiffusion">Stable Diffusion</a> for Image Editing
+</font></summary>
+<img src=".asset/GD_SD.png" alt="GD_SD" width="100%">
+</details>
+
+<details open>
+<summary><font size="4">
+Marrying Grounding DINO with <a href="https://github.com/gligen/GLIGEN">GLIGEN</a> for more Detailed Image Editing
+</font></summary>
+<img src=".asset/GD_GLIGEN.png" alt="GD_GLIGEN" width="100%">
+</details>
 
 
 ## Model
@@ -26,6 +56,8 @@ Includes: a text backbone, an image backbone, a feature enhancer, a language-gui
 Our model is related to [DINO](https://github.com/IDEA-Research/DINO) and [GLIP](https://github.com/microsoft/GLIP). Thanks for their great work!
 
 We also thank great previous work including DETR, Deformable DETR, SMCA, Conditional DETR, Anchor DETR, Dynamic DETR, DAB-DETR, DN-DETR, etc. More related work are available at [Awesome Detection Transformer](https://github.com/IDEACVR/awesome-detection-transformer). A new toolbox [detrex](https://github.com/IDEA-Research/detrex) is available as well.
+
+Thanks [Stable Diffusion](https://github.com/Stability-AI/StableDiffusion) and [GLIGEN](https://github.com/gligen/GLIGEN) for their awesome models.
 
 
 # Bibtex
