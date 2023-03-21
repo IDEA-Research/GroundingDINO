@@ -1,3 +1,9 @@
+# ------------------------------------------------------------------------
+# Grounding DINO
+# url: https://github.com/IDEA-Research/GroundingDINO
+# Copyright (c) 2023 IDEA. All Rights Reserved.
+# Licensed under the Apache License, Version 2.0 [see LICENSE for details]
+# ------------------------------------------------------------------------
 # -*- coding: utf-8 -*-
 # @Author: Yihao Chen
 # @Date:   2021-08-16 16:03:17

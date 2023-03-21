@@ -1,4 +1,9 @@
 # ------------------------------------------------------------------------
+# Grounding DINO
+# url: https://github.com/IDEA-Research/GroundingDINO
+# Copyright (c) 2023 IDEA. All Rights Reserved.
+# Licensed under the Apache License, Version 2.0 [see LICENSE for details]
+# ------------------------------------------------------------------------
 # DINO
 # Copyright (c) 2022 IDEA. All Rights Reserved.
 # Licensed under the Apache License, Version 2.0 [see LICENSE for details]
@@ -744,7 +749,13 @@ class DeformableTransformerEncoderLayer(nn.Module):
         super().__init__()
 
         # self attention
-        self.self_attn = MSDeformAttn(embed_dim=d_model, num_levels=n_levels, num_heads=n_heads, num_points=n_points, batch_first=True)
+        self.self_attn = MSDeformAttn(
+            embed_dim=d_model,
+            num_levels=n_levels,
+            num_heads=n_heads,
+            num_points=n_points,
+            batch_first=True,
+        )
         self.dropout1 = nn.Dropout(dropout)
         self.norm1 = nn.LayerNorm(d_model)
 
@@ -804,7 +815,13 @@ class DeformableTransformerDecoderLayer(nn.Module):
         super().__init__()
 
         # cross attention
-        self.cross_attn = MSDeformAttn(embed_dim=d_model, num_levels=n_levels, num_heads=n_heads, num_points=n_points, batch_first=True)
+        self.cross_attn = MSDeformAttn(
+            embed_dim=d_model,
+            num_levels=n_levels,
+            num_heads=n_heads,
+            num_points=n_points,
+            batch_first=True,
+        )
         self.dropout1 = nn.Dropout(dropout) if dropout > 0 else nn.Identity()
         self.norm1 = nn.LayerNorm(d_model)
 

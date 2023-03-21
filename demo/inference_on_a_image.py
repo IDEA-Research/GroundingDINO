@@ -2,8 +2,6 @@ import argparse
 import os
 import sys
 
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
-
 import numpy as np
 import torch
 from PIL import Image, ImageDraw, ImageFont
@@ -13,6 +11,8 @@ from groundingdino.models import build_model
 from groundingdino.util import box_ops
 from groundingdino.util.slconfig import SLConfig
 from groundingdino.util.utils import clean_state_dict, get_phrases_from_posmap
+
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 
 def plot_boxes_to_image(image_pil, tgt):
@@ -88,7 +88,6 @@ def get_grounding_output(model, image, caption, box_threshold, text_threshold, w
     logits = outputs["pred_logits"].cpu().sigmoid()[0]  # (nq, 256)
     boxes = outputs["pred_boxes"].cpu()[0]  # (nq, 4)
     logits.shape[0]
-    
 
     # filter output
     logits_filt = logits.clone()
@@ -126,12 +125,8 @@ if __name__ == "__main__":
         "--output_dir", "-o", type=str, default="outputs", required=True, help="output directory"
     )
 
-    parser.add_argument(
-        "--box_threshold", type=float, default=0.3, help="box threshold"
-    )
-    parser.add_argument(
-        "--text_threshold", type=float, default=0.25, help="text threshold"
-    )
+    parser.add_argument("--box_threshold", type=float, default=0.3, help="box threshold")
+    parser.add_argument("--text_threshold", type=float, default=0.25, help="text threshold")
     args = parser.parse_args()
 
     # cfg
