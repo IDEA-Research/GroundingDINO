@@ -1,11 +1,12 @@
-# Grounding DINO
 [![PWC](https://img.shields.io/endpoint.svg?url=https://paperswithcode.com/badge/grounding-dino-marrying-dino-with-grounded/zero-shot-object-detection-on-mscoco)](https://paperswithcode.com/sota/zero-shot-object-detection-on-mscoco?p=grounding-dino-marrying-dino-with-grounded) \
 [![PWC](https://img.shields.io/endpoint.svg?url=https://paperswithcode.com/badge/grounding-dino-marrying-dino-with-grounded/zero-shot-object-detection-on-odinw)](https://paperswithcode.com/sota/zero-shot-object-detection-on-odinw?p=grounding-dino-marrying-dino-with-grounded) \
 [![PWC](https://img.shields.io/endpoint.svg?url=https://paperswithcode.com/badge/grounding-dino-marrying-dino-with-grounded/object-detection-on-coco-minival)](https://paperswithcode.com/sota/object-detection-on-coco-minival?p=grounding-dino-marrying-dino-with-grounded) \
 [![PWC](https://img.shields.io/endpoint.svg?url=https://paperswithcode.com/badge/grounding-dino-marrying-dino-with-grounded/object-detection-on-coco)](https://paperswithcode.com/sota/object-detection-on-coco?p=grounding-dino-marrying-dino-with-grounded)
 
+# Grounding DINO 
 
-Official pytorch implementation of [Grounding DINO](https://arxiv.org/abs/2303.05499). Code will be available soon!
+Official pytorch implementation of [Grounding DINO](https://arxiv.org/abs/2303.05499), a stronger open-set object detector. Code is available now!
+
 
 ## Highlight
 - **Open-Set Detection.** Detect **everything** with language!
@@ -24,18 +25,9 @@ Description
 
 ## TODO List
 
-<div>
-  <input type="checkbox" name="uchk" checked>
-  <label for="uchk">Release inference code and demo.</label>
-</div>
-<div>
-  <input type="checkbox" name="uchk" checked>
-  <label for="uchk">Release checkpoints.</label>
-</div>
-<div>
-  <input type="checkbox" name="uchk">
-  <label for="uchk">Grounding DINO with Stable Diffusion and GLIGEN demos.</label>
-</div>
+- [x] Release inference code and demo.
+- [x] Release checkpoints.
+- [ ] Grounding DINO with Stable Diffusion and GLIGEN demos.
 
 
 ## Usage
