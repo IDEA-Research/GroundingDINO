@@ -22,6 +22,65 @@ Description
 <img src=".asset/hero_figure.png" alt="ODinW" width="100%">
 </details>
 
+## TODO List
+
+<div>
+  <input type="checkbox" name="uchk" checked>
+  <label for="uchk">Release inference code and demo.</label>
+</div>
+<div>
+  <input type="checkbox" name="uchk" checked>
+  <label for="uchk">Release checkpoints.</label>
+</div>
+<div>
+  <input type="checkbox" name="uchk">
+  <label for="uchk">Grounding DINO with Stable Diffusion and GLIGEN demos.</label>
+</div>
+
+
+## Usage
+### 1. Install 
+If you have a CUDA environment, please make sure the environment variable `CUDA_HOME` is set.
+```bash
+pip install -e .
+```
+
+### 2. Run an inference demo 
+See the `demo/inference_on_a_image.py` for more details.
+```bash
+CUDA_VISIBLE_DEVICES=6 python demo/inference_on_a_image.py \
+  -c /path/to/config \
+  -p /path/to/checkpoint \
+  -i .asset/cats.png \
+  -o "outputs/0" \
+  -t "cat ear."
+```
+
+### Checkpoints
+<!-- insert a table -->
+<table>
+  <thead>
+    <tr style="text-align: right;">
+      <th></th>
+      <th>name</th>
+      <th>backbone</th>
+      <th>Data</th>
+      <th>box AP on COCO</th>
+      <th>Checkpoint</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <th>1</th>
+      <td>GroundingDINO-T</td>
+      <td>Swin-T</td>
+      <td>O365,GoldG,Cap4M</td>
+      <td>48.4 (zero-shot) / 57.2 (fine-tune)</td>
+      <td><a href="https://github.com/IDEA-Research/GroundingDINO/releases/download/v0.1.0-alpha/groundingdino_swint_ogc.pth">link</a></td>
+    </tr>
+  </tbody>
+</table>
+
 ## Results
 <details open>
 <summary><font size="4">
@@ -50,6 +109,10 @@ Marrying Grounding DINO with <a href="https://github.com/gligen/GLIGEN">GLIGEN</
 </font></summary>
 <img src=".asset/GD_GLIGEN.png" alt="GD_GLIGEN" width="100%">
 </details>
+
+
+
+
 
 
 ## Model
