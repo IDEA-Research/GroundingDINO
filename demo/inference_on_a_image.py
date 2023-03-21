@@ -12,8 +12,6 @@ from groundingdino.util import box_ops
 from groundingdino.util.slconfig import SLConfig
 from groundingdino.util.utils import clean_state_dict, get_phrases_from_posmap
 
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
-
 
 def plot_boxes_to_image(image_pil, tgt):
     H, W = tgt["size"]
