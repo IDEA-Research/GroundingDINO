@@ -5,4 +5,5 @@ addict
 yapf
 timm
 numpy
+opencv-python
 supervision==0.3.2
