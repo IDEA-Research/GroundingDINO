@@ -1,4 +1,6 @@
-transformers==4.5.1
+torch
+torchvision
+transformers
 addict
 yapf
 timm
