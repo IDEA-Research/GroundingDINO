@@ -2,7 +2,7 @@ from typing import Tuple, List
 
 import numpy as np
 import torch
-from PIL.Image import Image
+from PIL import Image
 
 import groundingdino.datasets.transforms as T
 from groundingdino.models import build_model
@@ -64,8 +64,8 @@ def predict(
     logits = pred_logits[mask]  # num_filt, 256
     boxes = pred_boxes[mask]  # num_filt, 4
 
-    tokenlizer = model.tokenizer
-    tokenized = tokenlizer(caption)
+    tokenizer = model.tokenizer
+    tokenized = tokenizer(caption)
 
     phrases = [
         get_phrases_from_posmap(logit > text_threshold, tokenized, caption).replace('.', '')
