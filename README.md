@@ -1,9 +1,10 @@
 # Grounding DINO 
+[📃Paper](https://arxiv.org/abs/2303.05499) | 
+[📽️Video](https://www.youtube.com/watch?v=wxWDt5UiwY8) |
+[📯Demo on Colab](https://colab.research.google.com/github/roboflow-ai/notebooks/blob/main/notebooks/zero-shot-object-detection-with-grounding-dino.ipynb) | 
+[🤗Demo on HF (Coming soon)]() 
 
----
-
-[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/roboflow-ai/notebooks/blob/main/notebooks/zero-shot-object-detection-with-grounding-dino.ipynb)
-
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/roboflow-ai/notebooks/blob/main/notebooks/zero-shot-object-detection-with-grounding-dino.ipynb) \
 [![PWC](https://img.shields.io/endpoint.svg?url=https://paperswithcode.com/badge/grounding-dino-marrying-dino-with-grounded/zero-shot-object-detection-on-mscoco)](https://paperswithcode.com/sota/zero-shot-object-detection-on-mscoco?p=grounding-dino-marrying-dino-with-grounded) \
 [![PWC](https://img.shields.io/endpoint.svg?url=https://paperswithcode.com/badge/grounding-dino-marrying-dino-with-grounded/zero-shot-object-detection-on-odinw)](https://paperswithcode.com/sota/zero-shot-object-detection-on-odinw?p=grounding-dino-marrying-dino-with-grounded) \
 [![PWC](https://img.shields.io/endpoint.svg?url=https://paperswithcode.com/badge/grounding-dino-marrying-dino-with-grounded/object-detection-on-coco-minival)](https://paperswithcode.com/sota/object-detection-on-coco-minival?p=grounding-dino-marrying-dino-with-grounded) \
@@ -20,8 +21,10 @@ Official pytorch implementation of [Grounding DINO](https://arxiv.org/abs/2303.0
 - **High Performancce.** COCO zero-shot **52.5 AP** (training without COCO data!). COCO fine-tune **63.0 AP**.
 - **Flexible.** Collaboration with Stable Diffusion for Image Editting.
 
-<!-- [![Watch the video](https://i.imgur.com/vKb2F1B.png)](https://youtu.be/wxWDt5UiwY8)
-<iframe width="560" height="315" src="https://youtu.be/wxWDt5UiwY8" frameborder="0" allow="autoplay; encrypted-media" allowfullscreen></iframe> -->
+## News
+[2023/03/27] Support CPU-only mode. Now the model can run on machines without GPUs.\
+[2023/03/25] A [demo](https://colab.research.google.com/github/roboflow-ai/notebooks/blob/main/notebooks/zero-shot-object-detection-with-grounding-dino.ipynb) for Grounding DINO is available at Colab. Thanks to @Piotr! \
+[2023/03/22] Code is available Now!
 
 <details open>
 <summary><font size="4">
@@ -30,15 +33,18 @@ Description
 <img src=".asset/hero_figure.png" alt="ODinW" width="100%">
 </details>
 
+
+
 ## TODO 
 
 - [x] Release inference code and demo.
 - [x] Release checkpoints.
 - [ ] Grounding DINO with Stable Diffusion and GLIGEN demos.
+- [ ] Release training codes.
 
 ## Install 
 
-If you have a CUDA environment, please make sure the environment variable `CUDA_HOME` is set.
+If you have a CUDA environment, please make sure the environment variable `CUDA_HOME` is set. It will be compiled under CPU-only mode if no CUDA available.
 
 ```bash
 pip install -e .
@@ -46,15 +52,16 @@ pip install -e .
 
 ## Demo
 
-See the `demo/inference_on_a_image.py` for more details.
 ```bash
 CUDA_VISIBLE_DEVICES=6 python demo/inference_on_a_image.py \
   -c /path/to/config \
   -p /path/to/checkpoint \
   -i .asset/cats.png \
   -o "outputs/0" \
-  -t "cat ear."
+  -t "cat ear." \
+  [--cpu-only] # open it for cpu mode
 ```
+See the `demo/inference_on_a_image.py` for more details.
 
 ## Checkpoints
 
@@ -68,6 +75,7 @@ CUDA_VISIBLE_DEVICES=6 python demo/inference_on_a_image.py \
       <th>Data</th>
       <th>box AP on COCO</th>
       <th>Checkpoint</th>
+      <th>Config</th>
     </tr>
   </thead>
   <tbody>
@@ -78,6 +86,7 @@ CUDA_VISIBLE_DEVICES=6 python demo/inference_on_a_image.py \
       <td>O365,GoldG,Cap4M</td>
       <td>48.4 (zero-shot) / 57.2 (fine-tune)</td>
       <td><a href="https://github.com/IDEA-Research/GroundingDINO/releases/download/v0.1.0-alpha/groundingdino_swint_ogc.pth">link</a></td>
+      <td><a href="https://github.com/IDEA-Research/GroundingDINO/blob/main/groundingdino/config/GroundingDINO_SwinT_OGC.py">link</a></td>
     </tr>
   </tbody>
 </table>

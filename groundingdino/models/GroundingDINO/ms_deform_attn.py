@@ -25,7 +25,10 @@ from torch.autograd import Function
 from torch.autograd.function import once_differentiable
 from torch.nn.init import constant_, xavier_uniform_
 
-from groundingdino import _C
+try:
+    from groundingdino import _C
+except:
+    warnings.warn("Failed to load custom C++ ops. Running on CPU mode Only!")
 
 
 # helpers
@@ -323,6 +326,7 @@ class MultiScaleDeformableAttention(nn.Module):
                     reference_points.shape[-1]
                 )
             )
+    
         if torch.cuda.is_available() and value.is_cuda:
             halffloat = False
             if value.dtype == torch.float16:
