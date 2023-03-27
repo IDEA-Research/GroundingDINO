@@ -71,7 +71,7 @@ def predict(
     tokenized = tokenizer(caption)
 
     phrases = [
-        get_phrases_from_posmap(logit > text_threshold, tokenized, caption).replace('.', '')
+        get_phrases_from_posmap(logit > text_threshold, tokenized, tokenizer).replace('.', '')
         for logit
         in logits
     ]
