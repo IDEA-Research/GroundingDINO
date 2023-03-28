@@ -63,6 +63,10 @@ CUDA_VISIBLE_DEVICES=6 python demo/inference_on_a_image.py \
 ```
 See the `demo/inference_on_a_image.py` for more details.
 
+**Web UI**
+
+We also provide a demo code to integrate Grounding DINO with Gradio Web UI. See the file `demo/gradio_app.py` for more details.
+
 ## Checkpoints
 
 <!-- insert a table -->
