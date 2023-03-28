@@ -89,7 +89,7 @@ We also provide a demo code to integrate Grounding DINO with Gradio Web UI. See 
       <td>Swin-T</td>
       <td>O365,GoldG,Cap4M</td>
       <td>48.4 (zero-shot) / 57.2 (fine-tune)</td>
-      <td><a href="https://github.com/IDEA-Research/GroundingDINO/releases/download/v0.1.0-alpha/groundingdino_swint_ogc.pth">link</a></td>
+      <td><a href="https://github.com/IDEA-Research/GroundingDINO/releases/download/v0.1.0-alpha/groundingdino_swint_ogc.pth">Github link</a> | <a href="https://huggingface.co/ShilongLiu/GroundingDINO/resolve/main/groundingdino_swint_ogc.pth">HF link</a></td>
       <td><a href="https://github.com/IDEA-Research/GroundingDINO/blob/main/groundingdino/config/GroundingDINO_SwinT_OGC.py">link</a></td>
     </tr>
   </tbody>
