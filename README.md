@@ -2,7 +2,7 @@
 [📃Paper](https://arxiv.org/abs/2303.05499) | 
 [📽️Video](https://www.youtube.com/watch?v=wxWDt5UiwY8) |
 [📯Demo on Colab](https://colab.research.google.com/github/roboflow-ai/notebooks/blob/main/notebooks/zero-shot-object-detection-with-grounding-dino.ipynb) | 
-[🤗Demo on HF (Coming soon)]() 
+[🤗Demo on HF](https://huggingface.co/spaces/ShilongLiu/Grounding_DINO_demo) 
 
 [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/roboflow-ai/notebooks/blob/main/notebooks/zero-shot-object-detection-with-grounding-dino.ipynb) \
 [![PWC](https://img.shields.io/endpoint.svg?url=https://paperswithcode.com/badge/grounding-dino-marrying-dino-with-grounded/zero-shot-object-detection-on-mscoco)](https://paperswithcode.com/sota/zero-shot-object-detection-on-mscoco?p=grounding-dino-marrying-dino-with-grounded) \
@@ -22,6 +22,7 @@ Official pytorch implementation of [Grounding DINO](https://arxiv.org/abs/2303.0
 - **Flexible.** Collaboration with Stable Diffusion for Image Editting.
 
 ## News
+[2023/03/28] Add a [demo](https://huggingface.co/spaces/ShilongLiu/Grounding_DINO_demo) on Hugging Face Spce! \
 [2023/03/27] Support CPU-only mode. Now the model can run on machines without GPUs.\
 [2023/03/25] A [demo](https://colab.research.google.com/github/roboflow-ai/notebooks/blob/main/notebooks/zero-shot-object-detection-with-grounding-dino.ipynb) for Grounding DINO is available at Colab. Thanks to @Piotr! \
 [2023/03/22] Code is available Now!
