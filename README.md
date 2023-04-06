@@ -25,11 +25,12 @@ Official PyTorch implementation of [Grounding DINO](https://arxiv.org/abs/2303.0
 - **Flexible.** Collaboration with Stable Diffusion for Image Editting.
 
 ## News
-[2023/03/28] A YouTube [video](https://youtu.be/cMa77r3YrDk) about Grounding DINO and basic object detection prompt engineering. [[SkalskiP](https://github.com/SkalskiP)] \
-[2023/03/28] Add a [demo](https://huggingface.co/spaces/ShilongLiu/Grounding_DINO_demo) on Hugging Face Space! \
-[2023/03/27] Support CPU-only mode. Now the model can run on machines without GPUs.\
-[2023/03/25] A [demo](https://colab.research.google.com/github/roboflow-ai/notebooks/blob/main/notebooks/zero-shot-object-detection-with-grounding-dino.ipynb) for Grounding DINO is available at Colab. [[SkalskiP](https://github.com/SkalskiP)] \
-[2023/03/22] Code is available Now!
+- **`2023/04/06`**: We build a new demo by marrying GroundingDINO with [Segment-Anything](https://github.com/facebookresearch/segment-anything) named [Grounded-Segment-Anything](https://github.com/IDEA-Research/Grounded-Segment-Anything) aims to support segmentation in GroundingDINO.
+- **`2023/03/28`**: A YouTube [video](https://youtu.be/cMa77r3YrDk) about Grounding DINO and basic object detection prompt engineering. [[SkalskiP](https://github.com/SkalskiP)] \
+- **`2023/03/28`**: Add a [demo](https://huggingface.co/spaces/ShilongLiu/Grounding_DINO_demo) on Hugging Face Space! \
+- **`2023/03/27`**: Support CPU-only mode. Now the model can run on machines without GPUs.\
+- **`2023/03/25`**: A [demo](https://colab.research.google.com/github/roboflow-ai/notebooks/blob/main/notebooks/zero-shot-object-detection-with-grounding-dino.ipynb) for Grounding DINO is available at Colab. [[SkalskiP](https://github.com/SkalskiP)] \
+- **`2023/03/22`**: Code is available Now!
 
 <details open>
 <summary><font size="4">
