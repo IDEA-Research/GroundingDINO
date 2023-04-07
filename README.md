@@ -108,6 +108,15 @@ We also provide a demo code to integrate Grounding DINO with Gradio Web UI. See 
       <td><a href="https://github.com/IDEA-Research/GroundingDINO/releases/download/v0.1.0-alpha/groundingdino_swint_ogc.pth">Github link</a> | <a href="https://huggingface.co/ShilongLiu/GroundingDINO/resolve/main/groundingdino_swint_ogc.pth">HF link</a></td>
       <td><a href="https://github.com/IDEA-Research/GroundingDINO/blob/main/groundingdino/config/GroundingDINO_SwinT_OGC.py">link</a></td>
     </tr>
+    <tr>
+      <th>2</th>
+      <td>GroundingDINO-B</td>
+      <td>Swin-B</td>
+      <td>COCO,O365,GoldG,Cap4M,OpenImage,OdinW-35,RefCOCO</td>
+      <td>56.7 </td>
+      <td><a href="https://github.com/IDEA-Research/GroundingDINO/releases/download/v0.1.0-alpha2/groundingdino_swinb_cogcoor.pth">Github link</a> 
+      <td><a href="https://github.com/IDEA-Research/GroundingDINO/blob/main/groundingdino/config/GroundingDINO_SwinB.cfg.py">link</a></td>
+    </tr>
   </tbody>
 </table>
 
