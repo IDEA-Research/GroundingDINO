@@ -33,7 +33,7 @@ from huggingface_hub import hf_hub_download
 
 
 
-# Use this command for evaluate the GLIP-T model
+# Use this command for evaluate the Grounding DINO model
 config_file = "groundingdino/config/GroundingDINO_SwinT_OGC.py"
 ckpt_repo_id = "ShilongLiu/GroundingDINO"
 ckpt_filenmae = "groundingdino_swint_ogc.pth"
