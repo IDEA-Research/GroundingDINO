@@ -13,8 +13,8 @@ Grounding DINO Demos |
 [![HuggingFace space](https://img.shields.io/badge/🤗-HuggingFace%20Space-cyan.svg)](https://huggingface.co/spaces/ShilongLiu/Grounding_DINO_demo)
 [![YouTube](https://badges.aleen42.com/src/youtube.svg)](https://youtu.be/C4NqaRBz_Kw)
 
-Extensions | [Grounding DINO with Stable Diffusion](demo/image_editing_with_groundingdino_stablediffusion.ipynb);
-[Grounding DINO with Segment Anything](https://github.com/IDEA-Research/Grounded-Segment-Anything)
+Extensions | [Grounding DINO with Segment Anything](https://github.com/IDEA-Research/Grounded-Segment-Anything); [Grounding DINO with Stable Diffusion](demo/image_editing_with_groundingdino_stablediffusion.ipynb); [Grounding DINO with GLIGEN](demo/image_editing_with_groundingdino_gligen.ipynb)
+
 
 
 
@@ -34,7 +34,12 @@ Official PyTorch implementation of [Grounding DINO](https://arxiv.org/abs/2303.0
 - **High Performancce.** COCO zero-shot **52.5 AP** (training without COCO data!). COCO fine-tune **63.0 AP**.
 - **Flexible.** Collaboration with Stable Diffusion for Image Editting.
 
+
+
+
 ## News
+- **`2023/04/08`**: We release [demos](demo/image_editing_with_groundingdino_gligen.ipynb) to combine [Grounding DINO](https://arxiv.org/abs/2303.05499) with [GLIGEN](https://github.com/gligen/GLIGEN)  for more controllable image editings.
+- **`2023/04/08`**: We release [demos](demo/image_editing_with_groundingdino_stablediffusion.ipynb) to combine [Grounding DINO](https://arxiv.org/abs/2303.05499) with [Stable Diffusion](https://github.com/Stability-AI/StableDiffusion) for image editings.
 - **`2023/04/06`**: We build a new demo by marrying GroundingDINO with [Segment-Anything](https://github.com/facebookresearch/segment-anything) named [Grounded-Segment-Anything](https://github.com/IDEA-Research/Grounded-Segment-Anything) aims to support segmentation in GroundingDINO.
 - **`2023/03/28`**: A YouTube [video](https://youtu.be/cMa77r3YrDk) about Grounding DINO and basic object detection prompt engineering. [[SkalskiP](https://github.com/SkalskiP)]
 - **`2023/03/28`**: Add a [demo](https://huggingface.co/spaces/ShilongLiu/Grounding_DINO_demo) on Hugging Face Space!
@@ -46,7 +51,10 @@ Official PyTorch implementation of [Grounding DINO](https://arxiv.org/abs/2303.0
 <summary><font size="4">
 Description
 </font></summary>
+Paper introduction
 <img src=".asset/hero_figure.png" alt="ODinW" width="100%">
+Grounding DINO and GLIGEN
+<img src="https://huggingface.co/ShilongLiu/GroundingDINO/resolve/main/GD_GLIGEN.png" alt="gd_gligen" width="100%">
 </details>
 
 
@@ -55,7 +63,7 @@ Description
 
 - [x] Release inference code and demo.
 - [x] Release checkpoints.
-- [ ] Grounding DINO with Stable Diffusion and GLIGEN demos.
+- [x] Grounding DINO with Stable Diffusion and GLIGEN demos.
 - [ ] Release training codes.
 
 ## Install 
