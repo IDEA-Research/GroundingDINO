@@ -51,9 +51,9 @@ Official PyTorch implementation of [Grounding DINO](https://arxiv.org/abs/2303.0
 <summary><font size="4">
 Description
 </font></summary>
-Paper introduction
+ <a href="https://arxiv.org/abs/2303.05499">Paper</a> introduction.
 <img src=".asset/hero_figure.png" alt="ODinW" width="100%">
-Grounding DINO and GLIGEN
+Marrying <a href="https://github.com/IDEA-Research/GroundingDINO">Grounding DINO</a> and <a href="https://github.com/gligen/GLIGEN">GLIGEN</a>
 <img src="https://huggingface.co/ShilongLiu/GroundingDINO/resolve/main/GD_GLIGEN.png" alt="gd_gligen" width="100%">
 </details>
 
@@ -120,9 +120,9 @@ We also provide a demo code to integrate Grounding DINO with Gradio Web UI. See 
       <th>2</th>
       <td>GroundingDINO-B</td>
       <td>Swin-B</td>
-      <td>COCO,O365,GoldG,Cap4M,OpenImage,OdinW-35,RefCOCO</td>
+      <td>COCO,O365,GoldG,Cap4M,OpenImage,ODinW-35,RefCOCO</td>
       <td>56.7 </td>
-      <td><a href="https://github.com/IDEA-Research/GroundingDINO/releases/download/v0.1.0-alpha2/groundingdino_swinb_cogcoor.pth">Github link</a> 
+      <td><a href="https://github.com/IDEA-Research/GroundingDINO/releases/download/v0.1.0-alpha2/groundingdino_swinb_cogcoor.pth">Github link</a>  | <a href="https://huggingface.co/ShilongLiu/GroundingDINO/resolve/main/groundingdino_swinb_cogcoor.pth">HF link</a> 
       <td><a href="https://github.com/IDEA-Research/GroundingDINO/blob/main/groundingdino/config/GroundingDINO_SwinB.cfg.py">link</a></td>
     </tr>
   </tbody>
@@ -148,15 +148,16 @@ ODinW Object Detection Results
 <summary><font size="4">
 Marrying Grounding DINO with <a href="https://github.com/Stability-AI/StableDiffusion">Stable Diffusion</a> for Image Editing
 </font></summary>
-See our example: demo/image_editing_with_groundingdino_stablediffusion.ipynb .
+See our example <a href="https://github.com/IDEA-Research/GroundingDINO/blob/main/demo/image_editing_with_groundingdino_stablediffusion.ipynb">notebook</a> for more details.
 <img src=".asset/GD_SD.png" alt="GD_SD" width="100%">
 </details>
 
 
 <details open>
 <summary><font size="4">
-Marrying Grounding DINO with <a href="https://github.com/gligen/GLIGEN">GLIGEN</a> for more Detailed Image Editing
+Marrying Grounding DINO with <a href="https://github.com/gligen/GLIGEN">GLIGEN</a> for more Detailed Image Editing.
 </font></summary>
+See our example <a href="https://github.com/IDEA-Research/GroundingDINO/blob/main/demo/image_editing_with_groundingdino_gligen.ipynb">notebook</a> for more details.
 <img src=".asset/GD_GLIGEN.png" alt="GD_GLIGEN" width="100%">
 </details>
 
