@@ -1,4 +1,4 @@
-# Grounding DINO 
+# :sauropod: Grounding DINO 
 
 ---
 
@@ -28,7 +28,7 @@ Extensions | [Grounding DINO with Segment Anything](https://github.com/IDEA-Rese
 Official PyTorch implementation of [Grounding DINO](https://arxiv.org/abs/2303.05499), a stronger open-set object detector. Code is available now!
 
 
-## Highlight
+## :bulb: Highlight
 
 - **Open-Set Detection.** Detect **everything** with language!
 - **High Performancce.** COCO zero-shot **52.5 AP** (training without COCO data!). COCO fine-tune **63.0 AP**.
@@ -37,10 +37,10 @@ Official PyTorch implementation of [Grounding DINO](https://arxiv.org/abs/2303.0
 
 
 
-## News
+## :fire: News
 - **`2023/04/08`**: We release [demos](demo/image_editing_with_groundingdino_gligen.ipynb) to combine [Grounding DINO](https://arxiv.org/abs/2303.05499) with [GLIGEN](https://github.com/gligen/GLIGEN)  for more controllable image editings.
 - **`2023/04/08`**: We release [demos](demo/image_editing_with_groundingdino_stablediffusion.ipynb) to combine [Grounding DINO](https://arxiv.org/abs/2303.05499) with [Stable Diffusion](https://github.com/Stability-AI/StableDiffusion) for image editings.
-- **`2023/04/06`**: We build a new demo by marrying GroundingDINO with [Segment-Anything](https://github.com/facebookresearch/segment-anything) named [Grounded-Segment-Anything](https://github.com/IDEA-Research/Grounded-Segment-Anything) aims to support segmentation in GroundingDINO.
+- **`2023/04/06`**: We build a new demo by marrying GroundingDINO with [Segment-Anything](https://github.com/facebookresearch/segment-anything) named **[Grounded-Segment-Anything](https://github.com/IDEA-Research/Grounded-Segment-Anything)** aims to support segmentation in GroundingDINO.
 - **`2023/03/28`**: A YouTube [video](https://youtu.be/cMa77r3YrDk) about Grounding DINO and basic object detection prompt engineering. [[SkalskiP](https://github.com/SkalskiP)]
 - **`2023/03/28`**: Add a [demo](https://huggingface.co/spaces/ShilongLiu/Grounding_DINO_demo) on Hugging Face Space!
 - **`2023/03/27`**: Support CPU-only mode. Now the model can run on machines without GPUs.
@@ -59,14 +59,14 @@ Marrying <a href="https://github.com/IDEA-Research/GroundingDINO">Grounding DINO
 
 
 
-## TODO 
+## :label: TODO 
 
 - [x] Release inference code and demo.
 - [x] Release checkpoints.
 - [x] Grounding DINO with Stable Diffusion and GLIGEN demos.
 - [ ] Release training codes.
 
-## Install 
+## :hammer_and_wrench: Install 
 
 If you have a CUDA environment, please make sure the environment variable `CUDA_HOME` is set. It will be compiled under CPU-only mode if no CUDA available.
 
@@ -74,7 +74,7 @@ If you have a CUDA environment, please make sure the environment variable `CUDA_
 pip install -e .
 ```
 
-## Demo
+## :arrow_forward: Demo
 
 ```bash
 CUDA_VISIBLE_DEVICES=6 python demo/inference_on_a_image.py \
@@ -91,7 +91,13 @@ See the `demo/inference_on_a_image.py` for more details.
 
 We also provide a demo code to integrate Grounding DINO with Gradio Web UI. See the file `demo/gradio_app.py` for more details.
 
-## Checkpoints
+**Notebooks**
+
+- We release [demos](demo/image_editing_with_groundingdino_gligen.ipynb) to combine [Grounding DINO](https://arxiv.org/abs/2303.05499) with [GLIGEN](https://github.com/gligen/GLIGEN)  for more controllable image editings.
+- We release [demos](demo/image_editing_with_groundingdino_stablediffusion.ipynb) to combine [Grounding DINO](https://arxiv.org/abs/2303.05499) with [Stable Diffusion](https://github.com/Stability-AI/StableDiffusion) for image editings.
+
+
+## :luggage: Checkpoints
 
 <!-- insert a table -->
 <table>
@@ -128,7 +134,7 @@ We also provide a demo code to integrate Grounding DINO with Gradio Web UI. See 
   </tbody>
 </table>
 
-## Results
+## :medal_military: Results
 
 <details open>
 <summary><font size="4">
@@ -161,14 +167,14 @@ See our example <a href="https://github.com/IDEA-Research/GroundingDINO/blob/mai
 <img src=".asset/GD_GLIGEN.png" alt="GD_GLIGEN" width="100%">
 </details>
 
-## Model
+## :sauropod: Model: Grounding DINO
 
 Includes: a text backbone, an image backbone, a feature enhancer, a language-guided query selection, and a cross-modality decoder.
 
 ![arch](.asset/arch.png)
 
 
-## Acknowledgement
+## :hearts: Acknowledgement
 
 Our model is related to [DINO](https://github.com/IDEA-Research/DINO) and [GLIP](https://github.com/microsoft/GLIP). Thanks for their great work!
 
@@ -177,7 +183,7 @@ We also thank great previous work including DETR, Deformable DETR, SMCA, Conditi
 Thanks [Stable Diffusion](https://github.com/Stability-AI/StableDiffusion) and [GLIGEN](https://github.com/gligen/GLIGEN) for their awesome models.
 
 
-## Citation
+## :black_nib: Citation
 
 If you find our work helpful for your research, please consider citing the following BibTeX entry.   
 
