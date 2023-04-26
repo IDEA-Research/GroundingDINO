@@ -78,25 +78,90 @@ Marrying <a href="https://github.com/IDEA-Research/GroundingDINO">Grounding DINO
 
 ## :hammer_and_wrench: Install 
 
+**Note:**
+
 If you have a CUDA environment, please make sure the environment variable `CUDA_HOME` is set. It will be compiled under CPU-only mode if no CUDA available.
 
+**Installation:**
+
+Clone the GroundingDINO repository from GitHub.
+
 ```bash
-pip install -e .
+git clone https://github.com/IDEA-Research/GroundingDINO.git
+```
+
+Change the current directory to the GroundingDINO folder.
+
+```bash
+cd GroundingDINO/
+```
+
+Install the required dependencies in the current directory.
+
+```bash
+pip3 install -q -e .
+```
+Create a new directory called "weights" to store the model weights.
+
+```bash
+mkdir weights
+```
+
+Change the current directory to the "weights" folder.
+
+```bash
+cd weights
+```
+
+Download the model weights file.
+
+```bash
+wget -q https://github.com/IDEA-Research/GroundingDINO/releases/download/v0.1.0-alpha/groundingdino_swint_ogc.pth
 ```
 
 ## :arrow_forward: Demo
+Check your GPU ID (only if you're using a GPU)
 
 ```bash
-CUDA_VISIBLE_DEVICES=6 python demo/inference_on_a_image.py \
-  -c /path/to/config \
-  -p /path/to/checkpoint \
-  -i .asset/cats.png \
-  -o "outputs/0" \
-  -t "cat ear." \
-  [--cpu-only] # open it for cpu mode
+nvidia-smi
+```
+Replace `{GPU ID}`, `image_you_want_to_detect.jpg`, and `"dir you want to save the output"` with appropriate values in the following command
+```bash
+CUDA_VISIBLE_DEVICES={GPU ID} python demo/inference_on_a_image.py \
+-c /GroundingDINO/groundingdino/config/GroundingDINO_SwinT_OGC.py \
+-p /GroundingDINO/weights/groundingdino_swint_ogc.pth \
+-i image_you_want_to_detect.jpg \
+-o "dir you want to save the output" \
+-t "chair"
+ [--cpu-only] # open it for cpu mode
 ```
 See the `demo/inference_on_a_image.py` for more details.
 
+**Running with Python:**
+
+```python
+from groundingdino.util.inference import load_model, load_image, predict, annotate
+import cv2
+
+model = load_model("groundingdino/config/GroundingDINO_SwinT_OGC.py", "weights/groundingdino_swint_ogc.pth")
+IMAGE_PATH = "weights/dog-3.jpeg"
+TEXT_PROMPT = "chair . person . dog ."
+BOX_TRESHOLD = 0.35
+TEXT_TRESHOLD = 0.25
+
+image_source, image = load_image(IMAGE_PATH)
+
+boxes, logits, phrases = predict(
+    model=model,
+    image=image,
+    caption=TEXT_PROMPT,
+    box_threshold=BOX_TRESHOLD,
+    text_threshold=TEXT_TRESHOLD
+)
+
+annotated_frame = annotate(image_source=image_source, boxes=boxes, logits=logits, phrases=phrases)
+cv2.imwrite("annotated_image.jpg", annotated_frame)
+```
 **Web UI**
 
 We also provide a demo code to integrate Grounding DINO with Gradio Web UI. See the file `demo/gradio_app.py` for more details.
