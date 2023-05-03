@@ -189,7 +189,7 @@ class Model:
         box_annotator = sv.BoxAnnotator()
         annotated_image = box_annotator.annotate(scene=image, detections=detections)
         """
-        caption = ", ".join(classes)
+        caption = ". ".join(classes)
         processed_image = Model.preprocess_image(image_bgr=image).to(self.device)
         boxes, logits, phrases = predict(
             model=self.model,
