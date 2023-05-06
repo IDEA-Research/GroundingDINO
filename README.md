@@ -263,9 +263,10 @@ Thanks [Stable Diffusion](https://github.com/Stability-AI/StableDiffusion) and [
 If you find our work helpful for your research, please consider citing the following BibTeX entry.   
 
 ```bibtex
-@inproceedings{ShilongLiu2023GroundingDM,
-  title={Grounding DINO: Marrying DINO with Grounded Pre-Training for Open-Set Object Detection},
-  author={Shilong Liu and Zhaoyang Zeng and Tianhe Ren and Feng Li and Hao Zhang and Jie Yang and Chunyuan Li and Jianwei Yang and Hang Su and Jun Zhu and Lei Zhang},
+@article{liu2023grounding,
+  title={Grounding dino: Marrying dino with grounded pre-training for open-set object detection},
+  author={Liu, Shilong and Zeng, Zhaoyang and Ren, Tianhe and Li, Feng and Zhang, Hao and Yang, Jie and Li, Chunyuan and Yang, Jianwei and Su, Hang and Zhu, Jun and others},
+  journal={arXiv preprint arXiv:2303.05499},
   year={2023}
 }
 ```
