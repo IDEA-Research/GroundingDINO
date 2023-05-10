@@ -29,6 +29,7 @@ Official PyTorch implementation of ["Grounding DINO: Marrying DINO with Grounded
 
 ## :sparkles: Highlight Projects
 
+- [DetGPT: Detect What You Need via Reasoning](https://github.com/OptimalScale/DetGPT)
 - [Grounded-SAM: Marrying Grounding DINO with Segment Anything](https://github.com/IDEA-Research/Grounded-Segment-Anything)
 - [Grounding DINO with Stable Diffusion](demo/image_editing_with_groundingdino_stablediffusion.ipynb)
 - [Grounding DINO with GLIGEN for Controllable Image Editing](demo/image_editing_with_groundingdino_gligen.ipynb)
