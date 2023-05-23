@@ -12,9 +12,9 @@ Official PyTorch implementation of ["Grounding DINO: Marrying DINO with Grounded
 - :apple:  [[Watch our simple introduction video on YouTube](https://youtu.be/wxWDt5UiwY8)]
 - :rose:   &nbsp;[[Try the Colab Demo](https://colab.research.google.com/github/roboflow-ai/notebooks/blob/main/notebooks/zero-shot-object-detection-with-grounding-dino.ipynb)]
 - :sunflower: [[Try our Official Huggingface Demo](https://huggingface.co/spaces/ShilongLiu/Grounding_DINO_demo)]
-- :maple_leaf: [[Watch the Step by Step Tutorial about GroundingDINO by Robotflow AI](https://youtu.be/cMa77r3YrDk)]
-- :mushroom: [[GroundingDINO: Automated Dataset Annotation and Evaluation by Robotflow AI](https://youtu.be/C4NqaRBz_Kw)]
-- :hibiscus: [[Accelerate Image Annotation with SAM and GroundingDINO by Robotflow AI](https://youtu.be/oEQYStnF2l8)]
+- :maple_leaf: [[Watch the Step by Step Tutorial about GroundingDINO by Roboflow AI](https://youtu.be/cMa77r3YrDk)]
+- :mushroom: [[GroundingDINO: Automated Dataset Annotation and Evaluation by Roboflow AI](https://youtu.be/C4NqaRBz_Kw)]
+- :hibiscus: [[Accelerate Image Annotation with SAM and GroundingDINO by Roboflow AI](https://youtu.be/oEQYStnF2l8)]
 
 <!-- Grounding DINO Methods | 
 [![arXiv](https://img.shields.io/badge/arXiv-2303.05499-b31b1b.svg)](https://arxiv.org/abs/2303.05499) 
