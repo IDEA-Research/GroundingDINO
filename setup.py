@@ -30,7 +30,7 @@ from torch.utils.cpp_extension import CUDA_HOME, CppExtension, CUDAExtension
 
 # groundingdino version info
 version = "0.1.0"
-package_name = "groundingdino"
+package_name = "rf_groundingdino"
 cwd = os.path.dirname(os.path.abspath(__file__))
 
 
@@ -190,11 +190,12 @@ if __name__ == "__main__":
     write_version_file()
 
     setup(
-        name="groundingdino",
+        name="rf_groundingdino",
         version="0.1.0",
         author="International Digital Economy Academy, Shilong Liu",
         url="https://github.com/IDEA-Research/GroundingDINO",
         description="open-set object detector",
+        long_description="open-set object detector",
         license=license,
         install_requires=parse_requirements("requirements.txt"),
         packages=find_packages(
