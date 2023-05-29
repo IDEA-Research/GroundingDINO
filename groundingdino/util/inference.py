@@ -67,6 +67,7 @@ def predict(
 
     prediction_logits = outputs["pred_logits"].cpu().sigmoid()[0]  # prediction_logits.shape = (nq, 256)
     prediction_boxes = outputs["pred_boxes"].cpu()[0]  # prediction_boxes.shape = (nq, 4)
+    feature_map = outputs["pred_feature"]
 
     mask = prediction_logits.max(dim=1)[0] > box_threshold
     logits = prediction_logits[mask]  # logits.shape = (n, 256)
@@ -81,7 +82,7 @@ def predict(
         in logits
     ]
 
-    return boxes, logits.max(dim=1)[0], phrases
+    return boxes, logits.max(dim=1)[0], phrases, feature_map
 
 
 def annotate(image_source: np.ndarray, boxes: torch.Tensor, logits: torch.Tensor, phrases: List[str]) -> np.ndarray:
@@ -148,7 +149,7 @@ class Model:
         annotated_image = box_annotator.annotate(scene=image, detections=detections, labels=labels)
         """
         processed_image = Model.preprocess_image(image_bgr=image).to(self.device)
-        boxes, logits, phrases = predict(
+        boxes, logits, phrases, feature = predict(
             model=self.model,
             image=processed_image,
             caption=caption,
@@ -161,7 +162,7 @@ class Model:
             source_w=source_w,
             boxes=boxes,
             logits=logits)
-        return detections, phrases
+        return detections, phrases, feature
 
     def predict_with_classes(
         self,
@@ -191,7 +192,7 @@ class Model:
         """
         caption = ". ".join(classes)
         processed_image = Model.preprocess_image(image_bgr=image).to(self.device)
-        boxes, logits, phrases = predict(
+        boxes, logits, phrases, feature = predict(
             model=self.model,
             image=processed_image,
             caption=caption,
