@@ -1,10 +1,55 @@
-torch
-torchvision
+--extra-index-url https://download.pytorch.org/whl/cu113
+torch==1.13.0
+torchvision==0.14.0
+torchaudio==0.13.0
+pytorchvideo @ git+https://github.com/facebookresearch/pytorchvideo.git@28fe037d212663c6a24f373b94cc5d478c8c1a1d
+timm==0.6.7
+ftfy
+regex
+einops
+fvcore
+decord==0.6.0
+iopath
+numpy
+matplotlib
+types-regex
+mayavi
+cartopy
+
 transformers
 addict
 yapf
-timm
-numpy
 opencv-python
 supervision==0.6.0
 pycocotools
+
+# pip install -r requirements.txt
+ultralytics==8.0.98
+
+gitpython
+tensorboard
+numpy==1.23.1  # otherwise issues with track eval
+
+# StrongSORT ------------------------------------------------------------------
+easydict
+
+# torchreid -------------------------------------------------------------------
+gdown
+
+# OCSORT ----------------------------------------------------------------------
+filterpy
+
+# Export ----------------------------------------------------------------------
+# onnx>=1.12.0  # ONNX export
+# onnxsim>=0.4.1  # ONNX simplifier
+# nvidia-pyindex  # TensorRT export
+# nvidia-tensorrt  # TensorRT export
+# openvino-dev>=2022.3  # OpenVINO export
+# onnx2tf>=1.10.0
+
+
+# Hyperparam search -----------------------------------------------------------
+# optuna
+# plotly  # for hp importance and pareto front plots
+# kaleido
+# joblib
