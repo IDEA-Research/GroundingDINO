@@ -6,6 +6,7 @@ import supervision as sv
 import torch
 from PIL import Image
 from torchvision.ops import box_convert
+import bisect
 
 import groundingdino.datasets.transforms as T
 from groundingdino.models import build_model
