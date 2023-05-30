@@ -56,7 +56,8 @@ def predict(
         caption: str,
         box_threshold: float,
         text_threshold: float,
-        device: str = "cuda"
+        device: str = "cuda",
+        remove_combined: bool = False
 ) -> Tuple[torch.Tensor, torch.Tensor, List[str]]:
     caption = preprocess_caption(caption=caption)
 
@@ -75,16 +76,23 @@ def predict(
 
     tokenizer = model.tokenizer
     tokenized = tokenizer(caption)
-
-    sep_idx = [i for i in range(len(tokenized['input_ids'])) if tokenized['input_ids'][i] in [101, 102, 1012]]
     
-    phrases = []
-    for logit in logits:
-        max_idx = logit.argmax()
-        insert_idx = bisect.bisect_left(sep_idx, max_idx)
-        right_idx = sep_idx[insert_idx]
-        left_idx = sep_idx[insert_idx - 1]
-        phrases.append(get_phrases_from_posmap(logit > text_threshold, tokenized, tokenizer, left_idx, right_idx).replace('.', ''))
+    if remove_combined:
+        sep_idx = [i for i in range(len(tokenized['input_ids'])) if tokenized['input_ids'][i] in [101, 102, 1012]]
+        
+        phrases = []
+        for logit in logits:
+            max_idx = logit.argmax()
+            insert_idx = bisect.bisect_left(sep_idx, max_idx)
+            right_idx = sep_idx[insert_idx]
+            left_idx = sep_idx[insert_idx - 1]
+            phrases.append(get_phrases_from_posmap(logit > text_threshold, tokenized, tokenizer, left_idx, right_idx).replace('.', ''))
+    else:
+        phrases = [
+            get_phrases_from_posmap(logit > text_threshold, tokenized, tokenizer).replace('.', '')
+            for logit
+            in logits
+        ]
 
     return boxes, logits.max(dim=1)[0], phrases
 
