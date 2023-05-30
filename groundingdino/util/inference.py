@@ -83,7 +83,7 @@ def predict(
         insert_idx = bisect.bisect_left(sep_idx, max_idx)
         right_idx = sep_idx[insert_idx]
         left_idx = sep_idx[insert_idx - 1]
-        phrases.append(get_phrases_from_posmap(logit > text_threshold, tokenized, tokenizer, left_idx, right_idx))
+        phrases.append(get_phrases_from_posmap(logit > text_threshold, tokenized, tokenizer, left_idx, right_idx).replace('.', ''))
 
     return boxes, logits.max(dim=1)[0], phrases
 
