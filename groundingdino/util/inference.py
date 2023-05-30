@@ -75,11 +75,15 @@ def predict(
     tokenizer = model.tokenizer
     tokenized = tokenizer(caption)
 
-    phrases = [
-        get_phrases_from_posmap(logit > text_threshold, tokenized, tokenizer).replace('.', '')
-        for logit
-        in logits
-    ]
+    sep_idx = [i for i in range(len(tokenized['input_ids'])) if tokenized['input_ids'][i] in [101, 102, 1012]]
+    
+    phrases = []
+    for logit in logits:
+        max_idx = logit.argmax()
+        insert_idx = bisect.bisect_left(sep_idx, max_idx)
+        right_idx = sep_idx[insert_idx]
+        left_idx = sep_idx[insert_idx - 1]
+        phrases.append(get_phrases_from_posmap(logit > text_threshold, tokenized, tokenizer, left_idx, right_idx))
 
     return boxes, logits.max(dim=1)[0], phrases
 
