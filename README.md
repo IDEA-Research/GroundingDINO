@@ -68,6 +68,7 @@ PyTorch implementation and pretrained models for Grounding DINO. For details, se
 
 
 ## :fire: News
+- **`2023/06/17`**: We provide an example to evaluat Grounding DINO on COCO zero-shot performance.
 - **`2023/04/15`**: Refer to [CV in the Wild Readings](https://github.com/Computer-Vision-in-the-Wild/CVinW_Readings) for those who are interested in open-set recognition!
 - **`2023/04/08`**: We release [demos](demo/image_editing_with_groundingdino_gligen.ipynb) to combine [Grounding DINO](https://arxiv.org/abs/2303.05499) with [GLIGEN](https://github.com/gligen/GLIGEN)  for more controllable image editings.
 - **`2023/04/08`**: We release [demos](demo/image_editing_with_groundingdino_stablediffusion.ipynb) to combine [Grounding DINO](https://arxiv.org/abs/2303.05499) with [Stable Diffusion](https://github.com/Stability-AI/StableDiffusion) for image editings.
@@ -129,24 +130,16 @@ cd GroundingDINO/
 Install the required dependencies in the current directory.
 
 ```bash
-pip3 install -q -e .
+pip install -e .
 ```
-Create a new directory called "weights" to store the model weights.
+
+Download pre-trained model weights.
 
 ```bash
 mkdir weights
-```
-
-Change the current directory to the "weights" folder.
-
-```bash
 cd weights
-```
-
-Download the model weights file.
-
-```bash
 wget -q https://github.com/IDEA-Research/GroundingDINO/releases/download/v0.1.0-alpha/groundingdino_swint_ogc.pth
+cd ..
 ```
 
 ## :arrow_forward: Demo
@@ -200,6 +193,19 @@ We also provide a demo code to integrate Grounding DINO with Gradio Web UI. See 
 
 - We release [demos](demo/image_editing_with_groundingdino_gligen.ipynb) to combine [Grounding DINO](https://arxiv.org/abs/2303.05499) with [GLIGEN](https://github.com/gligen/GLIGEN)  for more controllable image editings.
 - We release [demos](demo/image_editing_with_groundingdino_stablediffusion.ipynb) to combine [Grounding DINO](https://arxiv.org/abs/2303.05499) with [Stable Diffusion](https://github.com/Stability-AI/StableDiffusion) for image editings.
+
+## COCO Zero-shot Evaluations
+
+We provide an example to evaluate Grounding DINO zero-shot performance on COCO. The results should be **48.5**.
+
+```bash
+CUDA_VISIBLE_DEVICES=0 \
+python demo/test_ap_on_coco.py \
+ -c groundingdino/config/GroundingDINO_SwinT_OGC.py \
+ -p weights/groundingdino_swint_ogc.pth \
+ --anno_path /path/to/annoataions/ie/instances_val2017.json \
+ --image_dir /path/to/imagedir/ie/val2017
+```
 
 
 ## :luggage: Checkpoints
