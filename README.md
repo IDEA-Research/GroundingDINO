@@ -68,7 +68,7 @@ PyTorch implementation and pretrained models for Grounding DINO. For details, se
 
 
 ## :fire: News
-- **`2023/06/17`**: We provide an example to evaluat Grounding DINO on COCO zero-shot performance.
+- **`2023/06/17`**: We provide an example to evaluate Grounding DINO on COCO zero-shot performance.
 - **`2023/04/15`**: Refer to [CV in the Wild Readings](https://github.com/Computer-Vision-in-the-Wild/CVinW_Readings) for those who are interested in open-set recognition!
 - **`2023/04/08`**: We release [demos](demo/image_editing_with_groundingdino_gligen.ipynb) to combine [Grounding DINO](https://arxiv.org/abs/2303.05499) with [GLIGEN](https://github.com/gligen/GLIGEN)  for more controllable image editings.
 - **`2023/04/08`**: We release [demos](demo/image_editing_with_groundingdino_stablediffusion.ipynb) to combine [Grounding DINO](https://arxiv.org/abs/2303.05499) with [Stable Diffusion](https://github.com/Stability-AI/StableDiffusion) for image editings.
