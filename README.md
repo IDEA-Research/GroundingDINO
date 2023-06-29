@@ -151,13 +151,27 @@ nvidia-smi
 Replace `{GPU ID}`, `image_you_want_to_detect.jpg`, and `"dir you want to save the output"` with appropriate values in the following command
 ```bash
 CUDA_VISIBLE_DEVICES={GPU ID} python demo/inference_on_a_image.py \
--c /GroundingDINO/groundingdino/config/GroundingDINO_SwinT_OGC.py \
--p /GroundingDINO/weights/groundingdino_swint_ogc.pth \
+-c groundingdino/config/GroundingDINO_SwinT_OGC.py \
+-p weights/groundingdino_swint_ogc.pth \
 -i image_you_want_to_detect.jpg \
 -o "dir you want to save the output" \
 -t "chair"
  [--cpu-only] # open it for cpu mode
 ```
+
+If you would like to specify the phrases to detect, here is a demo:
+```bash
+CUDA_VISIBLE_DEVICES={GPU ID} python demo/inference_on_a_image.py \
+-c groundingdino/config/GroundingDINO_SwinT_OGC.py \
+-p /comp_robot/liushilong/data/pretrained/grounding_pretrain/groundingdino_swint_ogc.pth \
+-i .asset/cat_dog.jpeg \
+-o logs/1111 \
+-t "There is a cat and a dog in the image ." \
+--token_spans "[[[9, 10], [11, 14]], [[19, 20], [21, 24]]]"
+ [--cpu-only] # open it for cpu mode
+```
+The token_spans specify the start and end positions of a phrases. For example, the first phrase is `[[9, 10], [11, 14]]`. `"There is a cat and a dog in the image ."[9:10] = 'a'`, `"There is a cat and a dog in the image ."[11:14] = 'cat'`. Hence it refere to the phrase `a cat` .
+
 See the `demo/inference_on_a_image.py` for more details.
 
 **Running with Python:**
