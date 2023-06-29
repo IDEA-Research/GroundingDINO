@@ -171,7 +171,7 @@ CUDA_VISIBLE_DEVICES={GPU ID} python demo/inference_on_a_image.py \
 --token_spans "[[[9, 10], [11, 14]], [[19, 20], [21, 24]]]"
  [--cpu-only] # open it for cpu mode
 ```
-The token_spans specify the start and end positions of a phrases. For example, the first phrase is `[[9, 10], [11, 14]]`. `"There is a cat and a dog in the image ."[9:10] = 'a'`, `"There is a cat and a dog in the image ."[11:14] = 'cat'`. Hence it refere to the phrase `a cat` .
+The token_spans specify the start and end positions of a phrases. For example, the first phrase is `[[9, 10], [11, 14]]`. `"There is a cat and a dog in the image ."[9:10] = 'a'`, `"There is a cat and a dog in the image ."[11:14] = 'cat'`. Hence it refers to the phrase `a cat` . Similarly, the `[[19, 20], [21, 24]]` refers to the phrase `a dog`.
 
 See the `demo/inference_on_a_image.py` for more details.
 
