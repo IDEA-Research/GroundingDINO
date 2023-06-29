@@ -164,7 +164,7 @@ If you would like to specify the phrases to detect, here is a demo:
 ```bash
 CUDA_VISIBLE_DEVICES={GPU ID} python demo/inference_on_a_image.py \
 -c groundingdino/config/GroundingDINO_SwinT_OGC.py \
--p /comp_robot/liushilong/data/pretrained/grounding_pretrain/groundingdino_swint_ogc.pth \
+-p ./groundingdino_swint_ogc.pth \
 -i .asset/cat_dog.jpeg \
 -o logs/1111 \
 -t "There is a cat and a dog in the image ." \
