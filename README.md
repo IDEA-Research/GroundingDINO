@@ -42,6 +42,7 @@ PyTorch implementation and pretrained models for Grounding DINO. For details, se
 
 ## :sparkles: Highlight Projects
 
+- [Semantic-SAM: a universal image segmentation model to enable segment and recognize anything at any desired granularity.](https://github.com/UX-Decoder/Semantic-SAM), 
 - [DetGPT: Detect What You Need via Reasoning](https://github.com/OptimalScale/DetGPT)
 - [Grounded-SAM: Marrying Grounding DINO with Segment Anything](https://github.com/IDEA-Research/Grounded-Segment-Anything)
 - [Grounding DINO with Stable Diffusion](demo/image_editing_with_groundingdino_stablediffusion.ipynb)
@@ -69,6 +70,7 @@ PyTorch implementation and pretrained models for Grounding DINO. For details, se
 
 
 ## :fire: News
+- **`2023/07/18`**: We release [Semantic-SAM](https://github.com/UX-Decoder/Semantic-SAM), a universal image segmentation model to enable segment and recognize anything at any desired granularity. **Code** and **checkpoint** are available!
 - **`2023/06/17`**: We provide an example to evaluate Grounding DINO on COCO zero-shot performance.
 - **`2023/04/15`**: Refer to [CV in the Wild Readings](https://github.com/Computer-Vision-in-the-Wild/CVinW_Readings) for those who are interested in open-set recognition!
 - **`2023/04/08`**: We release [demos](demo/image_editing_with_groundingdino_gligen.ipynb) to combine [Grounding DINO](https://arxiv.org/abs/2303.05499) with [GLIGEN](https://github.com/gligen/GLIGEN)  for more controllable image editings.
