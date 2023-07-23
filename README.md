@@ -114,29 +114,67 @@ Marrying <a href="https://github.com/IDEA-Research/GroundingDINO">Grounding DINO
 
 **Note:**
 
-If you have a CUDA environment, please make sure the environment variable `CUDA_HOME` is set. It will be compiled under CPU-only mode if no CUDA available.
+0. If you have a CUDA environment, please make sure the environment variable `CUDA_HOME` is set. It will be compiled under CPU-only mode if no CUDA available.
 
+Please make sure following the installation steps strictly, otherwise the program may produce: 
+```bash
+NameError: name '_C' is not defined
+```
+
+If this happened, please reinstalled the groundingDINO by reclone the git and do all the installation steps again.
+ 
+#### how to check cuda:
+```bash
+echo $CUDA_HOME
+```
+If it print nothing, then it means you haven't set up the path/
+
+Run this so the environment variable will be set under current shell. 
+```bash
+export CUDA_HOME=/path/to/cuda-11.3
+```
+
+Notice the version of cuda should be aligned with your CUDA runtime, for there might exists multiple cuda at the same time. 
+
+If you want to set the CUDA_HOME permanently, store it using:
+
+```bash
+echo 'export CUDA_HOME=/path/to/cuda' >> ~/.bashrc
+```
+after that, source the bashrc file and check CUDA_HOME:
+```bash
+source ~/.bashrc
+echo $CUDA_HOME
+```
+
+In this example, /path/to/cuda-11.3 should be replaced with the path where your CUDA toolkit is installed. You can find this by typing **which nvcc** in your terminal:
+
+For instance, 
+if the output is /usr/local/cuda/bin/nvcc, then:
+```bash
+export CUDA_HOME=/usr/local/cuda
+```
 **Installation:**
 
-Clone the GroundingDINO repository from GitHub.
+1.Clone the GroundingDINO repository from GitHub.
 
 ```bash
 git clone https://github.com/IDEA-Research/GroundingDINO.git
 ```
 
-Change the current directory to the GroundingDINO folder.
+2. Change the current directory to the GroundingDINO folder.
 
 ```bash
 cd GroundingDINO/
 ```
 
-Install the required dependencies in the current directory.
+3. Install the required dependencies in the current directory.
 
 ```bash
 pip install -e .
 ```
 
-Download pre-trained model weights.
+4. Download pre-trained model weights.
 
 ```bash
 mkdir weights
