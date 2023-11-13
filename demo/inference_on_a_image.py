@@ -199,7 +199,7 @@ if __name__ == "__main__":
 
     # run model
     boxes_filt, pred_phrases = get_grounding_output(
-        model, image, text_prompt, box_threshold, text_threshold, cpu_only=args.cpu_only, token_spans=eval(token_spans)
+        model, image, text_prompt, box_threshold, text_threshold, cpu_only=args.cpu_only, token_spans=eval(f"{token_spans}")
     )
 
     # visualize pred
