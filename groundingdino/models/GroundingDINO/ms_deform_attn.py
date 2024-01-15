@@ -326,8 +326,10 @@ class MultiScaleDeformableAttention(nn.Module):
                     reference_points.shape[-1]
                 )
             )
-    
-        if torch.cuda.is_available() and value.is_cuda:
+
+        from ...util.export_flag import ExportFlag
+        if torch.cuda.is_available() and value.is_cuda and not ExportFlag.is_export:
+            # if cuda is available and not exporting model.
             halffloat = False
             if value.dtype == torch.float16:
                 halffloat = True
