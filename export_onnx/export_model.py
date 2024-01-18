@@ -4,6 +4,8 @@ from groundingdino.models import build_model
 import torch
 from groundingdino.util.utils import clean_state_dict, get_phrases_from_posmap
 from typing import Union
+from onnxsim import simplify, model_info
+import sys
 
 import logging
 logger = logging.getLogger("groundingdino.export")
@@ -55,13 +57,28 @@ class ModelWrapper(torch.nn.Module):
 def export_model(model: torch.nn.Module, output_file: Union[str, pathlib.Path], device: Union[str, torch.device]):
     from groundingdino.util.export_flag import ExportFlag
     fake_inputs = get_fake_inputs(model, device)
+    # for item in fake_inputs:
+    #     print(item.shape)
     # logger.info("try infer")
     # with torch.no_grad(), ExportFlag(True):
     #     model(*fake_inputs)
     logger.info("exporting model")
     with torch.no_grad(), ExportFlag(True):
         wrapped_model = ModelWrapper(model)
-        torch.onnx.export(wrapped_model, fake_inputs, output_file, opset_version=17)
+        torch.onnx.export(wrapped_model,
+                          fake_inputs,
+                          output_file,
+                          opset_version=17,
+                          do_constant_folding=False,
+                          input_names=["samples", "input_ids", "token_type_ids", "text_token_mask", "text_self_attention_masks", "position_ids"],
+                          dynamic_axes={"input_ids": {1: "seq_len"},
+                                        "token_type_ids": {1: "seq_len"},
+                                        "text_token_mask": {1: "seq_len"},
+                                        "text_self_attention_masks": {1: "seq_len", 2: "seq_len"},
+                                        "position_ids": {1: "seq_len"},
+                                        },
+                          output_names=["logits", "boxes"]
+                          )
 
 if __name__ == "__main__":
     import argparse
@@ -73,6 +90,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--output_dir", "-o", type=pathlib.Path, default="outputs", required=True, help="output directory"
     )
+    parser.add_argument("--optimize", action="store_true", help="optimize exported onnx model when simplifying")
     parser.add_argument("--cpu-only", action="store_true", help="running on cpu only!, default=False")
     args = parser.parse_args()
 
@@ -88,4 +106,30 @@ if __name__ == "__main__":
     output_dir.mkdir(exist_ok=True)
     # load model
     model = load_model(config_file, checkpoint_path, device=device)
-    export_model(model, output_dir / "grouding_dino.onnx", device)
+    model_path = output_dir / "grounding_dino.onnx"
+    export_model(model, model_path, device)
+    print("exported model to {}".format(model_path))
+    del model
+
+    # simplify onnx model
+    print("simplifying model")
+    model_opt, success = simplify(str(model_path),
+                                  perform_optimization=args.optimize,
+                                  tensor_size_threshold="1KB")
+    import onnx
+    opt_model_path = output_dir / "grounding_dino_sim.onnx"
+    onnx.save(model_opt, opt_model_path)
+    print("saved simplified model to {0}".format(opt_model_path))
+
+    if success:
+        print("Finish! Here is the difference:")
+        ori_model = onnx.load(model_path)
+        model_info.print_simplifying_info(ori_model, model_opt)
+    else:
+        print(
+            'Check failed. Please be careful to use the simplified model, or try specifying "skip-fuse-bn" or "skip-optimization" (see onnxsim.Simplify for details).'
+        )
+        print("Here is the difference after simplification:")
+        ori_model = onnx.load(model_path)
+        model_info.print_simplifying_info(ori_model, model_opt)
+        sys.exit(1)
