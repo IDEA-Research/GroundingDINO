@@ -54,7 +54,8 @@ class ModelWrapper(torch.nn.Module):
     def forward(self, *args, **kwargs):
         return self._model.forward_nn(*args, **kwargs)
 
-def export_model(model: torch.nn.Module, output_file: Union[str, pathlib.Path], device: Union[str, torch.device]):
+def export_model(model: torch.nn.Module, output_file: Union[str, pathlib.Path],
+                 device: Union[str, torch.device], opset_version: int=17):
     from groundingdino.util.export_flag import ExportFlag
     fake_inputs = get_fake_inputs(model, device)
     # for item in fake_inputs:
@@ -68,7 +69,7 @@ def export_model(model: torch.nn.Module, output_file: Union[str, pathlib.Path], 
         torch.onnx.export(wrapped_model,
                           fake_inputs,
                           output_file,
-                          opset_version=17,
+                          opset_version=opset_version,
                           do_constant_folding=False,
                           input_names=["samples", "input_ids", "token_type_ids", "text_token_mask", "text_self_attention_masks", "position_ids"],
                           dynamic_axes={"input_ids": {1: "seq_len"},
@@ -79,6 +80,15 @@ def export_model(model: torch.nn.Module, output_file: Union[str, pathlib.Path], 
                                         },
                           output_names=["logits", "boxes"]
                           )
+
+from torch.onnx import register_custom_op_symbolic
+from torch.onnx.symbolic_helper import parse_args
+
+@parse_args('v','v','i','i','b')
+def grid_sampler(g, input, grid, mode_enum, padding_mode_enum, align_corners):
+    mode_str = ['bilinear', 'nearest', 'bicubic'][mode_enum]
+    padding_str = ['zeros', 'border', 'reflection'][padding_mode_enum]
+    return g.op('com.microsoft::GridSample',input,grid,mode_s=mode_str,padding_mode_s=padding_str,align_corners_i=align_corners)
 
 if __name__ == "__main__":
     import argparse
@@ -92,9 +102,19 @@ if __name__ == "__main__":
     )
     parser.add_argument("--optimize", action="store_true", help="optimize exported onnx model when simplifying")
     parser.add_argument("--cpu-only", action="store_true", help="running on cpu only!, default=False")
+    parser.add_argument("--opset", type=int, default=17, help="the opset to export onnx model")
     args = parser.parse_args()
 
-    device = "cuda" if not args.cpu_only else "cpu"
+    if args.opset < 17:
+        register_custom_op_symbolic("::grid_sampler", grid_sampler, args.opset)
+
+    if args.cpu_only:
+        device = "cpu"
+    elif not torch.cuda.is_available():
+        device = "cpu"
+        print("cpu-only is not configured, but no cuda available, use cpu")
+    else:
+        device = "cuda"
     device = torch.device(device)
 
     # cfg
@@ -107,7 +127,7 @@ if __name__ == "__main__":
     # load model
     model = load_model(config_file, checkpoint_path, device=device)
     model_path = output_dir / "grounding_dino.onnx"
-    export_model(model, model_path, device)
+    export_model(model, model_path, device, opset_version=args.opset)
     print("exported model to {}".format(model_path))
     del model
 

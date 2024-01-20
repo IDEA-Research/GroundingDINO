@@ -53,7 +53,7 @@
 # 使用方法
 ```
 cd export_onnx
-python export_model.py -c ../groundingdino/config/GroundingDINO_SwinT_OGC_export.py -p ../weights/groundingdino_swint_ogc.pth --output_dir ./ --optimize
+python export_model.py -c ../groundingdino/config/GroundingDINO_SwinT_OGC_export.py -p ../weights/groundingdino_swint_ogc.pth --output_dir ./ --optimize --opset 17
 # 转换tensorrt模型，可以通过 --use_fp16 启用fp16推理
 python convert_tensorrt.py -m ./grounding_dino_sim.onnx -o grounding_dino.trtengine
 python tensorrt_infer.py --engine_path ./grounding_dino.trtengine  -i ../test/cat.jpg -t 'cat' --output_dir ../test/result
