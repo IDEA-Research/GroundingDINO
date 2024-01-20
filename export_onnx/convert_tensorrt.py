@@ -25,6 +25,7 @@ def main():
     parser = argparse.ArgumentParser("Grounding DINO example", add_help=True)
     parser.add_argument("--onnx_path", "-m", type=pathlib.Path, required=True, help="path to onnx model")
     parser.add_argument("--engine_path", "-o", type=pathlib.Path, required=True, help="path to output tensorrt engine file")
+    parser.add_argument("--use_fp16", action="store_true", help="enable fp16 inference")
     args = parser.parse_args()
 
     profile = Profile()
@@ -37,11 +38,12 @@ def main():
     profile.add("text_self_attention_masks", min=[1, min_seq_len, min_seq_len], opt=[1, max_seq_len, max_seq_len], max=[1, max_seq_len, max_seq_len])
     profile.add("position_ids", min=[1, min_seq_len], opt=[1, max_seq_len], max=[1, max_seq_len])
     profiles = [profile]
-
+    build_config = CreateConfig(profiles=profiles,
+                                fp16=args.use_fp16)
     # See examples/api/06_immediate_eval_api for details on immediately evaluated functional loaders like `engine_from_network`.
     # Note that we can freely mix lazy and immediately-evaluated loaders.
     engine = engine_from_network(
-        network_from_onnx_path(str(args.onnx_path)), config=CreateConfig(profiles=profiles)
+        network_from_onnx_path(str(args.onnx_path)), config=build_config
     )
     print("engine built")
     # We'll save the engine so that we can inspect it with `inspect model`.

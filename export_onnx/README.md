@@ -30,15 +30,31 @@
 2. 注意输入prompt的input_ids长度是会变的，所以这个需要动态shape。导出onnx的时候需要指定对应维度为dynamic（export_onnx/export_model.py:74），转tensorrt的时候要指定shape范围（export_onnx/convert_tensorrt.py:33-38），如果最终token的长度跟这儿写的不一致要对应进行修改。
 
 # 依赖
-```
-Tensorrt 8.6：https://developer.nvidia.com/nvidia-tensorrt-8x-download
-```
-python依赖就直接 `pip install -r requirements-export.txt`
+- cuDNN: 8.9.6
+  - 下载页面：https://developer.nvidia.com/rdp/cudnn-archive ，简单起见直接下载 [Download cuDNN v8.9.6 (November 1st, 2023), for CUDA 11.x](https://developer.nvidia.com/downloads/compute/cudnn/secure/8.9.6/local_installers/11.x/cudnn-linux-x86_64-8.9.6.50_cuda11-archive.tar.xz/)即可。
+  - 安装：下载tar文件之后解压缩，假设解压缩到 /opt/cudnn-linux-x86_64-8.9.6.50_cuda11/，则需要设置环境变量:
+    ```bash
+    export LD_LIBRARY_PATH=${LD_LIBRARY_PATH}//opt/cudnn-linux-x86_64-8.9.6.50_cuda11/lib
+    ```
+
+- TensorRT：8.6 GA
+  - 下载页面：https://developer.nvidia.com/nvidia-tensorrt-8x-download ，建议下载解压即用的[tar包](https://developer.nvidia.com/downloads/compute/machine-learning/tensorrt/secure/8.6.1/tars/TensorRT-8.6.1.6.Linux.x86_64-gnu.cuda-11.8.tar.gz)
+  - 安装：下载tar文件之后解压缩，假设解压缩到/opt/TensorRT-8.6.1.6，则需要设置环境变量:
+    ```bash
+    export LD_LIBRARY_PATH=${LD_LIBRARY_PATH}:/opt/TensorRT-8.6.1.6/lib
+    ```
+    安装whl包：
+    ```bash
+    pip install /opt/TensorRT-8.6.1.6/python/tensorrt-8.6.1-cp39-none-linux_x86_64.whl
+    ```
+- python依赖
+  直接 `pip install -r requirements-export.txt`
 
 # 使用方法
 ```
 cd export_onnx
 python export_model.py -c ../groundingdino/config/GroundingDINO_SwinT_OGC_export.py -p ../weights/groundingdino_swint_ogc.pth --output_dir ./ --optimize
-python convert_tensorrt.py -m ./grounding_dino_sim.onnx -o grounding_dino.trtengine 
+# 转换tensorrt模型，可以通过 --use_fp16 启用fp16推理
+python convert_tensorrt.py -m ./grounding_dino_sim.onnx -o grounding_dino.trtengine
 python tensorrt_infer.py --engine_path ./grounding_dino.trtengine  -i ../test/cat.jpg -t 'cat' --output_dir ../test/result
 ```
