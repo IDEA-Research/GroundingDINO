@@ -53,6 +53,8 @@ def main():
         image_tensor = image_tensor.unsqueeze(0)
 
         prompt = args.text_prompt
+        if not prompt.endswith('.'):
+            prompt = prompt + '.'
         text_encoder_type="bert-base-uncased"
         from transformers import AutoTokenizer
         tokenizer = AutoTokenizer.from_pretrained(text_encoder_type)
