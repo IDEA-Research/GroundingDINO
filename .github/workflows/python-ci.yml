@@ -1,0 +1,9 @@
+name: test python workflows
+on:
+  pull_request:
+jobs:
+  upload-package-gcloud:
+    uses: ./.github/workflows/python-upload-package-gcloud.yml
+    with:
+      ECHO_PYTHON_PACKAGE_VERSION: "v0.${{ github.run_number }}.${{ github.run_attempt }}"
+      PYTHON_PROJECT_DIR: python

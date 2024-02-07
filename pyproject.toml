@@ -1,0 +1,28 @@
+[tool.poetry]
+name = "echo-groundingdino"
+version = "0.0.0"
+description = "Fork of GroundingDINO with sane packaging"
+authors = ["Guðmundur Heimisson <gudmundur@echo-analytics.io>"]
+license = "proprietary"
+readme = "README.md"
+build = "build.py"
+packages = [{ include = "groundingdino" }]
+
+
+[tool.poetry.dependencies]
+python = ">=3.10,<3.12"
+torch = "^2.2.0"
+torchvision = "^0.17.0"
+transformers = "^4.37.2"
+addict = "^2.4.0"
+yapf = "^0.40.2"
+timm = "^0.9.12"
+numpy = "^1.26.4"
+opencv-python = "^4.9.0.80"
+supervision = "^0.18.0"
+pycocotools = "^2.0.7"
+
+
+[build-system]
+requires = ["poetry-core", "torch", "setuptools"]
+build-backend = "poetry.core.masonry.api"
