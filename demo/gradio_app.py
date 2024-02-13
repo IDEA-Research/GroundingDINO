@@ -1,22 +1,16 @@
 import argparse
-from functools import partial
 import cv2
-import requests
-import os
-from io import BytesIO
 from PIL import Image
 import numpy as np
-from pathlib import Path
-
 
 import warnings
 
 import torch
 
 # prepare the environment
-os.system("python setup.py build develop --user")
-os.system("pip install packaging==21.3")
-os.system("pip install gradio")
+# os.system("python setup.py build develop --user")
+# os.system("pip install packaging==21.3")
+# os.system("pip install gradio")
 
 
 warnings.filterwarnings("ignore")
@@ -26,11 +20,10 @@ import gradio as gr
 from groundingdino.models import build_model
 from groundingdino.util.slconfig import SLConfig
 from groundingdino.util.utils import clean_state_dict
-from groundingdino.util.inference import annotate, load_image, predict
+from groundingdino.util.inference import annotate, load_image, predict, load_model
 import groundingdino.datasets.transforms as T
 
 from huggingface_hub import hf_hub_download
-
 
 
 # Use this command for evaluate the Grounding DINO model
@@ -40,7 +33,7 @@ ckpt_filenmae = "groundingdino_swint_ogc.pth"
 
 
 def load_model_hf(model_config_path, repo_id, filename, device='cpu'):
-    args = SLConfig.fromfile(model_config_path) 
+    args = SLConfig.fromfile(model_config_path)
     model = build_model(args)
     args.device = device
 
@@ -49,7 +42,7 @@ def load_model_hf(model_config_path, repo_id, filename, device='cpu'):
     log = model.load_state_dict(clean_state_dict(checkpoint['model']), strict=False)
     print("Model loaded from {} \n => {}".format(cache_file, log))
     _ = model.eval()
-    return model    
+    return model
 
 def image_transform_grounding(init_image):
     transform = T.Compose([
@@ -71,13 +64,12 @@ model = load_model_hf(config_file, ckpt_repo_id, ckpt_filenmae)
 
 def run_grounding(input_image, grounding_caption, box_threshold, text_threshold):
     init_image = input_image.convert("RGB")
-    original_size = init_image.size
 
     _, image_tensor = image_transform_grounding(init_image)
     image_pil: Image = image_transform_grounding_for_vis(init_image)
 
     # run grounidng
-    boxes, logits, phrases = predict(model, image_tensor, grounding_caption, box_threshold, text_threshold, device='cpu')
+    boxes, logits, phrases = predict(model, image_tensor, grounding_caption, box_threshold, text_threshold, device='cuda')
     annotated_frame = annotate(image_source=np.asarray(image_pil), boxes=boxes, logits=logits, phrases=phrases)
     image_with_box = Image.fromarray(cv2.cvtColor(annotated_frame, cv2.COLOR_BGR2RGB))
 
@@ -98,9 +90,9 @@ if __name__ == "__main__":
 
         with gr.Row():
             with gr.Column():
-                input_image = gr.Image(source='upload', type="pil")
+                input_image = gr.Image(label='upload', type="pil")
                 grounding_caption = gr.Textbox(label="Detection Prompt")
-                run_button = gr.Button(label="Run")
+                run_button = gr.Button(value="Run")
                 with gr.Accordion("Advanced options", open=False):
                     box_threshold = gr.Slider(
                         label="Box Threshold", minimum=0.0, maximum=1.0, value=0.25, step=0.001
@@ -110,10 +102,10 @@ if __name__ == "__main__":
                     )
 
             with gr.Column():
-                gallery = gr.outputs.Image(
-                    type="pil",
-                    # label="grounding results"
-                ).style(full_width=True, full_height=True)
+                gallery = gr.components.Image(
+                    label="grounding results",
+                    type="pil"
+                )
                 # gallery = gr.Gallery(label="Generated images", show_label=False).style(
                 #         grid=[1], height="auto", container=True, full_width=True, full_height=True)
 
@@ -122,4 +114,3 @@ if __name__ == "__main__":
 
 
     block.launch(server_name='0.0.0.0', server_port=7579, debug=args.debug, share=args.share)
-
