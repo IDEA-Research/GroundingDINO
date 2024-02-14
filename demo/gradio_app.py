@@ -23,26 +23,6 @@ from groundingdino.util.utils import clean_state_dict
 from groundingdino.util.inference import annotate, load_image, predict, load_model
 import groundingdino.datasets.transforms as T
 
-from huggingface_hub import hf_hub_download
-
-
-# Use this command for evaluate the Grounding DINO model
-config_file = "groundingdino/config/GroundingDINO_SwinT_OGC.py"
-ckpt_repo_id = "ShilongLiu/GroundingDINO"
-ckpt_filenmae = "groundingdino_swint_ogc.pth"
-
-
-def load_model_hf(model_config_path, repo_id, filename, device='cpu'):
-    args = SLConfig.fromfile(model_config_path)
-    model = build_model(args)
-    args.device = device
-
-    cache_file = hf_hub_download(repo_id=repo_id, filename=filename)
-    checkpoint = torch.load(cache_file, map_location='cpu')
-    log = model.load_state_dict(clean_state_dict(checkpoint['model']), strict=False)
-    print("Model loaded from {} \n => {}".format(cache_file, log))
-    _ = model.eval()
-    return model
 
 def image_transform_grounding(init_image):
     transform = T.Compose([
@@ -60,11 +40,14 @@ def image_transform_grounding_for_vis(init_image):
     image, _ = transform(init_image, None) # 3, h, w
     return image
 
-model = load_model_hf(config_file, ckpt_repo_id, ckpt_filenmae)
+config_file = "groundingdino/config/GroundingDINO_SwinB_cfg.py"
+ckpt_repo_id = "ShilongLiu/GroundingDINO"
+ckpt_filenmae = "weights/groundingdino_swinb_cogcoor.pth"
+
+model = load_model(config_file, ckpt_filenmae, device='cuda')
 
 def run_grounding(input_image, grounding_caption, box_threshold, text_threshold):
     init_image = input_image.convert("RGB")
-
     _, image_tensor = image_transform_grounding(init_image)
     image_pil: Image = image_transform_grounding_for_vis(init_image)
 
@@ -106,8 +89,6 @@ if __name__ == "__main__":
                     label="grounding results",
                     type="pil"
                 )
-                # gallery = gr.Gallery(label="Generated images", show_label=False).style(
-                #         grid=[1], height="auto", container=True, full_width=True, full_height=True)
 
         run_button.click(fn=run_grounding, inputs=[
                         input_image, grounding_caption, box_threshold, text_threshold], outputs=[gallery])
