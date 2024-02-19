@@ -1,5 +1,6 @@
 import argparse
 import cv2
+import os
 from PIL import Image
 import numpy as np
 
@@ -8,9 +9,9 @@ import warnings
 import torch
 
 # prepare the environment
-# os.system("python setup.py build develop --user")
-# os.system("pip install packaging==21.3")
-# os.system("pip install gradio")
+os.system("python setup.py build develop --user")
+os.system("pip install packaging==21.3")
+os.system("pip install gradio")
 
 
 warnings.filterwarnings("ignore")
@@ -20,9 +21,30 @@ import gradio as gr
 from groundingdino.models import build_model
 from groundingdino.util.slconfig import SLConfig
 from groundingdino.util.utils import clean_state_dict
-from groundingdino.util.inference import annotate, load_image, predict, load_model
+from groundingdino.util.inference import annotate, load_image, predict
 import groundingdino.datasets.transforms as T
 
+from huggingface_hub import hf_hub_download
+
+
+
+# Use this command for evaluate the Grounding DINO model
+config_file = "groundingdino/config/GroundingDINO_SwinT_OGC.py"
+ckpt_repo_id = "ShilongLiu/GroundingDINO"
+ckpt_filenmae = "groundingdino_swint_ogc.pth"
+device = 'cuda'
+
+def load_model_hf(model_config_path, repo_id, filename, device='cuda'):
+    args = SLConfig.fromfile(model_config_path)
+    model = build_model(args)
+    args.device = device
+
+    cache_file = hf_hub_download(repo_id=repo_id, filename=filename)
+    checkpoint = torch.load(cache_file, map_location=device)
+    log = model.load_state_dict(clean_state_dict(checkpoint['model']), strict=False)
+    print("Model loaded from {} \n => {}".format(cache_file, log))
+    _ = model.eval()
+    return model
 
 def image_transform_grounding(init_image):
     transform = T.Compose([
@@ -40,11 +62,7 @@ def image_transform_grounding_for_vis(init_image):
     image, _ = transform(init_image, None) # 3, h, w
     return image
 
-config_file = "groundingdino/config/GroundingDINO_SwinB_cfg.py"
-ckpt_repo_id = "ShilongLiu/GroundingDINO"
-ckpt_filenmae = "weights/groundingdino_swinb_cogcoor.pth"
-
-model = load_model(config_file, ckpt_filenmae, device='cuda')
+model = load_model_hf(config_file, ckpt_repo_id, ckpt_filenmae, device)
 
 def run_grounding(input_image, grounding_caption, box_threshold, text_threshold):
     init_image = input_image.convert("RGB")
@@ -52,7 +70,7 @@ def run_grounding(input_image, grounding_caption, box_threshold, text_threshold)
     image_pil: Image = image_transform_grounding_for_vis(init_image)
 
     # run grounidng
-    boxes, logits, phrases = predict(model, image_tensor, grounding_caption, box_threshold, text_threshold, device='cuda')
+    boxes, logits, phrases = predict(model, image_tensor, grounding_caption, box_threshold, text_threshold, device=device)
     annotated_frame = annotate(image_source=np.asarray(image_pil), boxes=boxes, logits=logits, phrases=phrases)
     image_with_box = Image.fromarray(cv2.cvtColor(annotated_frame, cv2.COLOR_BGR2RGB))
 
