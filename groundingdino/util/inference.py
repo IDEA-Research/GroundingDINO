@@ -81,7 +81,7 @@ def transform_image(PIL_image: PIL.Image.Image) -> Tuple[np.array, torch.Tensor]
         ]
     )
     image = np.asarray(PIL_image)
-    image_transformed, _ = transform(t, None)
+    image_transformed, _ = transform(PIL_image, None)
     return image, image_transformed
 
 def predict(
