@@ -60,7 +60,7 @@ def load_image(image_path: str) -> Tuple[np.array, torch.Tensor]:
     image_transformed, _ = transform(image_source, None)
     return image, image_transformed
 
-def transform_image(t: PIL.Image.Image) -> Tuple[np.array, torch.Tensor]:
+def transform_image(PIL_image: PIL.Image.Image) -> Tuple[np.array, torch.Tensor]:
     """
     Transform an RGB image and convert it to a tensor.
     
@@ -68,7 +68,7 @@ def transform_image(t: PIL.Image.Image) -> Tuple[np.array, torch.Tensor]:
     The transformations include resizing the image, converting it to a tensor, and normalizing its pixel values.
 
     Parameters:
-    img (PIL.Image.Image): The input image.
+    PIL_image (PIL.Image.Image): The input image.
 
     Returns:
     Tuple[np.array, torch.Tensor]: A tuple containing the original image as a NumPy array and the transformed image as a PyTorch tensor.
@@ -80,7 +80,7 @@ def transform_image(t: PIL.Image.Image) -> Tuple[np.array, torch.Tensor]:
             T.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]),
         ]
     )
-    image = np.asarray(t)
+    image = np.asarray(PIL_image)
     image_transformed, _ = transform(t, None)
     return image, image_transformed
 
