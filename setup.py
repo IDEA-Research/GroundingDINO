@@ -189,8 +189,25 @@ def parse_requirements(fname="requirements.txt", with_version=True):
                 item = "".join(parts)
                 yield item
 
+    def filter_index(packages):
+
+        new_packages = []
+        dependency_links = []
+        for i, requirement in enumerate(packages):
+            if requirement.startswith("--extra-index-url"):
+                dependency_links.append(requirement.split()[-1])
+            elif requirement.startswith("./dependencies") or requirement.startswith(
+                "dependencies"
+            ):
+                dependency_links.append(requirement)
+            else:
+                new_packages.append(requirement)
+
+        return new_packages, dependency_links
+
     packages = list(gen_packages_items())
-    return packages
+    packages, dependency_links = filter_index(packages)
+    return packages, dependency_links
 
 
 if __name__ == "__main__":
@@ -201,6 +218,8 @@ if __name__ == "__main__":
 
     write_version_file()
 
+    install_requires, dependency_links = parse_requirements("requirements.txt")
+
     setup(
         name="groundingdino",
         version="0.1.0",
@@ -208,7 +227,8 @@ if __name__ == "__main__":
         url="https://github.com/IDEA-Research/GroundingDINO",
         description="open-set object detector",
         license=license,
-        install_requires=parse_requirements("requirements.txt"),
+        install_requires=install_requires,
+        dependency_links=dependency_links,
         packages=find_packages(
             exclude=(
                 "configs",

@@ -1,11 +1,13 @@
-from typing import Tuple, List
+from typing import Tuple, List, Any
 
 import cv2
 import numpy as np
 import supervision as sv
 import torch
 from PIL import Image
+import torchvision
 from torchvision.ops import box_convert
+import torchvision.transforms.functional as F
 import bisect
 
 import groundingdino.datasets.transforms as T
@@ -269,3 +271,176 @@ class Model:
             else:
                 class_ids.append(None)
         return np.array(class_ids)
+
+
+#==============================================================================
+
+
+class BatchedModel(object):
+
+#=====================================================
+
+    def __init__(
+        self,
+        model_config_path: str,
+        model_checkpoint_path: str,
+        device: str = "cuda",
+        dtype: str = "float32",
+        compile: bool = False
+    ) -> NotImplementedError:
+
+        self._device = device
+        self._dtype = getattr(torch, dtype)
+        self._model = load_model(
+            model_config_path=model_config_path,
+            model_checkpoint_path=model_checkpoint_path
+        ).to(device=self._device).to(dtype=self._dtype)
+
+        # Compile model if necessary
+        if compile:
+            self._model = torch.compile(self._model)
+
+#=====================================================
+
+    @staticmethod
+    def preprocess_image(
+        image_batch: torch.Tensor
+    ) -> torch.Tensor:
+
+        # Preprocessing friendly with batches
+
+        image_batch = F.resize(image_batch, [800], antialias=True)
+        image_batch = F.normalize(image_batch, [0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
+   
+        return image_batch
+
+#=====================================================
+
+    @classmethod
+    def post_process_result(
+            cls,
+            boxes_cxcywh: torch.Tensor,
+            logits: torch.Tensor,
+            nms_threshold: float,
+            source_size: Tuple[int, int],
+            phrases: List[str],
+            text_prompts: List[str]
+    ):
+
+        bbox_batch, conf_batch, class_id_batch = [], [], []
+        source_h, source_w = source_size
+        for bbox_cxcywh, conf, phrase, text_prompt in zip(boxes_cxcywh, logits, phrases, text_prompts):
+            bbox_cxcywh *= torch.Tensor([source_w, source_h, source_w, source_h])
+            bbox_xyxy = box_convert(boxes=bbox_cxcywh, in_fmt="cxcywh", out_fmt="xyxy")
+
+            # Perform NMS
+            nms_idx = torchvision.ops.nms(bbox_xyxy.float(), conf.float(), nms_threshold).numpy().tolist()
+            class_id = cls.phrases2classes(phrases=phrase, classes=text_prompt)
+
+            bbox_batch.append(bbox_xyxy[nms_idx])
+            conf_batch.append(conf[nms_idx])
+            class_id_batch.append(class_id[nms_idx])
+
+        return bbox_batch, conf_batch, class_id_batch
+
+#=====================================================
+
+    def _batched_predict(
+        self,
+        image_batch,
+        text_prompts,
+        box_threshold,
+        text_threshold
+    ):
+        # Predict refactored to work with batches
+        captions = [preprocess_caption(caption) for caption in text_prompts]
+
+        outputs = self._model(image_batch, captions=captions)
+
+        prediction_logits = outputs["pred_logits"].cpu().sigmoid()  # prediction_logits.shape = (bsz，nq, 256)
+        prediction_boxes = outputs["pred_boxes"].cpu()  # prediction_boxes.shape = (bsz, nq, 4)
+
+        logits_res = []
+        boxs_res = []
+        phrases_list = []
+        tokenizer = self._model.tokenizer
+        for ub_logits, ub_boxes, ub_captions in zip(prediction_logits, prediction_boxes, captions):
+            mask = ub_logits.max(dim=1)[0] > box_threshold
+            logits = ub_logits[mask]  # logits.shape = (n, 256)
+            boxes = ub_boxes[mask]  # boxes.shape = (n, 4)
+            logits_res.append(logits.max(dim=1)[0])
+            boxs_res.append(boxes)
+
+            tokenized = tokenizer(ub_captions)
+            phrases = [
+                get_phrases_from_posmap(logit > text_threshold, tokenized, tokenizer).replace('.', '')
+                for logit
+                in logits
+            ]
+            phrases_list.append(phrases)
+
+        return boxs_res, logits_res, phrases_list
+
+    def predict(
+        self,
+        image_batch: torch.Tensor,
+        text_prompts: List[str],
+        box_threshold: float = 0.3,
+        text_threshold: float = 0.3,
+        nms_threshold: float = 0.5
+    ):
+
+        # Move to device and type just in case
+        image_batch = image_batch.to(device=self._device).to(dtype=self._dtype)
+        source_h, source_w = image_batch.shape[-2:]
+
+        if any(isinstance(i, list) for i in text_prompts):
+            captions = [". ".join(text_prompt) for text_prompt in text_prompts]
+        else:
+            captions = [". ".join(text_prompts)]
+            text_prompts = [text_prompts]
+
+        # Extend caption to batch
+        if len(captions) == 1:
+            captions *= image_batch.shape[0]
+        if len(text_prompts) == 1:
+            text_prompts *= image_batch.shape[0]
+
+        # Preprocess, inference and postprocess
+        processed_image = self.preprocess_image(image_batch)
+        bboxes, logits, phrases = self._batched_predict(
+            processed_image, 
+            captions, 
+            box_threshold, 
+            text_threshold
+        )
+        bbox_batch, conf_batch, class_id_batch = self.post_process_result(
+            bboxes, 
+            logits, 
+            nms_threshold,
+            (source_h, source_w),
+            phrases,
+            text_prompts
+        )
+
+        return bbox_batch, conf_batch, class_id_batch
+
+    @staticmethod
+    def phrases2classes(phrases: List[str], classes: List[str]) -> np.ndarray:
+        class_ids = []
+        for phrase in phrases:
+            for class_ in classes:
+                if class_.lower() in phrase.lower():
+                    class_ids.append(classes.index(class_))
+                    break
+            else:
+                class_ids.append(None)
+        return np.array(class_ids)
+
+
+    def __call__(
+        self,
+        *args,
+        **kwargs
+    ) -> Any:
+        return self.predict(*args, **kwargs)
