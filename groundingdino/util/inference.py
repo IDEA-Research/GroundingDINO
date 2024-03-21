@@ -192,8 +192,8 @@ class Model:
         self,
         image: np.ndarray,
         classes: List[str],
-        box_threshold: float,
-        text_threshold: float
+        box_threshold: float = 0.35,
+        text_threshold: float = 0.25
     ) -> sv.Detections:
         """
         import cv2
