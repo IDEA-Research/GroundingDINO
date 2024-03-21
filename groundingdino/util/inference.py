@@ -152,7 +152,8 @@ class Model:
         image: np.ndarray,
         caption: str,
         box_threshold: float = 0.35,
-        text_threshold: float = 0.25
+        text_threshold: float = 0.25,
+        remove_combined: bool = False
     ) -> Tuple[sv.Detections, List[str]]:
         """
         import cv2
@@ -179,7 +180,8 @@ class Model:
             caption=caption,
             box_threshold=box_threshold,
             text_threshold=text_threshold, 
-            device=self.device)
+            device=self.device,
+            remove_combined=remove_combined)
         source_h, source_w, _ = image.shape
         detections = Model.post_process_result(
             source_h=source_h,
@@ -193,7 +195,8 @@ class Model:
         image: np.ndarray,
         classes: List[str],
         box_threshold: float = 0.35,
-        text_threshold: float = 0.25
+        text_threshold: float = 0.25,
+        remove_combined: bool = False
     ) -> sv.Detections:
         """
         import cv2
@@ -222,7 +225,8 @@ class Model:
             caption=caption,
             box_threshold=box_threshold,
             text_threshold=text_threshold,
-            device=self.device)
+            device=self.device,
+            remove_combined=remove_combined)
         source_h, source_w, _ = image.shape
         detections = Model.post_process_result(
             source_h=source_h,
