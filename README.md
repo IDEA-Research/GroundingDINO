@@ -63,7 +63,7 @@ PyTorch implementation and pretrained models for Grounding DINO. For details, se
 ## :bulb: Highlight
 
 - **Open-Set Detection.** Detect **everything** with language!
-- **High Performancce.** COCO zero-shot **52.5 AP** (training without COCO data!). COCO fine-tune **63.0 AP**.
+- **High Performance.** COCO zero-shot **52.5 AP** (training without COCO data!). COCO fine-tune **63.0 AP**.
 - **Flexible.** Collaboration with Stable Diffusion for Image Editting.
 
 
