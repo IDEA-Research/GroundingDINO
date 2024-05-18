@@ -18,6 +18,8 @@
 
 PyTorch implementation and pretrained models for Grounding DINO. For details, see the paper **[Grounding DINO: Marrying DINO with Grounded Pre-Training for Open-Set Object Detection](https://arxiv.org/abs/2303.05499)**.
 
+🔥 **[Grounding DINO 1.5](https://github.com/IDEA-Research/Grounding-DINO-1.5-API)** is released now, which is IDEA Research's **Most Capable** Open-World Object Detection Model!
+
 ## :sun_with_face: Helpful Tutorial
 
 - :grapes: [[Read our arXiv Paper](https://arxiv.org/abs/2303.05499)]
