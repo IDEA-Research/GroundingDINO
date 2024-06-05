@@ -604,6 +604,8 @@ def get_phrases_from_posmap(
         posmap[0: left_idx + 1] = False
         posmap[right_idx:] = False
         non_zero_idx = posmap.nonzero(as_tuple=True)[0].tolist()
+        #import pdb; pdb.set_trace()
+        #print(f'non_zero_idx={non_zero_idx} tokenized[input_ids]={tokenized["input_ids"]} posmap.shape={posmap.shape} left={left_idx} right={right_idx}')
         token_ids = [tokenized["input_ids"][i] for i in non_zero_idx]
         return tokenizer.decode(token_ids)
     else:
