@@ -6,5 +6,5 @@ yapf
 timm
 numpy
 opencv-python
-supervision
+supervision==0.21.0
 pycocotools
