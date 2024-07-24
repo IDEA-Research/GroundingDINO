@@ -273,11 +273,33 @@ class GroundingDINO(nn.Module):
         else:
             # import ipdb; ipdb.set_trace()
             tokenized_for_encoder = tokenized
-
-        bert_output = self.bert(**tokenized_for_encoder)  # bs, 195, 768
+        input_ids = tokenized.input_ids
+        token_type_ids = tokenized.token_type_ids
+        text_token_mask = tokenized.attention_mask
+        # import pdb; pdb.set_trace()
+        return self.forward_nn(samples,
+                               input_ids,
+                               token_type_ids,
+                               text_token_mask,
+                               text_self_attention_masks,
+                               position_ids,
+                               **kw)
+    
+    def forward_nn(self,
+                   samples: NestedTensor,
+                   input_ids,
+                   token_type_ids,
+                   text_token_mask,
+                   text_self_attention_masks,
+                   position_ids,
+                   **kw):
+        bert_output = self.bert(input_ids=input_ids,
+                                token_type_ids=token_type_ids,
+                                attention_mask=text_self_attention_masks,
+                                position_ids=position_ids)  # bs, 195, 768
 
         encoded_text = self.feat_map(bert_output["last_hidden_state"])  # bs, 195, d_model
-        text_token_mask = tokenized.attention_mask.bool()  # bs, 195
+        text_token_mask = text_token_mask.bool()  # bs, 195
         # text_token_mask: True for nomask, False for mask
         # text_self_attention_masks: True for nomask, False for mask
 
