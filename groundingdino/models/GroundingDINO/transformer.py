@@ -659,6 +659,7 @@ class TransformerDecoder(nn.Module):
         output = tgt
 
         intermediate = []
+        refpoints_unsigmoid = refpoints_unsigmoid.to(dtype=tgt.dtype)
         reference_points = refpoints_unsigmoid.sigmoid()
         ref_points = [reference_points]
 
@@ -667,14 +668,14 @@ class TransformerDecoder(nn.Module):
             if reference_points.shape[-1] == 4:
                 reference_points_input = (
                     reference_points[:, :, None]
-                    * torch.cat([valid_ratios, valid_ratios], -1)[None, :]
+                    * torch.cat([valid_ratios, valid_ratios], -1)[None, :].to(dtype=tgt.dtype)
                 )  # nq, bs, nlevel, 4
             else:
                 assert reference_points.shape[-1] == 2
-                reference_points_input = reference_points[:, :, None] * valid_ratios[None, :]
+                reference_points_input = reference_points[:, :, None] * valid_ratios[None, :].to(dtype=tgt.dtype)
             query_sine_embed = gen_sineembed_for_position(
                 reference_points_input[:, :, 0, :]
-            )  # nq, bs, 256*2
+            ).to(dtype=tgt.dtype)  # nq, bs, 256*2
 
             # conditional query
             raw_query_pos = self.ref_point_head(query_sine_embed)  # nq, bs, 256

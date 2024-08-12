@@ -96,7 +96,7 @@ class TransformerEncoderLayer(nn.Module):
         self.nhead = nhead
 
     def with_pos_embed(self, tensor, pos: Optional[Tensor]):
-        return tensor if pos is None else tensor + pos
+        return tensor if pos is None else tensor + pos.to(dtype=tensor.dtype)
 
     def forward(
         self,
