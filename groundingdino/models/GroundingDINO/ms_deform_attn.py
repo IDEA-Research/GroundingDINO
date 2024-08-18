@@ -99,10 +99,10 @@ def multi_scale_deformable_attn_pytorch(
 
     bs, _, num_heads, embed_dims = value.shape
     _, num_queries, num_heads, num_levels, num_points, _ = sampling_locations.shape
-    value_list = value.split([H_ * W_ for H_, W_ in value_spatial_shapes], dim=1)
+    value_list = value.split([H_ * W_ for H_, W_ in value_spatial_shapes.cpu()], dim=1)
     sampling_grids = 2 * sampling_locations - 1
     sampling_value_list = []
-    for level, (H_, W_) in enumerate(value_spatial_shapes):
+    for level, (H_, W_) in enumerate(value_spatial_shapes.cpu()):
         # bs, H_*W_, num_heads, embed_dims ->
         # bs, H_*W_, num_heads*embed_dims ->
         # bs, num_heads*embed_dims, H_*W_ ->
@@ -326,8 +326,10 @@ class MultiScaleDeformableAttention(nn.Module):
                     reference_points.shape[-1]
                 )
             )
-    
-        if torch.cuda.is_available() and value.is_cuda:
+
+        from ...util.export_flag import ExportFlag
+        if torch.cuda.is_available() and value.is_cuda and not ExportFlag.is_export:
+            # if cuda is available and not exporting model.
             halffloat = False
             if value.dtype == torch.float16:
                 halffloat = True
