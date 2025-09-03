@@ -1,0 +1,35 @@
+[build-system]
+requires = ["setuptools>=61", "wheel", "torch"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "groundingdino"
+version = "0.1.0"
+description = "Open-set object detector (Grounding DINO)"
+readme = "README.md"
+license = { file = "LICENSE" }
+authors = [
+  { name = "International Digital Economy Academy" },
+  { name = "Shilong Liu" }
+]
+requires-python = ">=3.9"
+
+dependencies = [
+  "torch",
+  "torchvision",
+  "transformers",
+  "addict",
+  "yapf",
+  "timm",
+  "numpy",
+  "opencv-python",
+  "supervision>=0.22.0",
+  "pycocotools"
+]
+
+[project.urls]
+Homepage = "https://github.com/IDEA-Research/GroundingDINO"
+Source = "https://github.com/IDEA-Research/GroundingDINO"
+
+[tool.setuptools.packages.find]
+exclude = ["configs", "tests"]
