@@ -31,32 +31,14 @@ def install_torch():
     try:
         import torch
     except ImportError:
-        # Try uv first, then pip
-        try:
-            import subprocess
-            subprocess.check_call([sys.executable, "-m", "uv", "pip", "install", "torch"])
-        except (subprocess.CalledProcessError, ImportError):
-            try:
-                subprocess.check_call([sys.executable, "-m", "pip", "install", "torch"])
-            except Exception:
-                # If we can't install, torch should be available via build dependencies
-                pass
+        subprocess.check_call([sys.executable, "-m", "pip", "install", "torch"])
 
 # Call the function to ensure torch is installed
 install_torch()
 
-try:
-    import torch
-    from torch.utils.cpp_extension import CUDA_HOME, CppExtension, CUDAExtension
-except ImportError:
-    # During build isolation, torch might not be available yet
-    # This will be installed via setup_requires or build dependencies
-    torch = None
-    CUDA_HOME = None
-    CppExtension = None
-    CUDAExtension = None
-
+import torch
 from setuptools import find_packages, setup
+from torch.utils.cpp_extension import CUDA_HOME, CppExtension, CUDAExtension
 
 # groundingdino version info
 version = "0.1.0"
@@ -218,13 +200,6 @@ if __name__ == "__main__":
         license = f.read()
 
     write_version_file()
-    
-    # Set compiler to g++ to match PyTorch's build (PyTorch was built with g++)
-    import os
-    if "CXX" not in os.environ:
-        os.environ["CXX"] = "g++"
-    if "CC" not in os.environ:
-        os.environ["CC"] = "gcc"
 
     setup(
         name="groundingdino",
