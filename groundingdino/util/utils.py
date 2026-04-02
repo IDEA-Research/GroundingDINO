@@ -288,13 +288,13 @@ class APOPMeter:
         self.tp += torch.logical_and(pred == 1, gt == 1).sum().item()
         self.fp += torch.logical_and(pred == 1, gt == 0).sum().item()
         self.tn += torch.logical_and(pred == 0, gt == 0).sum().item()
-        self.tn += torch.logical_and(pred == 1, gt == 0).sum().item()
+        self.tn += torch.logical_and(pred == 0, gt == 1).sum().item()
 
     def update_cm(self, tp, fp, tn, fn):
         self.tp += tp
         self.fp += fp
         self.tn += tn
-        self.tn += fn
+        self.fn += fn
 
 
 def inverse_sigmoid(x, eps=1e-5):
