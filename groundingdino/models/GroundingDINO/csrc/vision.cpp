@@ -2,6 +2,8 @@
 
 #include "MsDeformAttn/ms_deform_attn.h"
 
+#include <torch/library.h>
+
 namespace groundingdino {
 
 #ifdef WITH_CUDA
@@ -55,4 +57,30 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
   m.def("ms_deform_attn_backward", &ms_deform_attn_backward, "ms_deform_attn_backward");
 }
 
+at::Tensor ms_deform_attn_forward_dispatch(
+    const at::Tensor &value,
+    const at::Tensor &spatial_shapes,
+    const at::Tensor &level_start_index,
+    const at::Tensor &sampling_loc,
+    const at::Tensor &attn_weight,
+    int64_t im2col_step) {
+  return ms_deform_attn_forward(
+      value,
+      spatial_shapes,
+      level_start_index,
+      sampling_loc,
+      attn_weight,
+      static_cast<int>(im2col_step));
+}
+
 } // namespace groundingdino
+
+TORCH_LIBRARY(groundingdino, m) {
+  m.def("ms_deform_attn_forward(Tensor value, Tensor value_spatial_shapes, "
+        "Tensor value_level_start_index, Tensor sampling_locations, "
+        "Tensor attention_weights, int im2col_step) -> Tensor");
+}
+
+TORCH_LIBRARY_IMPL(groundingdino, CUDA, m) {
+  m.impl("ms_deform_attn_forward", &groundingdino::ms_deform_attn_forward_dispatch);
+}

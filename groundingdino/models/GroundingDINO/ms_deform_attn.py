@@ -15,6 +15,7 @@
 # ------------------------------------------------------------------------------------------------
 
 import math
+import os
 import warnings
 from typing import Optional
 
@@ -27,8 +28,78 @@ from torch.nn.init import constant_, xavier_uniform_
 
 try:
     from groundingdino import _C
-except:
-    warnings.warn("Failed to load custom C++ ops. Running on CPU mode Only!")
+    _C_AVAILABLE = True
+except Exception:
+    _C = None
+    _C_AVAILABLE = False
+    warnings.warn("Failed to load custom C++ ops. Falling back to the PyTorch implementation.")
+
+
+_MSDA_TORCH_OP_REGISTERED = False
+_MSDA_TORCH_OP_FAILED = False
+
+
+def _register_msda_torch_op():
+    global _MSDA_TORCH_OP_REGISTERED, _MSDA_TORCH_OP_FAILED
+    if not _C_AVAILABLE or _MSDA_TORCH_OP_FAILED:
+        return False
+    if _MSDA_TORCH_OP_REGISTERED:
+        return True
+
+    try:
+        torch.ops.groundingdino.ms_deform_attn_forward.default
+
+        @torch.library.register_fake("groundingdino::ms_deform_attn_forward")
+        def _(
+            value,
+            value_spatial_shapes,
+            value_level_start_index,
+            sampling_locations,
+            attention_weights,
+            im2col_step,
+        ):
+            del value_spatial_shapes, value_level_start_index, attention_weights, im2col_step
+            batch = value.shape[0]
+            num_queries = sampling_locations.shape[1]
+            embed_dim = value.shape[2] * value.shape[3]
+            return value.new_empty((batch, num_queries, embed_dim))
+
+        _MSDA_TORCH_OP_REGISTERED = True
+        return True
+    except Exception as exc:
+        _MSDA_TORCH_OP_FAILED = True
+        warnings.warn(f"Failed to register fake kernel for compiler-friendly MsDeformAttn op: {exc}")
+        return False
+
+
+def _ms_deform_attn_forward_compiler_friendly(
+    value,
+    value_spatial_shapes,
+    value_level_start_index,
+    sampling_locations,
+    attention_weights,
+    im2col_step,
+):
+    if _register_msda_torch_op():
+        return torch.ops.groundingdino.ms_deform_attn_forward.default(
+            value,
+            value_spatial_shapes,
+            value_level_start_index,
+            sampling_locations,
+            attention_weights,
+            im2col_step,
+        )
+    return _C.ms_deform_attn_forward(
+        value,
+        value_spatial_shapes,
+        value_level_start_index,
+        sampling_locations,
+        attention_weights,
+        im2col_step,
+    )
+
+
+_register_msda_torch_op()
 
 
 # helpers
@@ -131,6 +202,35 @@ def multi_scale_deformable_attn_pytorch(
         .view(bs, num_heads * embed_dims, num_queries)
     )
     return output.transpose(1, 2).contiguous()
+
+
+def _force_msda_fallback() -> bool:
+    return os.environ.get("GROUNDINGDINO_MSDA_FORCE_FALLBACK", "").lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
+
+
+def _multi_scale_deformable_attn_fallback(
+    value: torch.Tensor,
+    value_spatial_shapes: torch.Tensor,
+    sampling_locations: torch.Tensor,
+    attention_weights: torch.Tensor,
+) -> torch.Tensor:
+    output_dtype = value.dtype
+    if output_dtype in (torch.float16, torch.bfloat16):
+        value = value.float()
+        sampling_locations = sampling_locations.float()
+        attention_weights = attention_weights.float()
+
+    output = multi_scale_deformable_attn_pytorch(
+        value, value_spatial_shapes, sampling_locations, attention_weights
+    )
+    if output.dtype != output_dtype:
+        output = output.to(output_dtype)
+    return output
 
 
 class MultiScaleDeformableAttention(nn.Module):
@@ -327,27 +427,46 @@ class MultiScaleDeformableAttention(nn.Module):
                 )
             )
     
-        if torch.cuda.is_available() and value.is_cuda:
-            halffloat = False
-            if value.dtype == torch.float16:
-                halffloat = True
+        use_custom_kernel = (
+            torch.cuda.is_available()
+            and value.is_cuda
+            and _C_AVAILABLE
+            and not _force_msda_fallback()
+        )
+        if use_custom_kernel:
+            output_dtype = value.dtype
+            if output_dtype in (torch.float16, torch.bfloat16):
                 value = value.float()
                 sampling_locations = sampling_locations.float()
                 attention_weights = attention_weights.float()
 
-            output = MultiScaleDeformableAttnFunction.apply(
-                value,
-                spatial_shapes,
-                level_start_index,
-                sampling_locations,
-                attention_weights,
-                self.im2col_step,
+            requires_grad = any(
+                tensor.requires_grad
+                for tensor in (value, sampling_locations, attention_weights)
             )
+            if torch.is_grad_enabled() and requires_grad:
+                output = MultiScaleDeformableAttnFunction.apply(
+                    value,
+                    spatial_shapes,
+                    level_start_index,
+                    sampling_locations,
+                    attention_weights,
+                    self.im2col_step,
+                )
+            else:
+                output = _ms_deform_attn_forward_compiler_friendly(
+                    value,
+                    spatial_shapes,
+                    level_start_index,
+                    sampling_locations,
+                    attention_weights,
+                    self.im2col_step,
+                )
 
-            if halffloat:
-                output = output.half()
+            if output.dtype != output_dtype:
+                output = output.to(output_dtype)
         else:
-            output = multi_scale_deformable_attn_pytorch(
+            output = _multi_scale_deformable_attn_fallback(
                 value, spatial_shapes, sampling_locations, attention_weights
             )
 

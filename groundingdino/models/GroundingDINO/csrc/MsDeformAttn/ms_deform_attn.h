@@ -15,6 +15,9 @@
 #ifdef WITH_CUDA
 #include "ms_deform_attn_cuda.h"
 #endif
+#ifdef WITH_HIP
+#include "ms_deform_attn_hip.h"
+#endif
 
 namespace groundingdino {
 
@@ -31,6 +34,9 @@ ms_deform_attn_forward(
     {
 #ifdef WITH_CUDA
         return ms_deform_attn_cuda_forward(
+            value, spatial_shapes, level_start_index, sampling_loc, attn_weight, im2col_step);
+#elif defined(WITH_HIP)
+        return ms_deform_attn_hip_forward(
             value, spatial_shapes, level_start_index, sampling_loc, attn_weight, im2col_step);
 #else
         AT_ERROR("Not compiled with GPU support");
@@ -54,6 +60,8 @@ ms_deform_attn_backward(
 #ifdef WITH_CUDA
         return ms_deform_attn_cuda_backward(
             value, spatial_shapes, level_start_index, sampling_loc, attn_weight, grad_output, im2col_step);
+#elif defined(WITH_HIP)
+        AT_ERROR("Backward is not implemented for the forward-only HIP path");
 #else
         AT_ERROR("Not compiled with GPU support");
 #endif

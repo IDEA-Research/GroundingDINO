@@ -24,18 +24,6 @@ import glob
 import os
 import subprocess
 
-import subprocess
-import sys
-
-def install_torch():
-    try:
-        import torch
-    except ImportError:
-        subprocess.check_call([sys.executable, "-m", "pip", "install", "torch"])
-
-# Call the function to ensure torch is installed
-install_torch()
-
 import torch
 from setuptools import find_packages, setup
 from torch.utils.cpp_extension import CUDA_HOME, CppExtension, CUDAExtension
@@ -74,6 +62,13 @@ def get_extensions():
     source_cuda = glob.glob(os.path.join(extensions_dir, "**", "*.cu")) + glob.glob(
         os.path.join(extensions_dir, "*.cu")
     )
+    source_cuda = [
+        src for src in source_cuda
+        if not src.endswith("ms_deform_attn_hip_forward.cu")
+    ]
+    source_hip = [
+        os.path.join(extensions_dir, "MsDeformAttn", "ms_deform_attn_hip_forward.cu")
+    ]
 
     sources = [main_source] + sources
 
@@ -82,7 +77,19 @@ def get_extensions():
     extra_compile_args = {"cxx": []}
     define_macros = []
 
-    if CUDA_HOME is not None and (torch.cuda.is_available() or "TORCH_CUDA_ARCH_LIST" in os.environ):
+    is_rocm = torch.version.hip is not None
+    if is_rocm and torch.cuda.is_available():
+        print("Compiling with HIP forward-only MsDeformAttn")
+        extension = CUDAExtension
+        sources += source_hip
+        define_macros += [("WITH_HIP", None)]
+        extra_compile_args["nvcc"] = [
+            "-DCUDA_HAS_FP16=1",
+            "-D__CUDA_NO_HALF_OPERATORS__",
+            "-D__CUDA_NO_HALF_CONVERSIONS__",
+            "-D__CUDA_NO_HALF2_OPERATORS__",
+        ]
+    elif CUDA_HOME is not None and (torch.cuda.is_available() or "TORCH_CUDA_ARCH_LIST" in os.environ):
         print("Compiling with CUDA")
         extension = CUDAExtension
         sources += source_cuda
@@ -94,9 +101,7 @@ def get_extensions():
             "-D__CUDA_NO_HALF2_OPERATORS__",
         ]
     else:
-        print("Compiling without CUDA")
-        define_macros += [("WITH_HIP", None)]
-        extra_compile_args["nvcc"] = []
+        print("Compiling without CUDA/HIP")
         return None
 
     sources = [os.path.join(extensions_dir, s) for s in sources]

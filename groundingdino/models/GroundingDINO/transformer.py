@@ -37,6 +37,12 @@ from .utils import (
 )
 
 
+def _is_torch_compiling():
+    compiler = getattr(torch, "compiler", None)
+    is_compiling = getattr(compiler, "is_compiling", None)
+    return bool(is_compiling and is_compiling())
+
+
 class Transformer(nn.Module):
     def __init__(
         self,
@@ -701,7 +707,7 @@ class TransformerDecoder(nn.Module):
                 self_attn_mask=tgt_mask,
                 cross_attn_mask=memory_mask,
             )
-            if output.isnan().any() | output.isinf().any():
+            if not _is_torch_compiling() and (output.isnan().any() | output.isinf().any()):
                 print(f"output layer_id {layer_id} is nan")
                 try:
                     num_nan = output.isnan().sum().item()

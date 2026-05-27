@@ -18,6 +18,24 @@
 
 PyTorch implementation and pretrained models for Grounding DINO. For details, see the paper **[Grounding DINO: Marrying DINO with Grounded Pre-Training for Open-Set Object Detection](https://arxiv.org/abs/2303.05499)**.
 
+## ROCm Inference Branch
+
+The `rocm_supported` branch adds AMD ROCm inference support while preserving the upstream CUDA path. On ROCm PyTorch images, `pip install -e .` builds a HIP forward-only `MsDeformAttn` extension for inference; if the extension is unavailable, inference falls back to the PyTorch implementation.
+
+Example ROCm setup:
+
+```bash
+pip install -r requirements.txt
+pip install -e .
+python tools/benchmark_inference.py \
+  --config groundingdino/config/GroundingDINO_SwinT_OGC.py \
+  --checkpoint /path/to/groundingdino_swint_ogc.pth \
+  --image /path/to/image.jpg \
+  --text-prompt "object ."
+```
+
+`torch.compile` and GEMM tuning experiments are optional performance work. The current branch is intended to be usable for foreground detection pipelines first; tuned GEMM config generation is still WIP and requires a rocBLAS clients/dev tuning image.
+
 - 🔥 **[Grounded SAM 2](https://github.com/IDEA-Research/Grounded-SAM-2)** is released now, which combines Grounding DINO with [SAM 2](https://github.com/facebookresearch/segment-anything-2) for any object tracking in open-world scenarios.
 - 🔥 **[Grounding DINO 1.5](https://github.com/IDEA-Research/Grounding-DINO-1.5-API)** is released now, which is IDEA Research's **Most Capable** Open-World Object Detection Model!
 - 🔥 **[Grounding DINO](https://arxiv.org/abs/2303.05499)** and **[Grounded SAM](https://arxiv.org/abs/2401.14159)** are now supported in Huggingface. For more convenient use, you can refer to [this documentation](https://huggingface.co/docs/transformers/model_doc/grounding-dino)
