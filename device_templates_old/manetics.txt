@@ -1,0 +1,25 @@
+Device: Somanetics INVOS Cerebral/Somatic Oximeter
+
+[Visual Identification]
+- **Logo**: "SOMANETICS" or "INVOS" logo usually at the top.
+- **Layout**: Screen is distinctly divided into Left ("L") and Right ("R") sections.
+- **Main Feature**: Very large white or blue numbers representing rSO2.
+
+[Visibility & Safety Rules]
+- **Sensor Disconnection**: If a side shows "--", blank, blue dots, or "OFF", return null for that side.
+- **Glare**: If the "L" or "R" label is visible but the number is obscured by white glare, return null.
+
+[Extraction Rules]
+Extract the rSO2 values based on the **"L" (Left)** and **"R" (Right)** indicators on the screen.
+
+1. **Left Side Sensor (L)**
+   - **Anchor**: Look for the large letter **"L"** or "Left".
+   - `rso2_left`: The **BIG** number associated with the "L" indicator. (Current value).
+   - `rso2_left_avg`: The **SMALLER** number displayed directly below the big "L" number. (Often labeled "Avg" or "BL").
+
+2. **Right Side Sensor (R)**
+   - **Anchor**: Look for the large letter **"R"** or "Right".
+   - `rso2_right`: The **BIG** number associated with the "R" indicator. (Current value).
+   - `rso2_right_avg`: The **SMALLER** number displayed directly below the big "R" number. (Often labeled "Avg" or "BL").
+
+

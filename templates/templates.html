@@ -1,0 +1,395 @@
+{% extends "base.html" %}
+
+{% block title %}設備模板編輯 - 影片螢幕數字抓取系統{% endblock %}
+
+{% block extra_styles %}
+<style>
+    .editor-container {
+        display: grid;
+        grid-template-columns: 250px 1fr;
+        gap: 20px;
+        background: #f8f9fa;
+        border-radius: 10px;
+        padding: 20px;
+        min-height: 600px;
+    }
+
+    .file-list {
+        background: white;
+        border-radius: 8px;
+        padding: 15px;
+        box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+        border: 1px solid #dee2e6;
+    }
+
+    .file-list h3 {
+        font-size: 1.1em;
+        margin-bottom: 15px;
+        color: #333;
+        padding-bottom: 10px;
+        border-bottom: 1px solid #eee;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+
+    .create-section {
+        margin-bottom: 20px;
+        padding: 10px;
+        background: #f1f3f5;
+        border-radius: 6px;
+    }
+
+    .create-section input {
+        width: 100%;
+        padding: 8px;
+        border: 1px solid #ced4da;
+        border-radius: 4px;
+        margin-bottom: 10px;
+        font-size: 0.9em;
+    }
+
+    .btn-create {
+        width: 100%;
+        padding: 8px;
+        background: #28a745;
+        color: white;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+        font-weight: 600;
+        transition: background 0.2s;
+    }
+
+    .btn-create:hover {
+        background: #218838;
+    }
+
+    .file-item {
+        padding: 10px;
+        margin-bottom: 5px;
+        border-radius: 5px;
+        cursor: pointer;
+        transition: all 0.2s;
+        color: #555;
+        font-size: 0.95em;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    .file-item:hover {
+        background: #e9ecef;
+        color: #4facfe;
+    }
+
+    .file-item.active {
+        background: #4facfe;
+        color: white;
+        font-weight: 600;
+    }
+
+    .editor-area {
+        display: flex;
+        flex-direction: column;
+        background: white;
+        border-radius: 8px;
+        padding: 20px;
+        box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+        border: 1px solid #dee2e6;
+    }
+
+    .editor-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 15px;
+    }
+
+    .editor-actions {
+        display: flex;
+        gap: 10px;
+    }
+
+    .btn-delete {
+        background: #dc3545;
+        color: white;
+        border: none;
+        padding: 8px 15px;
+        border-radius: 4px;
+        cursor: pointer;
+        font-weight: 600;
+        transition: background 0.2s;
+    }
+
+    .btn-delete:hover {
+        background: #c82333;
+    }
+
+    .btn-delete:disabled {
+        background: #e9ecef;
+        cursor: not-allowed;
+    }
+
+    .editor-header h3 {
+        margin: 0;
+        color: #333;
+    }
+
+    #templateEditor {
+        flex-grow: 1;
+        width: 100%;
+        min-height: 450px;
+        padding: 15px;
+        font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+        font-size: 14px;
+        line-height: 1.5;
+        border: 1px solid #ccc;
+        border-radius: 5px;
+        resize: none;
+        background: #fdfdfd;
+        color: #333;
+    }
+
+    #templateEditor:focus {
+        outline: none;
+        border-color: #4facfe;
+        box-shadow: 0 0 0 3px rgba(79, 172, 254, 0.1);
+    }
+
+    .editor-footer {
+        margin-top: 15px;
+        text-align: right;
+    }
+
+    .no-file-selected {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        height: 100%;
+        color: #999;
+        font-style: italic;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="editor-container">
+    <!-- 左側檔案列表 -->
+    <div class="file-list">
+        <h3>📄 模板列表</h3>
+        
+        <!-- 新增模板區域 -->
+        <div class="create-section">
+            <input type="text" id="newTemplateName" placeholder="輸入新模板名稱 (如: my_device)">
+            <button class="btn-create" onclick="createNewTemplate()">➕ 建立新模板</button>
+        </div>
+
+        <div id="fileListContent">
+            <p>載入中...</p>
+        </div>
+    </div>
+
+    <!-- 右側編輯區域 -->
+    <div class="editor-area">
+        <div class="editor-header">
+            <h3 id="currentFileName">請選擇模板</h3>
+            <div class="editor-actions">
+                <button id="deleteBtn" class="btn-delete" disabled>🗑️ 刪除模板</button>
+                <button id="saveBtn" class="btn" disabled>💾 儲存變更</button>
+            </div>
+        </div>
+        
+        <div id="editorWrapper" class="no-file-selected">
+            請從左側選擇一個設備模板進行編輯
+        </div>
+        
+        <textarea id="templateEditor" class="hidden"></textarea>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    let currentFile = null;
+    const fileListContent = document.getElementById('fileListContent');
+    const currentFileName = document.getElementById('currentFileName');
+    const templateEditor = document.getElementById('templateEditor');
+    const editorWrapper = document.getElementById('editorWrapper');
+    const saveBtn = document.getElementById('saveBtn');
+    const deleteBtn = document.getElementById('deleteBtn');
+
+    // 載入模板列表
+    async function loadTemplateList() {
+        try {
+            const response = await fetch('/api/templates');
+            const data = await response.json();
+            
+            if (data.success) {
+                renderFileList(data.templates);
+            } else {
+                fileListContent.innerHTML = `<p class="error-message">錯誤: ${data.error}</p>`;
+            }
+        } catch (error) {
+            fileListContent.innerHTML = `<p class="error-message">載入失敗: ${error.message}</p>`;
+        }
+    }
+
+    // 渲染檔案列表
+    function renderFileList(templates) {
+        if (templates.length === 0) {
+            fileListContent.innerHTML = '<p>沒有找到模板</p>';
+            return;
+        }
+
+        fileListContent.innerHTML = '';
+        templates.forEach(name => {
+            const div = document.createElement('div');
+            div.className = 'file-item';
+            div.textContent = name;
+            div.title = name;
+            div.onclick = () => loadTemplate(name, div);
+            fileListContent.appendChild(div);
+        });
+    }
+
+    // 載入特定模板內容
+    async function loadTemplate(filename, element) {
+        try {
+            // 切換 active 狀態
+            document.querySelectorAll('.file-item').forEach(el => el.classList.remove('active'));
+            element.classList.add('active');
+
+            const response = await fetch(`/api/templates/${filename}`);
+            const data = await response.json();
+
+            if (data.success) {
+                currentFile = filename;
+                currentFileName.textContent = `正在編輯: ${filename}`;
+                
+                templateEditor.value = data.content;
+                templateEditor.classList.remove('hidden');
+                editorWrapper.classList.add('hidden');
+                saveBtn.disabled = false;
+                deleteBtn.disabled = false;
+            } else {
+                alert('載入失敗: ' + data.error);
+            }
+        } catch (error) {
+            alert('載入發生錯誤: ' + error.message);
+        }
+    }
+
+    // 儲存模板
+    saveBtn.onclick = async function() {
+        if (!currentFile) return;
+
+        const originalText = saveBtn.innerHTML;
+        saveBtn.disabled = true;
+        saveBtn.innerHTML = '⌛ 儲存中...';
+
+        try {
+            const response = await fetch(`/api/templates/${currentFile}`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    content: templateEditor.value
+                })
+            });
+
+            const data = await response.json();
+
+            if (data.success) {
+                alert('模板已成功儲存！');
+            } else {
+                alert('儲存失敗: ' + data.error);
+            }
+        } catch (error) {
+            alert('儲存發生錯誤: ' + error.message);
+        } finally {
+            saveBtn.disabled = false;
+            saveBtn.innerHTML = originalText;
+        }
+    };
+
+    // 刪除模板
+    deleteBtn.onclick = async function() {
+        if (!currentFile) return;
+
+        if (!confirm(`確定要刪除模板 "${currentFile}" 嗎？此動作無法復原。`)) {
+            return;
+        }
+
+        try {
+            const response = await fetch(`/api/templates/${currentFile}`, {
+                method: 'DELETE'
+            });
+
+            const data = await response.json();
+
+            if (data.success) {
+                alert('模板已成功刪除！');
+                currentFile = null;
+                currentFileName.textContent = '請選擇模板';
+                templateEditor.value = '';
+                templateEditor.classList.add('hidden');
+                editorWrapper.classList.remove('hidden');
+                saveBtn.disabled = true;
+                deleteBtn.disabled = true;
+                await loadTemplateList();
+            } else {
+                alert('刪除失敗: ' + data.error);
+            }
+        } catch (error) {
+            alert('刪除發生錯誤: ' + error.message);
+        }
+    };
+
+    // 初始載入
+    loadTemplateList();
+
+    // 建立新模板
+    async function createNewTemplate() {
+        const nameInput = document.getElementById('newTemplateName');
+        const filename = nameInput.value.trim();
+        
+        if (!filename) {
+            alert('請輸入檔案名稱');
+            return;
+        }
+
+        try {
+            const response = await fetch('/api/templates/create', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ filename: filename })
+            });
+
+            const data = await response.json();
+            if (data.success) {
+                alert(`模板 ${data.filename} 已成功建立！`);
+                nameInput.value = '';
+                await loadTemplateList(); // 重新載入列表
+                
+                // 自動選取新建立的檔案
+                const fileItems = document.querySelectorAll('.file-item');
+                for (let item of fileItems) {
+                    if (item.textContent === data.filename) {
+                        item.click();
+                        break;
+                    }
+                }
+            } else {
+                alert('建立失敗: ' + data.error);
+            }
+        } catch (error) {
+            alert('發生錯誤: ' + error.message);
+        }
+    }
+</script>
+{% endblock %}
+

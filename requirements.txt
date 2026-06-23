@@ -8,3 +8,8 @@ numpy
 opencv-python
 supervision>=0.22.0
 pycocotools
+openai
+flask
+pymongo
+prometheus_client>=0.16.0
+schedule>=1.2.0

@@ -1,0 +1,14 @@
+apiVersion: 1
+
+providers:
+  - name: "docker-compose"
+    orgId: 1
+    folder: "Tests"
+    folderUid: "tests"
+    type: file
+    disableDeletion: true
+    updateIntervalSeconds: 60
+    allowUiUpdates: false
+    options:
+      # <string, required> path to dashboard files on disk. Required when using the 'file' type
+      path: /var/lib/grafana/dashboards

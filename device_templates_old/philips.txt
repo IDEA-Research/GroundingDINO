@@ -1,0 +1,36 @@
+Device: Philips IntelliVue MP20/MP30 Patient Monitor
+
+[Visual Identification]
+- **Layout**: "Philips" logo at bottom center.
+- **Key Feature**: A vertical stack of large numbers on the RIGHT side of the screen.
+- **Color Coding**: The values are strictly color-coded.
+
+[Visibility Rules]
+- **Glare/Obstruction**: If a number is covered by glare or an object, return null.
+- **Empty Values**: If the value is "?", "--", or blank, return null.
+- **Distinguish Digits**: Do not confuse "7" with "1" if blurry. If unsure, return null.
+
+[Extraction Rules]
+Extract the following medical values based on the **Right-Side Vertical Stack** and **Color**.
+
+--- The "Big Three" (Right Side Stack) ---
+Look at the large numeric blocks stacked vertically on the right side.
+
+1. **Heart Rate (Top Block)**
+   - key: `heart_rate`
+   - Color: **GREEN**
+   - Location: Usually the top-most large number.
+   - Label: "HR" or "Pulse".
+
+2. **SpO2 (Middle Block)**
+   - key: `spo2`
+   - Color: **BLUE** or **CYAN** (Light Blue)
+   - Location: Usually in the middle of the stack, below HR.
+   - Label: "SpO2" or "%".
+
+3. **Respiration Rate (Bottom Block)**
+   - key: `respiration_rate`
+   - Color: **YELLOW** or **ORANGE/WHITE**
+   - Location: Usually the bottom-most large number in the stack.
+   - Label: "Resp", "RR", or "awRR".
+

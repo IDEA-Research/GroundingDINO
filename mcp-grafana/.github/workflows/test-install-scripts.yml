@@ -1,0 +1,155 @@
+name: Test Install Scripts
+
+on:
+  pull_request:
+    paths:
+      - '.claude-plugin/**'
+      - '.github/workflows/test-install-scripts.yml'
+  push:
+    branches:
+      - main
+    paths:
+      - '.claude-plugin/**'
+      - '.github/workflows/test-install-scripts.yml'
+  workflow_dispatch:
+
+jobs:
+  test-nodejs-script:
+    name: Test Node.js Script
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        node-version: ['20', '22', '24']
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: ${{ matrix.node-version }}
+
+      - name: Test Node.js install script (Unix)
+        if: runner.os != 'Windows'
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TEMP_DIR=$(mktemp -d)
+          export CLAUDE_PLUGIN_ROOT="${TEMP_DIR}"
+
+          echo "Testing Node.js install script..."
+          node .claude-plugin/install-binary.mjs --version
+
+          VERSION=$("${TEMP_DIR}/mcp-grafana" --version)
+          echo "Installed version: ${VERSION}"
+
+          if [ -z "${VERSION}" ]; then
+            echo "Error: Failed to get version"
+            exit 1
+          fi
+
+          echo "✓ Node.js script test passed"
+          rm -rf "${TEMP_DIR}"
+
+      - name: Test Node.js install script (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $TempDir = New-Item -ItemType Directory -Path (Join-Path $env:TEMP ([System.IO.Path]::GetRandomFileName()))
+          $env:CLAUDE_PLUGIN_ROOT = $TempDir.FullName
+
+          Write-Host "Testing Node.js install script..."
+          node .claude-plugin/install-binary.mjs --version
+
+          $BinaryPath = Join-Path $TempDir.FullName "mcp-grafana.exe"
+          $Version = & $BinaryPath --version
+          Write-Host "Installed version: $Version"
+
+          if ([string]::IsNullOrEmpty($Version)) {
+            Write-Error "Failed to get version"
+            exit 1
+          }
+
+          Write-Host "✓ Node.js script test passed"
+          Remove-Item -Recurse -Force $TempDir
+
+  test-checksum-verification:
+    name: Test Checksum Verification
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+
+      - name: Test checksum verification with Node.js
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TEMP_DIR=$(mktemp -d)
+          export CLAUDE_PLUGIN_ROOT="${TEMP_DIR}"
+
+          echo "Testing checksum verification..."
+          OUTPUT=$(node .claude-plugin/install-binary.mjs --version 2>&1)
+          echo "Script output:"
+          echo "$OUTPUT"
+
+          if echo "$OUTPUT" | grep -q "Checksum verified"; then
+            echo "✓ Checksum verification executed"
+          else
+            echo "Error: Checksum verification not executed"
+            exit 1
+          fi
+
+          rm -rf "${TEMP_DIR}"
+
+  test-version-update:
+    name: Test Version Update Detection
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+
+      - name: Test version update detection
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TEMP_DIR=$(mktemp -d)
+          export CLAUDE_PLUGIN_ROOT="${TEMP_DIR}"
+
+          echo "First installation..."
+          node .claude-plugin/install-binary.mjs --version
+
+          VERSION_FILE="${TEMP_DIR}/.mcp-grafana-version"
+          if [ ! -f "${VERSION_FILE}" ]; then
+            echo "Error: Version file not created"
+            exit 1
+          fi
+
+          STORED_VERSION=$(cat "${VERSION_FILE}")
+          echo "Stored version: ${STORED_VERSION}"
+
+          echo "Second run (should skip download)..."
+          OUTPUT=$(node .claude-plugin/install-binary.mjs --version 2>&1)
+
+          if echo "${OUTPUT}" | grep -q "Downloading"; then
+            echo "Error: Should not download on second run"
+            exit 1
+          fi
+
+          echo "✓ Version update detection works"
+          rm -rf "${TEMP_DIR}"

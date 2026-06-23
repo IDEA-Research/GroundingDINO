@@ -27,15 +27,6 @@ import subprocess
 import subprocess
 import sys
 
-def install_torch():
-    try:
-        import torch
-    except ImportError:
-        subprocess.check_call([sys.executable, "-m", "pip", "install", "torch"])
-
-# Call the function to ensure torch is installed
-install_torch()
-
 import torch
 from setuptools import find_packages, setup
 from torch.utils.cpp_extension import CUDA_HOME, CppExtension, CUDAExtension
@@ -92,6 +83,7 @@ def get_extensions():
             "-D__CUDA_NO_HALF_OPERATORS__",
             "-D__CUDA_NO_HALF_CONVERSIONS__",
             "-D__CUDA_NO_HALF2_OPERATORS__",
+            "--allow-unsupported-compiler",
         ]
     else:
         print("Compiling without CUDA")

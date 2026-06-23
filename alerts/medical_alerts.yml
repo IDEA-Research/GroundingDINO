@@ -1,0 +1,233 @@
+groups:
+  # 危急患者生理指標警報
+  - name: critical_patient_alerts
+    rules:
+      # 心率異常警報
+      - alert: CriticalHeartRate
+        expr: patient_heart_rate_bpm < 40 or patient_heart_rate_bpm > 180
+        for: 30s
+        labels:
+          severity: critical
+          category: vital_signs
+        annotations:
+          summary: "患者心率危急異常"
+          description: "患者 {{ $labels.patient_id }} 心率: {{ $value }} bpm (正常範圍: 60-100 bpm)"
+          device: "{{ $labels.device_model }}"
+          session: "{{ $labels.session_id }}"
+
+      - alert: HighHeartRate
+        expr: patient_heart_rate_bpm > 120 and patient_heart_rate_bpm <= 180
+        for: 2m
+        labels:
+          severity: warning
+          category: vital_signs
+        annotations:
+          summary: "患者心率偏高"
+          description: "患者 {{ $labels.patient_id }} 心率: {{ $value }} bpm (正常範圍: 60-100 bpm)"
+
+      - alert: LowHeartRate
+        expr: patient_heart_rate_bpm < 60 and patient_heart_rate_bpm >= 40
+        for: 2m
+        labels:
+          severity: warning
+          category: vital_signs
+        annotations:
+          summary: "患者心率偏低"
+          description: "患者 {{ $labels.patient_id }} 心率: {{ $value }} bpm (正常範圍: 60-100 bpm)"
+
+      # 血氧飽和度警報
+      - alert: CriticalSpO2
+        expr: patient_spo2_percentage < 90
+        for: 30s
+        labels:
+          severity: critical
+          category: vital_signs
+        annotations:
+          summary: "患者血氧飽和度危急"
+          description: "患者 {{ $labels.patient_id }} SpO2: {{ $value }}% (正常範圍: ≥95%)"
+          device: "{{ $labels.device_model }}"
+
+      - alert: LowSpO2
+        expr: patient_spo2_percentage >= 90 and patient_spo2_percentage < 95
+        for: 1m
+        labels:
+          severity: warning
+          category: vital_signs
+        annotations:
+          summary: "患者血氧飽和度偏低"
+          description: "患者 {{ $labels.patient_id }} SpO2: {{ $value }}% (正常範圍: ≥95%)"
+
+      # 血壓異常警報
+      - alert: CriticalHighBloodPressure
+        expr: patient_blood_pressure_systolic_mmhg > 180 or patient_blood_pressure_diastolic_mmhg > 110
+        for: 1m
+        labels:
+          severity: critical
+          category: vital_signs
+        annotations:
+          summary: "患者血壓危急過高"
+          description: "患者 {{ $labels.patient_id }} 收縮壓: {{ $labels.systolic }} / 舒張壓: {{ $labels.diastolic }} mmHg"
+
+      - alert: CriticalLowBloodPressure
+        expr: patient_blood_pressure_systolic_mmhg < 90 or patient_blood_pressure_diastolic_mmhg < 60
+        for: 1m
+        labels:
+          severity: critical
+          category: vital_signs
+        annotations:
+          summary: "患者血壓危急過低"
+          description: "患者 {{ $labels.patient_id }} 收縮壓: {{ $labels.systolic }} / 舒張壓: {{ $labels.diastolic }} mmHg"
+
+      # 呼吸頻率異常
+      - alert: AbnormalRespirationRate
+        expr: patient_respiration_rate_per_minute < 10 or patient_respiration_rate_per_minute > 35
+        for: 2m
+        labels:
+          severity: warning
+          category: vital_signs
+        annotations:
+          summary: "患者呼吸頻率異常"
+          description: "患者 {{ $labels.patient_id }} 呼吸頻率: {{ $value }} /min (正常範圍: 12-20 /min)"
+
+  # 呼吸機參數警報
+  - name: ventilator_alerts
+    rules:
+      # 呼氣末正壓過高
+      - alert: HighPEEP
+        expr: ventilator_peep_cmh2o > 20
+        for: 5m
+        labels:
+          severity: warning
+          category: ventilator
+        annotations:
+          summary: "呼吸機 PEEP 設定過高"
+          description: "患者 {{ $labels.patient_id }} PEEP: {{ $value }} cmH2O (建議範圍: 5-15 cmH2O)"
+
+      # 吸氣壓峰值過高
+      - alert: HighPIP
+        expr: ventilator_pip_cmh2o > 40
+        for: 2m
+        labels:
+          severity: warning
+          category: ventilator
+        annotations:
+          summary: "呼吸機吸氣壓峰值過高"
+          description: "患者 {{ $labels.patient_id }} PIP: {{ $value }} cmH2O (可能需要調整呼吸機設定)"
+
+      # 氧氣濃度異常
+      - alert: AbnormalFiO2
+        expr: ventilator_fio2_percentage > 80 or ventilator_fio2_percentage < 21
+        for: 5m
+        labels:
+          severity: warning
+          category: ventilator
+        annotations:
+          summary: "吸氧濃度異常"
+          description: "患者 {{ $labels.patient_id }} FiO2: {{ $value }}% (正常範圍: 21-60%)"
+
+  # 腦氧監測警報
+  - name: cerebral_monitoring_alerts
+    rules:
+      # 腦氧飽和度過低
+      - alert: CriticalCerebralSaturation
+        expr: cerebral_rso2_left_percentage < 50 or cerebral_rso2_right_percentage < 50
+        for: 1m
+        labels:
+          severity: critical
+          category: cerebral_monitoring
+        annotations:
+          summary: "腦氧飽和度危急過低"
+          description: "患者 {{ $labels.patient_id }} 左腦: {{ $labels.rso2_left }}% / 右腦: {{ $labels.rso2_right }}% (正常範圍: >60%)"
+
+      - alert: LowCerebralSaturation
+        expr: (cerebral_rso2_left_percentage >= 50 and cerebral_rso2_left_percentage < 60) or (cerebral_rso2_right_percentage >= 50 and cerebral_rso2_right_percentage < 60)
+        for: 3m
+        labels:
+          severity: warning
+          category: cerebral_monitoring
+        annotations:
+          summary: "腦氧飽和度偏低"
+          description: "患者 {{ $labels.patient_id }} 左腦: {{ $labels.rso2_left }}% / 右腦: {{ $labels.rso2_right }}% (正常範圍: >60%)"
+
+      # 左右腦氧飽和度差異過大
+      - alert: CerebralSaturationImbalance
+        expr: abs(cerebral_rso2_left_percentage - cerebral_rso2_right_percentage) > 15
+        for: 5m
+        labels:
+          severity: warning
+          category: cerebral_monitoring
+        annotations:
+          summary: "左右腦氧飽和度差異過大"
+          description: "患者 {{ $labels.patient_id }} 左右腦氧飽和度差異: {{ $value }}% (建議差異 <10%)"
+
+  # 系統監控警報
+  - name: system_monitoring_alerts
+    rules:
+      # MongoDB 連接異常
+      - alert: MongoDBConnectionDown
+        expr: up{job="medical-mongodb-exporter"} == 0
+        for: 2m
+        labels:
+          severity: critical
+          category: system
+        annotations:
+          summary: "醫療數據導出器離線"
+          description: "MongoDB 醫療數據導出器無法連接，監控服務中斷"
+
+      # 數據處理延遲
+      - alert: HighDataProcessingLatency
+        expr: data_processing_duration_seconds{quantile="0.95"} > 10
+        for: 5m
+        labels:
+          severity: warning
+          category: system
+        annotations:
+          summary: "醫療數據處理延遲過高"
+          description: "95% 的數據處理時間超過 10 秒，當前: {{ $value }} 秒"
+
+      # 長時間無數據更新
+      - alert: NoDataUpdates
+        expr: time() - last_successful_scrape_timestamp > 300
+        for: 1m
+        labels:
+          severity: warning
+          category: system
+        annotations:
+          summary: "醫療數據長時間未更新"
+          description: "超過 5 分鐘未收到新的醫療數據"
+
+      # 醫療警報頻率過高
+      - alert: HighAlertFrequency
+        expr: rate(medical_alerts_total[5m]) > 0.1
+        for: 10m
+        labels:
+          severity: warning
+          category: system
+        annotations:
+          summary: "醫療警報觸發頻率過高"
+          description: "過去 5 分鐘內醫療警報觸發頻率: {{ $value }} 次/秒"
+
+  # 設備狀態監控
+  - name: device_monitoring_alerts
+    rules:
+      # 設備離線檢測
+      - alert: MedicalDeviceOffline
+        expr: absent_over_time(patient_heart_rate_bpm[10m])
+        for: 5m
+        labels:
+          severity: warning
+          category: device_status
+        annotations:
+          summary: "醫療設備可能離線"
+          description: "設備 {{ $labels.device_model }} 超過 10 分鐘未回報數據"
+
+      # 活躍會話數量異常
+      - alert: NoActiveSessions
+        expr: active_medical_sessions_total == 0
+        for: 10m
+        labels:
+          severity: warning
+          category: system
+        annotations:
+          summary: "無活躍醫療監控會話"
+          description: "系統中沒有任何活躍的患者監控會話"

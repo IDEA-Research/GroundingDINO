@@ -1,0 +1,102 @@
+# yaml-language-server: $schema=https://goreleaser.com/static/schema.json
+
+version: 2
+
+before:
+  hooks:
+    - go mod tidy
+
+git:
+  prerelease_suffix: "-rc"
+
+builds:
+  - id: default
+    env:
+      - CGO_ENABLED=0
+    main: ./cmd/mcp-grafana
+    goos:
+      - linux
+      - windows
+      - darwin
+    ldflags: "-s -w -X main.commit={{.Commit}} -X main.date={{.Date}} -X main.builtBy=goreleaser"
+  - id: gemini-cli-extension
+    env:
+      - CGO_ENABLED=0
+    main: ./cmd/mcp-grafana
+    goos:
+      - linux
+      - windows
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+    ldflags: "-s -w -X main.commit={{.Commit}} -X main.date={{.Date}} -X main.builtBy=goreleaser"
+
+archives:
+  - id: default
+    ids:
+      - default
+    formats: tar.gz
+    # this name template makes the OS and Arch compatible with the results of `uname`.
+    name_template: >-
+      {{ .ProjectName }}_
+      {{- title .Os }}_
+      {{- if eq .Arch "amd64" }}x86_64
+      {{- else if eq .Arch "386" }}i386
+      {{- else }}{{ .Arch }}{{ end }}
+      {{- if .Arm }}v{{ .Arm }}{{ end }}
+    # use zip for windows archives
+    format_overrides:
+      - goos: windows
+        formats: zip
+
+  # The Gemini CLI Extension format.
+  # See https://github.com/google-gemini/gemini-cli/blob/main/docs/extension-releasing.md#platform-specific-archives.
+  # We'll use platform and architecture specific archive names, which must look like:
+  #
+  # {platform}.{arch}.{name}.{extension}
+  #
+  # Where the fields are:
+  #
+  # - {name}: The name of your extension.
+  # - {platform}: The operating system. Supported values are:
+  # -     darwin (macOS)
+  # -     linux
+  # -     win32 (Windows)
+  # - {arch}: The architecture. Supported values are:
+  # -     x64
+  # -     arm64
+  # - {extension}: The file extension of the archive (e.g., .tar.gz or .zip).
+  #
+  # Examples:
+  # - darwin.arm64.{project}.tar.gz (specific to Apple Silicon Macs)
+  # - linux.x64.{project}.tar.gz
+  # - win32.{project}.zip
+  - id: gemini-cli-extension
+    ids:
+      - gemini-cli-extension
+    formats: tar.gz
+    files:
+      - gemini-extension.json
+    name_template: >-
+      {{ if eq .Os "windows" }}win32
+      {{- else }}{{ .Os }}{{ end }}.
+      {{- if eq .Arch "amd64" }}x64
+      {{- else }}{{ .Arch }}{{ end }}.grafana
+    format_overrides:
+      - goos: windows
+        formats: zip
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+
+release:
+  footer: >-
+
+    ---
+
+    Released by [GoReleaser](https://github.com/goreleaser/goreleaser).

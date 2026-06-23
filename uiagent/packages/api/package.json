@@ -1,0 +1,30 @@
+{
+  "name": "@ui-agent/api",
+  "version": "1.0.0",
+  "description": "API server for UI Agent",
+  "type": "module",
+  "main": "dist/index.js",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "type-check": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@ui-agent/agent": "workspace:*",
+    "@ui-agent/data-source": "workspace:*",
+    "@ui-agent/types": "workspace:*",
+    "@ui-agent/validator": "workspace:*",
+    "express": "^4.18.2",
+    "cors": "^2.8.5",
+    "dotenv": "^16.3.1",
+    "openai": "^4.20.0"
+  },
+  "devDependencies": {
+    "@types/express": "^4.17.21",
+    "@types/cors": "^2.8.17",
+    "@types/node": "^20.10.0",
+    "tsx": "^4.7.0",
+    "typescript": "^5.3.0"
+  }
+}

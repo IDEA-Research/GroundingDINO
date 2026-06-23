@@ -1,0 +1,79 @@
+name: E2E Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    - cron: "0 0 * * *"
+
+permissions:
+  contents: read
+
+jobs:
+  test-python-e2e:
+    name: Python E2E Tests (${{ matrix.transport }})
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        transport: [stdio, sse, streamable-http]
+    permissions:
+      id-token: write
+      contents: read
+    env:
+      # Set auth here so stdio transport and background process pick them up
+      GRAFANA_USERNAME: admin
+      GRAFANA_PASSWORD: admin
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@681c641aba71e4a1c380be3ab5e12ad51f415867 # v7.1.6
+
+      - name: Set up Go
+        uses: actions/setup-go@4dc6199c7b1a012772edbd06daecab0f50c9053c # v6.1.0
+        with:
+          go-version: "1.24"
+          cache: true
+
+      - name: Install Python dependencies
+        run: |
+          cd tests
+          uv sync --all-groups
+
+      - id: get-secrets
+        uses: grafana/shared-workflows/actions/get-vault-secrets@a37de51f3d713a30a9e4b21bcdfbd38170020593 # get-vault-secrets/v1.3.0
+        with:
+          # Secrets placed in the ci/repo/grafana/mcp-grafana/<path> path in Vault
+          repo_secrets: |
+            ANTHROPIC_API_KEY=anthropic:api-key
+            OPENAI_API_KEY=openai:api-key
+
+      - name: Start docker-compose services
+        uses: hoverkraft-tech/compose-action@05da55b2bb8a5a759d1c4732095044bd9018c050
+        with:
+          compose-file: "docker-compose.yaml"
+
+      - name: Wait for Grafana server and Prometheus server to start and scrape
+        run: sleep 30
+
+      - name: Build mcp-grafana
+        run: go build -o dist/mcp-grafana ./cmd/mcp-grafana
+
+      - name: Start MCP server in background
+        if: matrix.transport != 'stdio'
+        run: nohup ./dist/mcp-grafana -t ${{ matrix.transport }} > mcp.log 2>&1 &
+
+      - name: Run Python e2e tests
+        env:
+          MCP_GRAFANA_PATH: ../dist/mcp-grafana
+          MCP_TRANSPORT: ${{ matrix.transport }}
+        run: |
+          cd tests
+          uv run pytest
+
+      - if: failure() && matrix.transport != 'stdio'
+        name: Print MCP logs
+        run: cat mcp.log

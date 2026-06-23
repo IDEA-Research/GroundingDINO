@@ -1,0 +1,373 @@
+"""End-to-end walkthrough of the Helper Dashboard system.
+
+Run:  python3 scripts/demo_flow.py
+
+Exercises the same HTTP surface the frontend uses, so the output is
+exactly what the UI would receive.
+"""
+
+from __future__ import annotations
+
+import json
+import os
+import sys
+import textwrap
+from pathlib import Path
+
+
+def banner(title: str) -> None:
+    bar = "=" * 72
+    print(f"\n{bar}\n  {title}\n{bar}")
+
+
+def sub(title: str) -> None:
+    print(f"\n--- {title} ---")
+
+
+def pretty(label: str, data) -> None:
+    print(f"\n[{label}]")
+    print(json.dumps(data, indent=2, default=str)[:2400])
+
+
+def run_mock_mode():
+    banner("PART 1 — MOCK MODE (default): full user flow")
+    from fastapi.testclient import TestClient
+    from app.main import app
+
+    c = TestClient(app)
+
+    sub("Health check")
+    r = c.get("/api/health")
+    print(f"GET /api/health -> {r.status_code} {r.json()}")
+
+    sub("Chat: create dashboard")
+    r = c.post(
+        "/api/chat/message",
+        json={
+            "session_id": "demo-1",
+            "message": "Show me a CPU, memory and http request dashboard",
+        },
+    )
+    body = r.json()
+    print(f"POST /api/chat/message -> {r.status_code}")
+    print(f"  user_reply:    {body['user_reply']}")
+    print(f"  intent_type:   {body['intent_type']}")
+    print(f"  runtime_used:  {body['runtime_used']}")
+    print(f"  fallback:      {body['fallback_reason']}")
+    print(f"  widgets:       {len(body['dashboard']['widgets'])}")
+    for w in body["dashboard"]["widgets"]:
+        print(
+            f"    - {w['id']:22s}  type={w['type']:10s}  "
+            f"promql={w['query']['promql'][:40]}"
+        )
+    did = body["dashboard"]["dashboard_id"]
+
+    sub("Chat: patch — add a gauge widget")
+    r = c.post(
+        "/api/chat/message",
+        json={
+            "session_id": "demo-1",
+            "message": "add a gauge widget",
+            "current_dashboard_id": did,
+        },
+    )
+    body = r.json()
+    print(f"POST /api/chat/message -> {r.status_code}")
+    print(f"  intent_type:   {body['intent_type']}")
+    print(f"  patch ops:     {[op['op'] for op in body['patch']['operations']]}")
+    print(f"  widgets after: {len(body['dashboard']['widgets'])}")
+    pretty("patch.operations[0]", body["patch"]["operations"][0])
+
+    sub("Chat: patch — change refresh interval")
+    r = c.post(
+        "/api/chat/message",
+        json={
+            "session_id": "demo-1",
+            "message": "set the refresh to 15s",
+            "current_dashboard_id": did,
+        },
+    )
+    body = r.json()
+    print(f"POST /api/chat/message -> {r.status_code}")
+    print(f"  intent_type:   {body['intent_type']}")
+    print(f"  patch ops:     {[op['op'] for op in body['patch']['operations']]}")
+    print(f"  refresh after: {body['dashboard']['refresh_interval']}")
+
+    sub("GET dashboard by id (what the /dashboard/[id] page loads)")
+    r = c.get(f"/api/dashboard/{did}")
+    spec = r.json()["spec"]
+    print(f"GET /api/dashboard/{did} -> {r.status_code}")
+    print(f"  title:            {spec['title']}")
+    print(f"  refresh_interval: {spec['refresh_interval']}")
+    print(f"  widget count:     {len(spec['widgets'])}")
+    print(f"  widget types:     {[w['type'] for w in spec['widgets']]}")
+
+    sub("POST /api/evaluate/run (Playwright fallback when browser not installed)")
+    r = c.post("/api/evaluate/run", json={"dashboard_id": did})
+    rep = r.json()["report"]
+    print(f"POST /api/evaluate/run -> {r.status_code}")
+    print(f"  page_loaded:    {rep['page_loaded']}")
+    print(f"  widgets rendered: {rep['widgets_rendered']}")
+    print(f"  missing:          {rep['missing_widgets']}")
+    print(f"  recommendation:   {rep['recommendation']}")
+
+    sub("Storage on disk after the flow")
+    root = Path("backend/app/storage")
+    for sub_dir in ("dashboards", "tickets", "evaluation_reports"):
+        files = sorted(p.name for p in (root / sub_dir).glob("*.json"))
+        print(f"  {sub_dir}/: {files}")
+
+    sub("Developer endpoint is locked (no token set)")
+    r = c.get("/api/developer/tickets")
+    print(f"GET /api/developer/tickets -> {r.status_code} {r.json()}")
+
+    return did
+
+
+def write_stub(path: Path, body: str) -> None:
+    import stat
+    path.write_text("#!/usr/bin/env python3\n" + body + "\n")
+    path.chmod(path.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
+
+
+# A realistic stub that plays the role of an LLM-driven OpenCode CLI.
+# It reads the stdin payload, looks at the operation, and returns a
+# shape-correct JSON response. Real OpenCode would do the same with
+# an actual LLM.
+_STUB_BODY = r"""
+import json, sys, uuid
+payload = json.loads(sys.stdin.read())
+op = payload["operation"]
+args = payload.get("args") or {}
+
+def dashboard_spec(title, widgets):
+    return {
+        "type": "DashboardSpec",
+        "spec": {
+            "dashboard_id": "real-demo",
+            "title": title,
+            "description": "generated by (stubbed) real OpenCode",
+            "layout": {"columns": 12, "row_height": 40},
+            "variables": [],
+            "widgets": widgets,
+            "refresh_interval": "30s",
+        },
+    }
+
+if op == "user_message":
+    msg = (args.get("message") or "").lower()
+    current = args.get("current_dashboard_id")
+    patch_triggers = ["add", "remove", "delete", "change", "update", "set", "rename", "move", "resize"]
+    if current and any(t in msg for t in patch_triggers):
+        print(json.dumps({
+            "type": "PatchIntent",
+            "target_dashboard_id": current,
+            "requested_changes": [args.get("message", "")],
+            "message_to_user": "Patching via real runtime.",
+        }))
+    elif "dashboard" in msg or "chart" in msg or "show me" in msg:
+        print(json.dumps({
+            "type": "DashboardIntent",
+            "summary": "via real OpenCode",
+            "requirements": {
+                "title": "Real OpenCode Demo",
+                "goal": args.get("message", ""),
+                "metrics_hints": ["up", "http_requests_total"],
+                "widget_hints": ["line_chart", "stat_card"],
+                "refresh_interval_hint": "30s",
+            },
+            "clarification_needed": False,
+            "message_to_user": "On it — using the real runtime.",
+        }))
+    else:
+        print(json.dumps({
+            "type": "UserResponse",
+            "message": "Real OpenCode says: what dashboard do you want?",
+        }))
+elif op == "generate_dashboard":
+    widgets = [
+        {
+            "id": "w-uptime",
+            "type": "stat_card",
+            "title": "Uptime",
+            "description": "",
+            "query": {
+                "source": "prometheus",
+                "promql": "sum(up)",
+                "query_type": "instant",
+            },
+            "position": {"x": 0, "y": 0, "w": 3, "h": 4},
+            "encoding": {"unit": ""},
+            "thresholds": [],
+            "options": {},
+        },
+        {
+            "id": "w-reqs",
+            "type": "line_chart",
+            "title": "HTTP requests/s",
+            "description": "",
+            "query": {
+                "source": "prometheus",
+                "promql": "rate(http_requests_total[5m])",
+                "query_type": "range",
+                "range": "1h",
+                "step": "30s",
+            },
+            "position": {"x": 3, "y": 0, "w": 9, "h": 6},
+            "encoding": {"unit": "req/s"},
+            "thresholds": [],
+            "options": {},
+        },
+    ]
+    print(json.dumps(dashboard_spec("Real OpenCode Demo", widgets)))
+elif op == "patch_dashboard":
+    dashboard = args.get("dashboard") or {}
+    did = dashboard.get("dashboard_id")
+    intent = args.get("intent") or {}
+    reason = (intent.get("requested_changes") or ["update"])[0]
+    print(json.dumps({
+        "type": "PatchSpec",
+        "spec": {
+            "patch_id": "p-" + uuid.uuid4().hex[:8],
+            "reason": reason[:120],
+            "target_dashboard_id": did,
+            "created_by": "patch-agent",
+            "operations": [
+                {
+                    "op": "add_widget",
+                    "widget": {
+                        "id": "w-mem",
+                        "type": "gauge",
+                        "title": "Memory available",
+                        "description": "",
+                        "query": {
+                            "source": "prometheus",
+                            "promql": "avg(node_memory_MemAvailable_bytes)",
+                            "query_type": "instant",
+                        },
+                        "position": {"x": 0, "y": 6, "w": 3, "h": 4},
+                        "encoding": {"unit": "bytes"},
+                        "thresholds": [],
+                        "options": {"min": 0, "max": 100},
+                    },
+                }
+            ],
+        },
+    }))
+else:
+    print(json.dumps({"type": "UserResponse", "message": "noop"}))
+"""
+
+
+def run_opencode_mode(tmpdir: Path):
+    banner("PART 2 — OPENCODE MODE with a stub binary (strict, no fallback)")
+    stub = tmpdir / "opencode"
+    write_stub(stub, _STUB_BODY)
+    print(f"Stub binary: {stub}")
+
+    # Activate opencode mode. The real OpenCode CLI isn't installed in
+    # this sandbox, so we configure the adapter to use our stub.
+    os.environ["HELPER_DASHBOARD_OPENCODE"] = "opencode"
+    os.environ["HELPER_DASHBOARD_OPENCODE_BIN"] = str(stub)
+    os.environ["HELPER_DASHBOARD_OPENCODE_CMD"] = json.dumps(["{bin}"])
+    # Fresh orchestrator so it reads the new env.
+    from importlib import reload
+    import app.helper.orchestrator as orch_mod
+    reload(orch_mod)
+    from app.helper.orchestrator import Orchestrator
+    orch = Orchestrator()
+
+    sub("Chat: create dashboard (backed by the real-runtime stub)")
+    r = orch.handle_user_message(
+        session_id="real-1", message="Show me a real-runtime dashboard"
+    )
+    print(f"  intent_type:   {r['intent_type']}")
+    print(f"  runtime_used:  {r['runtime_used']}")
+    print(f"  fallback:      {r['fallback_reason']}")
+    print(f"  user_reply:    {r['user_reply']}")
+    did = r["dashboard"]["dashboard_id"]
+    for w in r["dashboard"]["widgets"]:
+        print(
+            f"    - {w['id']:12s}  type={w['type']:10s}  "
+            f"promql={w['query']['promql']}"
+        )
+
+    sub("Chat: patch (real-runtime PatchSpec → applied → revalidated)")
+    r = orch.handle_user_message(
+        session_id="real-1",
+        message="add a memory gauge",
+        current_dashboard_id=did,
+    )
+    print(f"  intent_type:   {r['intent_type']}")
+    print(f"  runtime_used:  {r['runtime_used']}")
+    print(f"  ops:           {[op['op'] for op in r['patch']['operations']]}")
+    print(f"  widgets after: {len(r['dashboard']['widgets'])}")
+    pretty(
+        "widget added",
+        r["patch"]["operations"][0]["widget"],
+    )
+
+    sub("Failure case: opencode mode must not silently fall back")
+    os.environ["HELPER_DASHBOARD_OPENCODE_BIN"] = "/nonexistent/no-such-binary"
+    reload(orch_mod)
+    orch2 = orch_mod.Orchestrator()
+    r = orch2.handle_user_message(
+        session_id="real-fail", message="Show me a dashboard"
+    )
+    print(f"  intent_type:   {r['intent_type']}   <-- NOT DashboardSpec")
+    print(f"  runtime_used:  {r['runtime_used']}  <-- still None (failed early)")
+    print(f"  warnings:      {r['warnings']}")
+    print(f"  user_reply:    {r['user_reply']}")
+    print("  => failure surfaces to the user as a safe error; a ticket is on disk.")
+
+    return did
+
+
+def run_auto_mode(tmpdir: Path):
+    banner("PART 3 — AUTO MODE: fallback with explicit runtime_used marker")
+
+    # Stub intentionally returns garbage so the adapter fails and
+    # auto mode must fall back to mock.
+    bad_stub = tmpdir / "opencode-bad"
+    write_stub(bad_stub, 'print("this is not json")')
+
+    os.environ["HELPER_DASHBOARD_OPENCODE"] = "auto"
+    os.environ["HELPER_DASHBOARD_OPENCODE_BIN"] = str(bad_stub)
+    os.environ["HELPER_DASHBOARD_OPENCODE_CMD"] = json.dumps(["{bin}"])
+
+    from importlib import reload
+    import app.helper.orchestrator as orch_mod
+    reload(orch_mod)
+    orch = orch_mod.Orchestrator()
+
+    r = orch.handle_user_message(
+        session_id="auto-1",
+        message="Show me a dashboard",
+    )
+    print(f"  intent_type:   {r['intent_type']}")
+    print(f"  runtime_used:  {r['runtime_used']}   <-- explicit marker")
+    print(f"  fallback_reason: {r['fallback_reason']}")
+    print(f"  widgets (from mock fallback): {len(r['dashboard']['widgets'])}")
+    print("  => real adapter failed, auto fell back to mock with a visible marker.")
+
+
+def main():
+    run_mock_mode()
+    import tempfile
+    tmp = Path(tempfile.mkdtemp(prefix="helper-dashboard-demo-"))
+    try:
+        run_opencode_mode(tmp)
+        run_auto_mode(tmp)
+    finally:
+        import shutil
+        shutil.rmtree(tmp, ignore_errors=True)
+
+    banner("DONE")
+
+
+if __name__ == "__main__":
+    # Make `app` importable.
+    sys.path.insert(
+        0, str(Path(__file__).resolve().parent.parent / "backend")
+    )
+    main()

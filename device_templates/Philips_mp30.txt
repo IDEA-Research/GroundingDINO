@@ -1,0 +1,53 @@
+Device: "Philips IntelliVue MP30 Patient Monitor"
+
+[Strict Zoning Rule] (CRITICAL)
+ONLY extract large, illuminated numbers from the MAIN RIGHT-SIDE COLUMN of the screen. You MUST completely IGNORE any faint, small, or "manual" historical readings located in the center waveform area.
+
+[Visual Identification]
+1. Confirm the image is a patient monitor interface. Look for labels: "HR", "RR", "SpO2", and "NBP/NIBP/BP".
+2. Anchor matching: Locate the label text first in the right-side column, then extract the nearest, largest, or boldest number to its right or bottom.
+
+[Visual Identification]
+1. Confirm the image is a patient monitor interface. Look for labels: "HR", "RR", "SpO2", and "NBP/NIBP/BP".
+2. Anchor matching: Locate the label text first, then extract the nearest, largest, or boldest number to its right or bottom.
+
+[Visibility & Fallback Rules] 
+1. No Negative Values (CRITICAL): All values MUST be positive (>= 0). If negative, trigger re-analysis to check. If still invalid after re-analysis, return `null`.
+
+2. Consistent Font Style Rule: DO NOT recognize or extract physical bezel text, logos, or printed stickers. If a number appears in a font style that differs from the real-time digital display, ignore it.
+
+3. HR Limit & Logic Rule: 
+   - Absolute Limits: 0-350. If exceeded, trigger re-analysis to check. If still invalid after re-analysis, return `null`.
+   - Logic: MUST be logically > `respiration_rate`. If HR <= RR, return `null`. If HR is 0 without "Asystole", or shows "lead off", "?", "--", return `null`.
+4. RR Limit & Label Rule: 
+   - Absolute Limits: 0-200. If exceeded, trigger re-analysis to check. If still invalid, return `null`. 
+   - Prioritize numbers near "RR" over "Resp". If ambiguous, return `null`.
+5. SpO2 Limit Rule: 
+   - Absolute Limits: 0-100. If exceeded (e.g., 120), trigger re-analysis to check if the nearby Pulse Rate was extracted. If still invalid, return `null`.
+   - If "Sensor Off", "Poor Signal", "?", "---", return `null`.
+6. BP Limits, Logic & Partial Extraction: 
+   - Absolute Limits: `bp_systolic` (10-350), `bp_diastolic` (0-250), `bp_map` (5-300). If exceeded, trigger re-analysis of the block to correct potential parsing misalignment. If still invalid, return `null`.
+   - Logic Check (CRITICAL): MUST verify `bp_systolic` > `bp_map` > `bp_diastolic`. If violated, return `null` for conflicting values.
+   - Partial Rule: Extract visible parts; return `null` for missing fields. Apply logic check to available parts.
+
+[Extraction Rules]
+Extract based on the Right-Side Vertical Stack.
+[CRITICAL ANTI-SHIFT RULE]: 4 expected vertical slots. If any slot is blank/missing, return `null`. DO NOT shift values up. DO NOT guess.DO NOT scan the center of the screen to "find" missing values.
+1. `heart_rate`: 1st value from top (Color: GREEN, Label: HR/Pulse).
+2. `respiration_rate`: 2nd value from top (Color: WHITE, Label: Resp/RR).
+3. `blood_pressure`: 3rd value from top (Color: RED or YELLOW or ORANGE). Parse before "/" as `bp_systolic`, after "/" as `bp_diastolic`, inside "()" as `bp_map`.
+4. `spo2`: 4th value from top (Color: BLUE/CYAN).
+
+[Output Format] (CRITICAL)
+You MUST output ONLY a valid FLAT JSON object. DO NOT output nested objects.
+DO NOT output any conversational filler, greetings, explanations, or markdown code block formatting (e.g., no json ... ).
+The values MUST be ONLY integers or null.
+
+{
+"heart_rate": null,
+"respiration_rate": null,
+"bp_systolic": null,
+"bp_diastolic": null,
+"bp_map": null,
+"spo2": null
+}

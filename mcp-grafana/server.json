@@ -1,0 +1,57 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-10-17/server.schema.json",
+  "name": "io.github.grafana/mcp-grafana",
+  "description": "An MCP server giving access to Grafana dashboards, data and more.",
+  "repository": {
+    "url": "https://github.com/grafana/mcp-grafana",
+    "source": "github"
+  },
+  "version": "$VERSION",
+  "icon": "assets/icon.png",
+  "packages": [
+    {
+      "registryType": "oci",
+      "identifier": "docker.io/grafana/mcp-grafana:$VERSION",
+      "transport": {
+        "type": "stdio"
+      },
+      "environmentVariables": [
+        {
+          "description": "URL to your Grafana instance",
+          "isRequired": true,
+          "format": "string",
+          "isSecret": false,
+          "name": "GRAFANA_URL"
+        },
+        {
+          "description": "Service account token used to authenticate with your Grafana instance",
+          "isRequired": false,
+          "format": "string",
+          "isSecret": true,
+          "name": "GRAFANA_SERVICE_ACCOUNT_TOKEN"
+        },
+        {
+          "description": "Username to authenticate with your Grafana instance",
+          "isRequired": false,
+          "format": "string",
+          "isSecret": false,
+          "name": "GRAFANA_USERNAME"
+        },
+        {
+          "description": "Password to authenticate with your Grafana instance",
+          "isRequired": false,
+          "format": "string",
+          "isSecret": true,
+          "name": "GRAFANA_PASSWORD"
+        },
+        {
+          "description": "Organization ID for multi-org support. Can also be set via X-Grafana-Org-Id header in SSE/streamable HTTP transports.",
+          "isRequired": false,
+          "format": "string",
+          "isSecret": false,
+          "name": "GRAFANA_ORG_ID"
+        }
+      ]
+    }
+  ]
+}

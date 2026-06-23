@@ -1,0 +1,71 @@
+services:
+  grafana:
+    image: grafana/grafana@sha256:2175aaa91c96733d86d31cf270d5310b278654b03f5718c59de12a865380a31f
+    environment:
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+      GF_LOG_LEVEL: debug
+      GF_SERVER_ROUTER_LOGGING: "true"
+    ports:
+      - 3000:3000/tcp
+    volumes:
+      - ./testdata/provisioning:/etc/grafana/provisioning
+      - ./testdata/dashboards:/var/lib/grafana/dashboards
+
+  prometheus:
+    image: prom/prometheus@sha256:2b6f734e372c1b4717008f7d0a0152316aedd4d13ae17ef1e3268dbfaf68041b
+    ports:
+      - "9090:9090"
+    entrypoint: /etc/prometheus/entrypoint.sh
+    volumes:
+      - ./testdata/prometheus.yml:/etc/prometheus/prometheus.yml
+      - ./testdata/prometheus-seed.yml:/etc/prometheus/prometheus-seed.yml
+      - ./testdata/prometheus-entrypoint.sh:/etc/prometheus/entrypoint.sh
+
+  loki:
+    image: grafana/loki:3.6.2@sha256:fad94db64eeb0e14544953789c942453df68a860b6f760d867f06c5b31f461ab
+    ports:
+      - "3100:3100"
+    command: -config.file=/etc/loki/loki-config.yml
+    volumes:
+      - ./testdata/loki-config.yml:/etc/loki/loki-config.yml
+      - ./testdata/loki-rules.yml:/loki/rules/fake/loki-rules.yml
+
+  promtail:
+    image: grafana/promtail:3.6.3@sha256:130b6dd63277d99ce87560c0266c0c30d07bc15ba0a8a590d42215465d4f5363
+    volumes:
+      - ./testdata/promtail-config.yml:/etc/promtail/config.yml
+      - /var/run/docker.sock:/var/run/docker.sock
+    command: -config.file=/etc/promtail/config.yml
+    depends_on:
+      - loki
+
+  pyroscope:
+    image: grafana/pyroscope:1.16.0@sha256:58e49fa3443195c7b95f5c9821ce8920a8627f215c2ccdf955a9cd78c76a3468
+    ports:
+      - 4040:4040
+
+  tempo:
+    image: grafana/tempo:2.9.0-rc.0@sha256:5517ee34d335dedb9ad43028bd8f72edd0bb98b744ea5847a7572755d93d9866
+    command: ["-config.file=/etc/tempo/tempo-config.yaml"]
+    volumes:
+      - ./testdata/tempo-config.yaml:/etc/tempo/tempo-config.yaml
+    ports:
+      - "3200:3200" # tempo
+
+  tempo2:
+    image: grafana/tempo:2.9.0-rc.0@sha256:5517ee34d335dedb9ad43028bd8f72edd0bb98b744ea5847a7572755d93d9866
+    command: ["-config.file=/etc/tempo/tempo-config.yaml"]
+    volumes:
+      - ./testdata/tempo-config-2.yaml:/etc/tempo/tempo-config.yaml
+    ports:
+      - "3201:3201" # tempo instance 2
+
+  alertmanager:
+    image: prom/alertmanager:v0.29.0@sha256:88743b63b3e09ea6e31e140ced5bf45f4a8e82c617c2a963f78841f4995ad1d7
+    ports:
+      - "9093:9093"
+    volumes:
+      - ./testdata/alertmanager.yml:/etc/alertmanager/alertmanager.yml
+    command:
+      - "--config.file=/etc/alertmanager/alertmanager.yml"
+      - "--storage.path=/alertmanager"

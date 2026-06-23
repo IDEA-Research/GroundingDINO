@@ -1,0 +1,1036 @@
+{% extends "base.html" %}
+
+{% block title %}影片上傳 - 影片螢幕數字抓取系統{% endblock %}
+
+{% block extra_styles %}
+<style>
+    .upload-section {
+        background: #f8f9fa;
+        border-radius: 10px;
+        padding: 30px;
+        border: 2px dashed #dee2e6;
+        transition: all 0.3s ease;
+        margin-bottom: 30px;
+    }
+
+    .upload-section:hover {
+        border-color: #4facfe;
+        background: #f0f8ff;
+    }
+
+    .upload-section h2 {
+        color: #333;
+        margin-bottom: 20px;
+        font-size: 1.5em;
+    }
+
+    .form-group {
+        margin-bottom: 20px;
+    }
+
+    .form-group label {
+        display: block;
+        margin-bottom: 8px;
+        font-weight: 600;
+        color: #555;
+    }
+
+    .form-group input[type="file"] {
+        width: 100%;
+        padding: 12px;
+        border: 2px solid #e9ecef;
+        border-radius: 8px;
+        font-size: 16px;
+        transition: border-color 0.3s ease;
+    }
+
+    .form-group input:focus {
+        outline: none;
+        border-color: #4facfe;
+        box-shadow: 0 0 0 3px rgba(79, 172, 254, 0.1);
+    }
+
+    .status-section {
+        background: #f8f9fa;
+        border-radius: 10px;
+        padding: 30px;
+    }
+
+    .status-section h2 {
+        color: #333;
+        margin-bottom: 20px;
+        font-size: 1.5em;
+    }
+
+    #statusMessages {
+        margin-bottom: 12px;
+    }
+
+    #statusMessages:empty {
+        display: none;
+    }
+
+    .progress-container {
+        background: #e9ecef;
+        border-radius: 10px;
+        height: 20px;
+        margin-bottom: 20px;
+        overflow: hidden;
+    }
+
+    .progress-bar {
+        background: linear-gradient(90deg, #4facfe 0%, #00f2fe 100%);
+        height: 100%;
+        width: 0%;
+        transition: width 0.3s ease;
+        border-radius: 10px;
+    }
+
+    .status-info {
+        background: white;
+        border-radius: 8px;
+        padding: 20px;
+        margin-bottom: 20px;
+        border-left: 4px solid #4facfe;
+    }
+
+    .status-info p {
+        margin-bottom: 10px;
+        color: #555;
+    }
+
+    .status-info p:last-child {
+        margin-bottom: 0;
+    }
+
+    .main-content {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 30px;
+    }
+
+    .medical-values-section {
+        grid-column: 1 / -1;
+        background: #f8f9fa;
+        border-radius: 10px;
+        padding: 30px;
+        margin-top: 20px;
+    }
+
+    .medical-values-section h2 {
+        color: #333;
+        margin-bottom: 20px;
+        font-size: 1.5em;
+    }
+
+    .medical-values-list {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+        gap: 20px;
+    }
+
+    .medical-value-item {
+        background: white;
+        border-radius: 8px;
+        padding: 20px;
+        box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+        cursor: pointer;
+        transition: all 0.3s ease;
+        border: 2px solid transparent;
+    }
+
+    .medical-value-item:hover {
+        transform: translateY(-5px);
+        box-shadow: 0 10px 25px rgba(0,0,0,0.15);
+        border-color: #4facfe;
+    }
+
+    .medical-value-item h3 {
+        color: #333;
+        margin-bottom: 10px;
+        font-size: 1.2em;
+    }
+
+    .medical-value-item .values {
+        margin-bottom: 10px;
+    }
+
+    .medical-value-item .values span {
+        display: inline-block;
+        background: #e3f2fd;
+        color: #1976d2;
+        padding: 5px 10px;
+        border-radius: 4px;
+        margin: 3px;
+        font-size: 0.9em;
+        font-weight: 600;
+        cursor: pointer;
+        transition: background 0.2s;
+    }
+
+    .medical-value-item .values span:hover {
+        background: #bbdefb;
+    }
+
+    .corrected-text {
+        color: #ff0000 !important;
+        font-weight: bold;
+        margin-left: 8px;
+    }
+
+    .original-text {
+        color: inherit;
+        text-decoration: none !important;
+        opacity: 1 !important;
+        margin-right: 5px;
+    }
+
+    .model-selector {
+        cursor: pointer;
+        padding: 5px;
+        border-radius: 4px;
+        transition: background 0.2s;
+    }
+
+    .model-selector:hover {
+        background: #f0f0f0;
+    }
+
+    .medical-value-item .model {
+        color: #666;
+        font-size: 0.9em;
+        font-style: italic;
+    }
+
+    .modal {
+        display: none;
+        position: fixed;
+        z-index: 1000;
+        left: 0;
+        top: 0;
+        width: 100%;
+        height: 100%;
+        background-color: rgba(0,0,0,0.8);
+    }
+
+    .modal-content {
+        background-color: white;
+        margin: 5% auto;
+        padding: 30px;
+        border-radius: 10px;
+        width: 90%;
+        max-width: 800px;
+        max-height: 80vh;
+        overflow-y: auto;
+    }
+
+    .close {
+        color: #aaa;
+        float: right;
+        font-size: 28px;
+        font-weight: bold;
+        cursor: pointer;
+    }
+
+    .close:hover {
+        color: black;
+    }
+
+    .modal img {
+        max-width: 100%;
+        height: auto;
+        border-radius: 8px;
+        margin: 10px 0;
+    }
+
+    @media (max-width: 768px) {
+        .main-content {
+            grid-template-columns: 1fr;
+        }
+        
+        .medical-values-list {
+            grid-template-columns: 1fr;
+        }
+    }
+
+    .btn-save-custom {
+        background: linear-gradient(135deg, #28a745 0%, #218838 100%);
+        color: white;
+        border: none;
+        padding: 12px 20px;
+        border-radius: 8px;
+        font-weight: 700;
+        transition: all 0.3s ease;
+        box-shadow: 0 4px 12px rgba(40,167,69,0.25);
+        cursor: pointer;
+        white-space: nowrap;
+    }
+
+    .btn-save-custom:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 6px 16px rgba(40,167,69,0.35);
+        color: white;
+    }
+
+    .btn-save-custom:active {
+        transform: translateY(0);
+    }
+
+    .btn-delete-custom {
+        background: linear-gradient(135deg, #dc3545 0%, #c82333 100%);
+        color: white;
+        border: none;
+        padding: 12px 20px;
+        border-radius: 8px;
+        font-weight: 700;
+        transition: all 0.3s ease;
+        box-shadow: 0 4px 12px rgba(220,53,69,0.25);
+        cursor: pointer;
+        white-space: nowrap;
+    }
+
+    .btn-delete-custom:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 6px 16px rgba(220,53,69,0.35);
+        color: white;
+    }
+
+    .btn-delete-custom:active {
+        transform: translateY(0);
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="main-content">
+    <!-- 上傳區域 -->
+    <div class="upload-section">
+        <h2>📁 上傳影片</h2>
+        <form id="uploadForm" enctype="multipart/form-data">
+            <div class="form-group">
+                <label for="videoFile">選擇影片檔案：</label>
+                <input type="file" id="videoFile" name="video" accept="video/*" required>
+            </div>
+
+            <div class="form-group">
+                <label for="providerSelect">選擇模型廠商 (Provider)：</label>
+                <select id="providerSelect" name="provider" style="width: 100%; padding: 12px; border: 2px solid #e9ecef; border-radius: 8px; font-size: 16px;" onchange="updateModelOptions()">
+                    <option value="openrouter" selected>OpenRouter</option>
+                    <option value="local">地端模型 (Local)</option>
+                </select>
+            </div>
+
+            <div class="form-group">
+                <label for="modelSelect">選擇模型 (Model)：</label>
+                <select id="modelSelect" name="model" style="width: 100%; padding: 12px; border: 2px solid #e9ecef; border-radius: 8px; font-size: 16px;" required>
+                    <!-- 選項會由 JavaScript 動態生成 -->
+                </select>
+            </div>
+
+            <div class="form-group">
+                <label for="apiKeyInput">OpenRouter API Key（地端模型可留空）：</label>
+                <div style="display: flex; gap: 10px; align-items: center;">
+                    <input type="password" id="apiKeyInput" name="api_key" placeholder="sk-or-v1-..." style="flex: 1; padding: 12px; border: 2px solid #e9ecef; border-radius: 8px; font-size: 16px;">
+                    <button type="button" id="saveApiKeyBtn" class="btn-save-custom">💾 儲存</button>
+                    <button type="button" id="deleteApiKeyBtn" class="btn-delete-custom">🗑️ 刪除</button>
+                </div>
+            </div>
+
+            <button type="submit" class="btn" id="uploadBtn">
+                🚀 開始處理
+            </button>
+        </form>
+    </div>
+
+    <!-- 狀態區域 -->
+    <div class="status-section">
+        <h2>📊 處理狀態</h2>
+        <div id="statusMessages"></div>
+        <div id="statusContainer">
+            <p id="statusIdleText">等待上傳影片...</p>
+        </div>
+        
+        <div id="progressContainer" class="hidden">
+            <div class="progress-container">
+                <div class="progress-bar" id="progressBar"></div>
+            </div>
+            <div class="status-info" id="statusInfo">
+                <p id="currentVideo">目前影片: -</p>
+                <p id="currentFrame">目前時間: -</p>
+                <p id="progressText">進度: 0%</p>
+                <button class="btn btn-secondary" id="stopBtn">停止處理</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 醫療數值列表 -->
+<div class="medical-values-section hidden" id="medicalValuesSection">
+    <h2>🩺 醫療數值列表</h2>
+    <div class="medical-values-list" id="medicalValuesList">
+        <!-- 動態生成的醫療數值項目 -->
+    </div>
+</div>
+
+<!-- 模態視窗 -->
+<div id="imageModal" class="modal">
+    <div class="modal-content">
+        <span class="close">&times;</span>
+        <h2 id="modalTitle">畫面詳情</h2>
+        <div id="modalContent">
+            <!-- 動態內容 -->
+        </div>
+    </div>
+</div>
+
+<!-- 設備型號訂正模態視窗 -->
+<div id="modelModal" class="modal">
+    <div class="modal-content" style="max-width: 400px;">
+        <span class="close" onclick="closeModelModal()">&times;</span>
+        <h2 style="margin-bottom: 20px;">選擇設備型號</h2>
+        <div class="form-group" style="margin-bottom: 20px;">
+            <label for="modelSelect" style="display: block; margin-bottom: 10px; font-weight: 600;">請選擇正確的型號：</label>
+            <select id="modelSelect" style="width: 100%; padding: 12px; border-radius: 8px; border: 2px solid #e9ecef; font-size: 16px; background-color: white;">
+                <!-- 選項會由 JavaScript 動態生成 -->
+            </select>
+        </div>
+        <div style="display: flex; gap: 10px;">
+            <button onclick="saveModelCorrection()" class="btn" style="flex: 1;">確認訂正</button>
+            <button onclick="closeModelModal()" class="btn" style="flex: 1; background: #6c757d;">取消</button>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    let currentSessionId = null;
+    let pollingInterval = null;
+    let currentCorrectingAnalysisId = null;
+    let currentResults = []; // 儲存目前的結果列表
+    let lastResultsLength = 0;
+    const UPLOAD_SESSION_KEY = 'uploadSessionId';
+    const UPLOAD_STOPPED_KEY = 'uploadStopped';
+
+    // 定義各廠商的模型清單
+    const modelsByProvider = {
+        'openrouter': [
+            { value: 'openai/gpt-5.4', label: 'GPT-5.4' },
+            { value: 'openai/gpt-4o', label: 'GPT-4o' },
+            { value: 'google/gemini-3.1-flash-lite-preview', label: 'Gemini 3.1 Flash Lite Preview' },
+            { value: 'qwen/qwen3.5-397b-a17b', label: 'Qwen 3.5 397B' },
+            { value: 'google/gemini-2.0-flash-001', label: 'Gemini 2.0 Flash' },
+            { value: 'anthropic/claude-3.5-sonnet', label: 'Claude 3.5 Sonnet' },
+            { value: 'meta-llama/llama-3.2-90b-vision-instruct', label: 'Llama 3.2 90B Vision' }
+        ],
+        'local': [
+            { value: 'qwen3-vl-235b-a22b-instruct-1m_moe', label: 'Qwen3-VL 23.5B' },
+            { value: 'glm-4.6v', label: 'GLM-4.6V (Local)' }
+        ]
+    };
+
+    function updateApiKeyField() {
+        const provider = document.getElementById('providerSelect').value;
+        const apiKeyInput = document.getElementById('apiKeyInput');
+        if (provider === 'local') {
+            apiKeyInput.removeAttribute('required');
+            apiKeyInput.placeholder = '地端模型不需 API Key';
+        } else {
+            apiKeyInput.setAttribute('required', 'required');
+            apiKeyInput.placeholder = 'sk-or-v1-...（必填）';
+        }
+    }
+
+    function updateModelOptions() {
+        const provider = document.getElementById('providerSelect').value;
+        const modelSelect = document.getElementById('modelSelect');
+        modelSelect.innerHTML = ''; // 清空選項
+
+        if (modelsByProvider[provider]) {
+            modelsByProvider[provider].forEach(model => {
+                const option = document.createElement('option');
+                option.value = model.value;
+                option.textContent = model.label;
+                modelSelect.appendChild(option);
+            });
+        }
+        updateApiKeyField();
+    }
+
+    function saveUploadSession(sessionId) {
+        if (sessionId) {
+            sessionStorage.setItem(UPLOAD_SESSION_KEY, sessionId);
+        }
+    }
+
+    function clearUploadSession() {
+        sessionStorage.removeItem(UPLOAD_SESSION_KEY);
+    }
+
+    function markUploadStopped() {
+        sessionStorage.setItem(UPLOAD_STOPPED_KEY, '1');
+        clearUploadSession();
+    }
+
+    function clearUploadStopped() {
+        sessionStorage.removeItem(UPLOAD_STOPPED_KEY);
+    }
+
+    function isUploadStopped() {
+        return sessionStorage.getItem(UPLOAD_STOPPED_KEY) === '1';
+    }
+
+    function resetProcessingUI() {
+        setProcessingViewVisible(false);
+        document.getElementById('progressBar').style.width = '0%';
+        document.getElementById('currentVideo').textContent = '目前影片: -';
+        document.getElementById('currentFrame').textContent = '目前時間: -';
+        document.getElementById('progressText').textContent = '進度: 0%';
+        currentSessionId = null;
+        lastResultsLength = 0;
+    }
+
+    function setProcessingViewVisible(visible) {
+        const idleText = document.getElementById('statusIdleText');
+        const progressContainer = document.getElementById('progressContainer');
+        if (visible) {
+            idleText?.classList.add('hidden');
+            progressContainer.classList.remove('hidden');
+        } else {
+            idleText?.classList.remove('hidden');
+            progressContainer.classList.add('hidden');
+        }
+    }
+
+    function shouldRestoreUploadStatus(status) {
+        if (isUploadStopped()) {
+            return false;
+        }
+        if (!status.session_id) {
+            return false;
+        }
+        const storedSessionId = sessionStorage.getItem(UPLOAD_SESSION_KEY);
+        if (storedSessionId && storedSessionId !== status.session_id) {
+            return false;
+        }
+        if (status.is_processing) {
+            return true;
+        }
+        return status.progress_percentage === 100
+            && !status.error
+            && (status.results && status.results.length > 0);
+    }
+
+    async function pollStatusOnce() {
+        const response = await fetch('./status/');
+        const status = await response.json();
+        updateStatus(status);
+        return status;
+    }
+
+    async function restoreProcessingStateOnLoad() {
+        try {
+            const status = await pollStatusOnce();
+            if (!shouldRestoreUploadStatus(status)) {
+                return;
+            }
+
+            currentSessionId = status.session_id;
+            saveUploadSession(currentSessionId);
+            setProcessingViewVisible(true);
+            lastResultsLength = status.results ? status.results.length : 0;
+
+            if (status.results && status.results.length > 0) {
+                updateMedicalValuesFromStatus(status.results);
+            }
+
+            if (status.is_processing) {
+                showMessage('已恢復處理進度顯示', 'success');
+                startPolling();
+            } else if (status.error) {
+                showMessage('處理錯誤: ' + status.error, 'error');
+            } else if (status.warning) {
+                showMessage(status.warning, 'warning');
+            } else if (status.progress_percentage === 100) {
+                const stats = getLlmStatsFromStatus(status);
+                if (stats.failed > 0 && stats.success === 0) {
+                    showMessage(
+                        '影片處理完成，但 LLM 分析全部失敗：' + (stats.lastError || '請檢查 API Key'),
+                        'error'
+                    );
+                } else if (stats.failed > 0) {
+                    showMessage(
+                        `影片處理完成，但部分螢幕分析失敗（成功 ${stats.success}、失敗 ${stats.failed}）。` +
+                        (stats.lastError ? ' ' + stats.lastError : ''),
+                        'warning'
+                    );
+                } else {
+                    showMessage('影片處理完成！', 'success');
+                }
+            }
+        } catch (error) {
+            console.error('Failed to restore upload status:', error);
+        }
+    }
+
+    document.addEventListener('DOMContentLoaded', function() {
+        updateModelOptions();
+        restoreProcessingStateOnLoad();
+        
+        // 載入記住的 API Key
+        const apiKeyInput = document.getElementById('apiKeyInput');
+        const savedApiKey = localStorage.getItem('openrouter_api_key');
+
+        if (savedApiKey) {
+            if (apiKeyInput) apiKeyInput.value = savedApiKey;
+        }
+
+        // 儲存與刪除 API Key 按鈕事件
+        const saveApiKeyBtn = document.getElementById('saveApiKeyBtn');
+        const deleteApiKeyBtn = document.getElementById('deleteApiKeyBtn');
+
+        if (saveApiKeyBtn) {
+            saveApiKeyBtn.addEventListener('click', function() {
+                const apiKey = apiKeyInput.value.trim();
+                if (!apiKey) {
+                    showMessage('請先輸入 API Key 再進行儲存。', 'warning');
+                    return;
+                }
+                localStorage.setItem('openrouter_api_key', apiKey);
+                showMessage('API Key 已成功儲存！', 'success');
+            });
+        }
+
+        if (deleteApiKeyBtn) {
+            deleteApiKeyBtn.addEventListener('click', function() {
+                apiKeyInput.value = '';
+                localStorage.removeItem('openrouter_api_key');
+                showMessage('API Key 已成功刪除！', 'success');
+            });
+        }
+    });
+
+    // 表單提交處理
+    document.getElementById('uploadForm').addEventListener('submit', async function(e) {
+        e.preventDefault();
+        
+        const formData = new FormData();
+        const videoFile = document.getElementById('videoFile').files[0];
+        
+        // 獲取新欄位的值
+        const provider = document.getElementById('providerSelect').value;
+        const model = document.getElementById('modelSelect').value;
+        const apiKey = document.getElementById('apiKeyInput').value;
+        
+        if (!videoFile) {
+            showMessage('請選擇影片檔案', 'error');
+            return;
+        }
+
+        if (provider === 'openrouter' && !apiKey) {
+            showMessage('請輸入 OpenRouter API Key', 'error');
+            return;
+        }
+        
+        const frameInterval = 60;
+        formData.append('video', videoFile);
+        formData.append('frame_interval', frameInterval);
+        formData.append('provider', provider);
+        formData.append('model', model);
+        if (apiKey) {
+            formData.append('api_key', apiKey);
+        }
+        
+        try {
+            document.getElementById('uploadBtn').disabled = true;
+            document.getElementById('uploadBtn').textContent = '上傳中...';
+            
+            const response = await fetch('./upload/', {
+                method: 'POST',
+                body: formData
+            });
+            
+            const result = await response.json();
+            
+            if (result.success) {
+                currentSessionId = result.session_id;
+                lastResultsLength = 0;
+                clearUploadStopped();
+                saveUploadSession(currentSessionId);
+                setProcessingViewVisible(true);
+                showMessage(result.message, 'success');
+                startPolling();
+                await pollStatusOnce();
+            } else {
+                showMessage(result.error, 'error');
+            }
+        } catch (error) {
+            showMessage('上傳失敗: ' + error.message, 'error');
+        } finally {
+            document.getElementById('uploadBtn').disabled = false;
+            document.getElementById('uploadBtn').textContent = '🚀 開始處理';
+        }
+    });
+
+    // 開始狀態輪詢
+    function startPolling() {
+        if (pollingInterval) {
+            clearInterval(pollingInterval);
+        }
+        
+        pollStatusOnce().catch(error => console.error('Polling failed:', error));
+
+        pollingInterval = setInterval(function() {
+            pollStatusOnce().catch(error => console.error('Polling failed:', error));
+        }, 1000);
+    }
+
+    // 更新狀態顯示
+    function updateStatus(status) {
+        if (isUploadStopped()) {
+            return;
+        }
+
+        if (status.session_id) {
+            if (currentSessionId !== null && status.session_id !== currentSessionId) {
+                return;
+            }
+            currentSessionId = status.session_id;
+        } else if (currentSessionId !== null) {
+            return;
+        }
+        
+        document.getElementById('currentVideo').textContent = `目前影片: ${status.current_video || '-'}`;
+        const currentSeconds = status.current_minute || 0;
+        const minutes = Math.floor(currentSeconds / 60);
+        const seconds = currentSeconds % 60;
+        document.getElementById('currentFrame').textContent = `目前時間: ${minutes}:${seconds.toString().padStart(2, '0')}`;
+        document.getElementById('progressText').textContent = `進度: ${status.progress_percentage || 0}%`;
+        
+        const progressBar = document.getElementById('progressBar');
+        progressBar.style.width = `${status.progress_percentage || 0}%`;
+        
+        if (status.results && status.results.length > lastResultsLength) {
+            lastResultsLength = status.results.length;
+            updateMedicalValuesFromStatus(status.results);
+        }
+        
+        const llmStats = getLlmStatsFromStatus(status);
+        if (status.is_processing && llmStats.failed > 0 && llmStats.lastError) {
+            showMessage(
+                `LLM 分析發生錯誤（成功 ${llmStats.success}、失敗 ${llmStats.failed}）：${llmStats.lastError}`,
+                'warning'
+            );
+        }
+
+        if (status.error) {
+            showMessage('處理錯誤: ' + status.error, 'error');
+            clearUploadSession();
+            if (pollingInterval) {
+                clearInterval(pollingInterval);
+                pollingInterval = null;
+            }
+            return;
+        }
+        
+        if (!status.is_processing && status.progress_percentage === 100) {
+            if (status.warning) {
+                showMessage(status.warning, 'warning');
+            } else if (llmStats.failed > 0 && llmStats.success === 0) {
+                showMessage(
+                    '影片處理完成，但 LLM 分析全部失敗：' + (llmStats.lastError || '請檢查 API Key'),
+                    'error'
+                );
+            } else if (llmStats.failed > 0) {
+                showMessage(
+                    `影片處理完成，但部分螢幕分析失敗（成功 ${llmStats.success}、失敗 ${llmStats.failed}）。` +
+                    (llmStats.lastError ? ' ' + llmStats.lastError : ''),
+                    'warning'
+                );
+            } else {
+                showMessage('影片處理完成！', 'success');
+            }
+            clearUploadSession();
+            if (pollingInterval) {
+                clearInterval(pollingInterval);
+                pollingInterval = null;
+            }
+        }
+    }
+    
+    // 從狀態結果即時更新醫療數值
+    function updateMedicalValuesFromStatus(results) {
+        const medicalValuesList = [];
+        
+        results.forEach(frameResult => {
+            const timeSeconds = frameResult.time_seconds || frameResult.minute || 0;
+            frameResult.screen_analyses.forEach(screenAnalysis => {
+                if (screenAnalysis.analysis && screenAnalysis.analysis.success) {
+                    const resultData = screenAnalysis.analysis.result;
+                    const medicalValues = resultData.medical_values || {};
+                    
+                    if (Object.keys(medicalValues).length > 0) {
+                        medicalValuesList.push({
+                            time_seconds: timeSeconds,
+                            screen_number: screenAnalysis.screen_number,
+                            medical_values: medicalValues,
+                            frame_image_url: frameResult.frame_image_url,
+                            screen_image_url: screenAnalysis.screen_image_url || '',
+                            model: resultData.model || 'unknown'
+                        });
+                    }
+                }
+            });
+        });
+        
+        if (medicalValuesList.length > 0) {
+            displayMedicalValues(medicalValuesList);
+        }
+    }
+
+    // 顯示醫療數值
+    function displayMedicalValues(medicalValues) {
+        const container = document.getElementById('medicalValuesList');
+        const section = document.getElementById('medicalValuesSection');
+        
+        container.innerHTML = '';
+        currentResults = medicalValues; // 更新全域結果
+        
+        medicalValues.forEach((item, index) => {
+            const div = document.createElement('div');
+            div.className = 'medical-value-item';
+            div.onclick = (e) => {
+                // 如果點擊的是型號區域，不觸發模態視窗
+                if (e.target.closest('.model-selector')) return;
+                showImageModal(item);
+            };
+            
+            const valuesHtml = Object.entries(item.medical_values)
+                .map(([key, value]) => {
+                    const correctedValue = (item.corrected_medical_values || {})[key];
+                    const hasCorrection = correctedValue !== undefined && correctedValue !== null;
+                    
+                    return `
+                        <span>
+                            ${key}: 
+                            <span class="${hasCorrection ? 'original-text' : ''}">${value}</span>
+                            ${hasCorrection ? `<span class="corrected-text">${correctedValue}</span>` : ''}
+                        </span>`;
+                })
+                .join('');
+            
+            const screenImageHtml = item.screen_image_url ?
+                `<div class="screen-preview">
+                    <img src="${item.screen_image_url}" alt="螢幕圖片" style="max-width: 100%; height: auto; border-radius: 4px; margin: 10px 0;">
+                </div>` : '';
+            
+            const timeSeconds = item.time_seconds || item.minute || 0;
+            const minutes = Math.floor(timeSeconds / 60);
+            const seconds = timeSeconds % 60;
+            
+            const hasModelCorrection = item.corrected_model !== undefined && item.corrected_model !== null;
+            
+            div.innerHTML = `
+                <h3>時間 ${minutes}:${seconds.toString().padStart(2, '0')} - 螢幕 ${item.screen_number}</h3>
+                ${screenImageHtml}
+                <div class="values">${valuesHtml}</div>
+                <div class="model model-selector" onclick="promptModelCorrection('${item.id}', '${item.model}', event)" title="點擊訂正型號">
+                    設備型號: 
+                    <span class="${hasModelCorrection ? 'original-text' : ''}">${item.model}</span>
+                    ${hasModelCorrection ? `<span class="corrected-text">${item.corrected_model}</span>` : ''}
+                </div>
+            `;
+            
+            container.appendChild(div);
+        });
+        
+        section.classList.remove('hidden');
+    }
+
+    // 訂正型號
+    async function promptModelCorrection(analysisId, originalModel, event) {
+        if (event) event.stopPropagation();
+        currentCorrectingAnalysisId = analysisId;
+        
+        try {
+            const responseTemplates = await fetch('/api/templates');
+            const dataTemplates = await responseTemplates.json();
+            
+            if (!dataTemplates.success) throw new Error('獲取型號清單失敗');
+            
+            const select = document.getElementById('modelSelect');
+            select.innerHTML = '';
+            
+            dataTemplates.templates.forEach(templateFile => {
+                const modelName = templateFile.replace('.txt', '');
+                const option = document.createElement('option');
+                option.value = modelName;
+                option.textContent = modelName;
+                
+                const currentItem = currentResults.find(i => i.id === analysisId);
+                const currentModel = currentItem ? (currentItem.corrected_model || currentItem.model) : originalModel;
+                if (modelName === currentModel) option.selected = true;
+                select.appendChild(option);
+            });
+            
+            document.getElementById('modelModal').style.display = 'block';
+        } catch (error) {
+            alert('發生錯誤: ' + error.message);
+        }
+    }
+
+    // 關閉型號訂正視窗
+    function closeModelModal() {
+        document.getElementById('modelModal').style.display = 'none';
+        currentCorrectingAnalysisId = null;
+    }
+
+    // 儲存型號訂正
+    async function saveModelCorrection() {
+        if (!currentCorrectingAnalysisId) return;
+        
+        const selectedModel = document.getElementById('modelSelect').value;
+        
+        try {
+            const response = await fetch('./api/mongodb/correct_model/', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    analysis_id: currentCorrectingAnalysisId,
+                    model: selectedModel
+                })
+            });
+            
+            const data = await response.json();
+            if (data.success) {
+                const item = currentResults.find(i => i.id === currentCorrectingAnalysisId);
+                if (item) {
+                    item.corrected_model = selectedModel;
+                    displayMedicalValues(currentResults);
+                }
+                closeModelModal();
+            } else {
+                alert('型號訂正失敗: ' + data.error);
+            }
+        } catch (error) {
+            alert('發生錯誤: ' + error.message);
+        }
+    }
+
+    // 顯示圖片模態視窗
+    function showImageModal(item) {
+        const modal = document.getElementById('imageModal');
+        const modalTitle = document.getElementById('modalTitle');
+        const modalContent = document.getElementById('modalContent');
+        
+        const timeSeconds = item.time_seconds || item.minute || 0;
+        const minutes = Math.floor(timeSeconds / 60);
+        const seconds = timeSeconds % 60;
+        modalTitle.textContent = `時間 ${minutes}:${seconds.toString().padStart(2, '0')} - 螢幕 ${item.screen_number}`;
+        
+        const hasModelCorrection = item.corrected_model !== undefined && item.corrected_model !== null;
+        
+        const valuesHtml = Object.entries(item.medical_values)
+            .map(([key, value]) => {
+                const correctedValue = (item.corrected_medical_values || {})[key];
+                const hasCorrection = correctedValue !== undefined && correctedValue !== null;
+                return `
+                    <p>
+                        <strong>${key}:</strong> 
+                        <span class="${hasCorrection ? 'original-text' : ''}">${value}</span>
+                        ${hasCorrection ? `<span class="corrected-text">${correctedValue}</span>` : ''}
+                    </p>`;
+            })
+            .join('');
+        
+        modalContent.innerHTML = `
+            <h3>原始畫面：</h3>
+            <img src="${item.frame_image_url}" alt="原始畫面">
+            <h3>檢測到的螢幕：</h3>
+            <img src="${item.screen_image_url}" alt="螢幕畫面">
+            <h3>醫療數值：</h3>
+            ${valuesHtml}
+            <p><strong>設備型號:</strong> 
+                <span class="${hasModelCorrection ? 'original-text' : ''}">${item.model}</span>
+                ${hasModelCorrection ? `<span class="corrected-text">${item.corrected_model}</span>` : ''}
+            </p>
+        `;
+        
+        modal.style.display = 'block';
+    }
+
+    // 停止處理
+    document.getElementById('stopBtn').addEventListener('click', async function() {
+        try {
+            const response = await fetch('./stop/');
+            const result = await response.json();
+            if (pollingInterval) {
+                clearInterval(pollingInterval);
+                pollingInterval = null;
+            }
+            markUploadStopped();
+            resetProcessingUI();
+            showMessage(result.message, 'success');
+        } catch (error) {
+            showMessage('停止失敗: ' + error.message, 'error');
+        }
+    });
+
+    // 模態視窗關閉
+    document.querySelector('.close').addEventListener('click', function() {
+        document.getElementById('imageModal').style.display = 'none';
+    });
+
+    window.addEventListener('click', function(event) {
+        const modal = document.getElementById('imageModal');
+        if (event.target === modal) {
+            modal.style.display = 'none';
+        }
+    });
+
+    function scanResultsForLlmStats(results) {
+        let failed = 0;
+        let success = 0;
+        let lastError = null;
+        (results || []).forEach(frameResult => {
+            (frameResult.screen_analyses || []).forEach(screenAnalysis => {
+                const analysis = screenAnalysis.analysis || {};
+                if (analysis.success) {
+                    success += 1;
+                } else if (analysis && (analysis.error || analysis.success === false)) {
+                    failed += 1;
+                    if (analysis.error) {
+                        lastError = analysis.error;
+                    }
+                }
+            });
+        });
+        return { failed, success, lastError };
+    }
+
+    function getLlmStatsFromStatus(status) {
+        const hasServerCounts = status.llm_failed_count != null || status.llm_success_count != null;
+        if (hasServerCounts && (status.llm_failed_count > 0 || status.llm_success_count > 0)) {
+            return {
+                failed: status.llm_failed_count || 0,
+                success: status.llm_success_count || 0,
+                lastError: status.llm_last_error || null
+            };
+        }
+        return scanResultsForLlmStats(status.results);
+    }
+
+    // 顯示訊息（不覆寫進度區塊）
+    function showMessage(message, type) {
+        const container = document.getElementById('statusMessages');
+        const classMap = {
+            error: 'error-message',
+            success: 'success-message',
+            warning: 'warning-message',
+            info: 'info-message'
+        };
+        const className = classMap[type] || 'info-message';
+        container.innerHTML = `<div class="${className}">${message}</div>`;
+    }
+</script>
+{% endblock %}

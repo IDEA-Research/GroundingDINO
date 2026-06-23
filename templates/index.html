@@ -1,0 +1,833 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>影片螢幕數字抓取系統</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+        }
+
+        .header p {
+            font-size: 1.1em;
+            opacity: 0.9;
+        }
+
+        .main-content {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 30px;
+            padding: 30px;
+        }
+
+        .upload-section {
+            background: #f8f9fa;
+            border-radius: 10px;
+            padding: 30px;
+            border: 2px dashed #dee2e6;
+            transition: all 0.3s ease;
+        }
+
+        .upload-section:hover {
+            border-color: #4facfe;
+            background: #f0f8ff;
+        }
+
+        .upload-section h2 {
+            color: #333;
+            margin-bottom: 20px;
+            font-size: 1.5em;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: #555;
+        }
+
+        .form-group input[type="file"],
+        .form-group input[type="password"],
+        .form-group input[type="number"] {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #e9ecef;
+            border-radius: 8px;
+            font-size: 16px;
+            transition: border-color 0.3s ease;
+        }
+
+        .form-group input:focus {
+            outline: none;
+            border-color: #4facfe;
+            box-shadow: 0 0 0 3px rgba(79, 172, 254, 0.1);
+        }
+
+        .upload-btn {
+            background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+            color: white;
+            border: none;
+            padding: 15px 30px;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            width: 100%;
+        }
+
+        .upload-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(79, 172, 254, 0.3);
+        }
+
+        .upload-btn:disabled {
+            background: #6c757d;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+
+        .status-section {
+            background: #f8f9fa;
+            border-radius: 10px;
+            padding: 30px;
+        }
+
+        .status-section h2 {
+            color: #333;
+            margin-bottom: 20px;
+            font-size: 1.5em;
+        }
+
+        .progress-container {
+            background: #e9ecef;
+            border-radius: 10px;
+            height: 20px;
+            margin-bottom: 20px;
+            overflow: hidden;
+        }
+
+        .progress-bar {
+            background: linear-gradient(90deg, #4facfe 0%, #00f2fe 100%);
+            height: 100%;
+            width: 0%;
+            transition: width 0.3s ease;
+            border-radius: 10px;
+        }
+
+        .status-info {
+            background: white;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+            border-left: 4px solid #4facfe;
+        }
+
+        .status-info p {
+            margin-bottom: 10px;
+            color: #555;
+        }
+
+        .status-info p:last-child {
+            margin-bottom: 0;
+        }
+
+        .current-frame {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+
+        .current-frame img {
+            max-width: 100%;
+            height: auto;
+            border-radius: 8px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+        }
+
+        .medical-values-section {
+            grid-column: 1 / -1;
+            background: #f8f9fa;
+            border-radius: 10px;
+            padding: 30px;
+            margin-top: 20px;
+        }
+
+        .medical-values-section h2 {
+            color: #333;
+            margin-bottom: 20px;
+            font-size: 1.5em;
+        }
+
+        .medical-values-list {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+            gap: 20px;
+        }
+
+        .medical-value-item {
+            background: white;
+            border-radius: 8px;
+            padding: 20px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+            cursor: pointer;
+            transition: all 0.3s ease;
+            border: 2px solid transparent;
+        }
+
+        .medical-value-item:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 10px 25px rgba(0,0,0,0.15);
+            border-color: #4facfe;
+        }
+
+        .medical-value-item h3 {
+            color: #333;
+            margin-bottom: 10px;
+            font-size: 1.2em;
+        }
+
+        .medical-value-item .values {
+            margin-bottom: 10px;
+        }
+
+        .medical-value-item .values span {
+            display: inline-block;
+            background: #e3f2fd;
+            color: #1976d2;
+            padding: 4px 8px;
+            border-radius: 4px;
+            margin: 2px;
+            font-size: 0.9em;
+        }
+
+        .medical-value-item .model {
+            color: #666;
+            font-size: 0.9em;
+            font-style: italic;
+        }
+
+        .error-message {
+            background: #f8d7da;
+            color: #721c24;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            border: 1px solid #f5c6cb;
+        }
+
+        .success-message {
+            background: #d4edda;
+            color: #155724;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            border: 1px solid #c3e6cb;
+        }
+
+        .hidden {
+            display: none;
+        }
+
+        .stop-btn {
+            background: #dc3545;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            margin-left: 10px;
+        }
+
+        .stop-btn:hover {
+            background: #c82333;
+        }
+
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0,0,0,0.8);
+        }
+
+        .modal-content {
+            background-color: white;
+            margin: 5% auto;
+            padding: 30px;
+            border-radius: 10px;
+            width: 90%;
+            max-width: 800px;
+            max-height: 80vh;
+            overflow-y: auto;
+        }
+
+        .close {
+            color: #aaa;
+            float: right;
+            font-size: 28px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+
+        .close:hover {
+            color: black;
+        }
+
+        .modal img {
+            max-width: 100%;
+            height: auto;
+            border-radius: 8px;
+            margin: 10px 0;
+        }
+
+        @media (max-width: 768px) {
+            .main-content {
+                grid-template-columns: 1fr;
+            }
+            
+            .medical-values-list {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🏥 影片螢幕數字抓取系統</h1>
+            <p>使用 AI 技術自動識別醫療設備螢幕中的數值</p>
+            <div style="margin-top: 15px;">
+                <button onclick="toggleMongoDBView()" class="upload-btn" style="width: auto; padding: 10px 20px; font-size: 14px;">
+                    📊 查看 MongoDB 資料庫
+                </button>
+            </div>
+        </div>
+
+        <!-- MongoDB 資料查看區域 -->
+        <div id="mongoDBSection" class="hidden" style="background: white; padding: 30px; margin: 20px;">
+            <h2 style="color: #333; margin-bottom: 20px;">🗄️ MongoDB 資料庫內容</h2>
+            <div style="margin-bottom: 20px;">
+                <button onclick="loadMongoDBData()" class="upload-btn" style="width: auto; padding: 10px 20px; margin-right: 10px;">
+                    🔄 重新載入
+                </button>
+                <span id="mongoStatus" style="margin-left: 10px; color: #666;"></span>
+            </div>
+            <div id="mongoDBContent" style="background: #f8f9fa; padding: 20px; border-radius: 8px;">
+                <p>載入中...</p>
+            </div>
+        </div>
+
+        <div class="main-content">
+            <!-- 上傳區域 -->
+            <div class="upload-section">
+                <h2>📁 上傳影片</h2>
+                <form id="uploadForm" enctype="multipart/form-data">
+                    <div class="form-group">
+                        <label for="videoFile">選擇影片檔案：</label>
+                        <input type="file" id="videoFile" name="video" accept="video/*" required>
+                    </div>
+                    <button type="submit" class="upload-btn" id="uploadBtn">
+                        🚀 開始處理
+                    </button>
+                </form>
+            </div>
+
+            <!-- 狀態區域 -->
+            <div class="status-section">
+                <h2>📊 處理狀態</h2>
+                <div id="statusContainer">
+                    <p>等待上傳影片...</p>
+                </div>
+                
+                <div id="progressContainer" class="hidden">
+                    <div class="progress-container">
+                        <div class="progress-bar" id="progressBar"></div>
+                    </div>
+                    <div class="status-info" id="statusInfo">
+                        <p id="currentVideo">目前影片: -</p>
+                        <p id="currentFrame">目前分鐘: -</p>
+                        <p id="progressText">進度: 0%</p>
+                        <button class="stop-btn" id="stopBtn">停止處理</button>
+                    </div>
+                </div>
+
+                <div class="current-frame" id="currentFrameContainer" class="hidden">
+                    <h3>目前處理的畫面：</h3>
+                    <img id="currentFrameImage" src="" alt="目前畫面">
+                </div>
+            </div>
+        </div>
+
+        <!-- 醫療數值列表 -->
+        <div class="medical-values-section hidden" id="medicalValuesSection">
+            <h2>🩺 醫療數值列表</h2>
+            <div class="medical-values-list" id="medicalValuesList">
+                <!-- 動態生成的醫療數值項目 -->
+            </div>
+        </div>
+    </div>
+
+    <!-- 模態視窗 -->
+    <div id="imageModal" class="modal">
+        <div class="modal-content">
+            <span class="close">&times;</span>
+            <h2 id="modalTitle">畫面詳情</h2>
+            <div id="modalContent">
+                <!-- 動態內容 -->
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let currentSessionId = null;
+        let pollingInterval = null;
+
+        // 表單提交處理
+        document.getElementById('uploadForm').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            
+            const formData = new FormData();
+            const videoFile = document.getElementById('videoFile').files[0];
+            
+            if (!videoFile) {
+                showMessage('請選擇影片檔案', 'error');
+                return;
+            }
+            
+            const frameInterval = 60;
+            formData.append('video', videoFile);
+            formData.append('frame_interval', frameInterval);
+            
+            try {
+                document.getElementById('uploadBtn').disabled = true;
+                document.getElementById('uploadBtn').textContent = '上傳中...';
+                
+                const response = await fetch('./upload/', {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    currentSessionId = result.session_id;
+                    showMessage(result.message, 'success');
+                    startPolling();
+                    document.getElementById('progressContainer').classList.remove('hidden');
+                } else {
+                    showMessage(result.error, 'error');
+                }
+            } catch (error) {
+                showMessage('上傳失敗: ' + error.message, 'error');
+            } finally {
+                document.getElementById('uploadBtn').disabled = false;
+                document.getElementById('uploadBtn').textContent = '🚀 開始處理';
+            }
+        });
+
+        // 開始狀態輪詢
+        function startPolling() {
+            if (pollingInterval) {
+                clearInterval(pollingInterval);
+            }
+            
+            // 使用 setInterval 進行輪詢
+            pollingInterval = setInterval(async function() {
+                try {
+                    const response = await fetch('./status/');
+                    const status = await response.json();
+                    updateStatus(status);
+                } catch (error) {
+                    console.error('Polling failed:', error);
+                }
+            }, 1000); // 每秒輪詢一次
+        }
+
+        // 更新狀態顯示
+        let lastResultsLength = 0;
+        function updateStatus(status) {
+            if (status.session_id !== currentSessionId && currentSessionId !== null) {
+                return; // 不是當前 session 的狀態更新
+            }
+            
+            document.getElementById('currentVideo').textContent = `目前影片: ${status.current_video || '-'}`;
+            const currentSeconds = status.current_minute || 0;
+            const minutes = Math.floor(currentSeconds / 60);
+            const seconds = currentSeconds % 60;
+            document.getElementById('currentFrame').textContent = `目前時間: ${minutes}:${seconds.toString().padStart(2, '0')}`;
+            document.getElementById('progressText').textContent = `進度: ${status.progress_percentage || 0}%`;
+            
+            const progressBar = document.getElementById('progressBar');
+            progressBar.style.width = `${status.progress_percentage || 0}%`;
+            
+            // 檢查結果是否有變化
+            if (status.results && status.results.length > lastResultsLength) {
+                lastResultsLength = status.results.length;
+                // 即時更新醫療數值列表
+                updateMedicalValuesFromStatus(status.results);
+            }
+            
+            if (status.error) {
+                showMessage('處理錯誤: ' + status.error, 'error');
+                if (pollingInterval) {
+                    clearInterval(pollingInterval);
+                }
+            }
+            
+            if (!status.is_processing && status.progress_percentage === 100) {
+                showMessage('影片處理完成！', 'success');
+                //loadMedicalValues();
+                if (pollingInterval) {
+                    clearInterval(pollingInterval);
+                }
+            }
+        }
+        
+        // 從狀態結果即時更新醫療數值
+        function updateMedicalValuesFromStatus(results) {
+            const medicalValuesList = [];
+            
+            results.forEach(frameResult => {
+                const timeSeconds = frameResult.time_seconds || frameResult.minute || 0;
+                frameResult.screen_analyses.forEach(screenAnalysis => {
+                    if (screenAnalysis.analysis && screenAnalysis.analysis.success) {
+                        const resultData = screenAnalysis.analysis.result;
+                        let medicalValues = {};
+                        
+                        // 嘗試解析 JSON 格式的描述
+                        if (resultData.description && resultData.description.includes('{')) {
+                            try {
+                                const jsonMatch = resultData.description.match(/```json\s*(\{[\s\S]*?\})\s*```/);
+                                if (jsonMatch) {
+                                    const parsedData = JSON.parse(jsonMatch[1]);
+                                    medicalValues = parsedData.medical_values || {};
+                                }
+                            } catch (e) {
+                                // 如果解析失敗，使用原始的 medical_values
+                                medicalValues = resultData.medical_values || {};
+                            }
+                        } else {
+                            medicalValues = resultData.medical_values || {};
+                        }
+                        
+                        if (Object.keys(medicalValues).length > 0) {
+                            medicalValuesList.push({
+                                time_seconds: timeSeconds,
+                                screen_number: screenAnalysis.screen_number,
+                                medical_values: medicalValues,
+                                frame_image_url: frameResult.frame_image_url,
+                                screen_image_url: screenAnalysis.screen_image_url || '',
+                                model: resultData.model || 'unknown'
+                            });
+                        }
+                    }
+                });
+            });
+            
+            if (medicalValuesList.length > 0) {
+                displayMedicalValues(medicalValuesList);
+            }
+        }
+
+        // 載入醫療數值
+        async function loadMedicalValues() {
+            if (!currentSessionId) return;
+            
+            try {
+                const response = await fetch(`./medical_values/${currentSessionId}/`);
+                const medicalValues = await response.json();
+                
+                if (response.ok) {
+                    displayMedicalValues(medicalValues);
+                }
+            } catch (error) {
+                console.error('載入醫療數值失敗:', error);
+            }
+        }
+
+        // 顯示醫療數值
+        function displayMedicalValues(medicalValues) {
+            const container = document.getElementById('medicalValuesList');
+            const section = document.getElementById('medicalValuesSection');
+            
+            container.innerHTML = '';
+            
+            medicalValues.forEach((item, index) => {
+                const div = document.createElement('div');
+                div.className = 'medical-value-item';
+                div.onclick = () => showImageModal(item);
+                
+                const valuesHtml = Object.entries(item.medical_values)
+                    .map(([key, value]) => `<span>${key}: ${value}</span>`)
+                    .join('');
+                
+                // 添加螢幕圖片顯示
+                const screenImageHtml = item.screen_image_url ?
+                    `<div class="screen-preview">
+                        <img src="${item.screen_image_url}" alt="螢幕圖片" style="max-width: 100%; height: auto; border-radius: 4px; margin: 10px 0;">
+                    </div>` : '';
+                
+                const timeSeconds = item.time_seconds || item.minute || 0;
+                const minutes = Math.floor(timeSeconds / 60);
+                const seconds = timeSeconds % 60;
+                
+                div.innerHTML = `
+                    <h3>時間 ${minutes}:${seconds.toString().padStart(2, '0')} - 螢幕 ${item.screen_number}</h3>
+                    ${screenImageHtml}
+                    <div class="values">${valuesHtml}</div>
+                    <div class="model">設備型號: ${item.model}</div>
+                `;
+                
+                container.appendChild(div);
+            });
+            
+            section.classList.remove('hidden');
+        }
+
+        // 顯示圖片模態視窗
+        function showImageModal(item) {
+            const modal = document.getElementById('imageModal');
+            const modalTitle = document.getElementById('modalTitle');
+            const modalContent = document.getElementById('modalContent');
+            
+            const timeSeconds = item.time_seconds || item.minute || 0;
+            const minutes = Math.floor(timeSeconds / 60);
+            const seconds = timeSeconds % 60;
+            modalTitle.textContent = `時間 ${minutes}:${seconds.toString().padStart(2, '0')} - 螢幕 ${item.screen_number}`;
+            
+            const valuesHtml = Object.entries(item.medical_values)
+                .map(([key, value]) => `<p><strong>${key}:</strong> ${value}</p>`)
+                .join('');
+            
+            modalContent.innerHTML = `
+                <h3>原始畫面：</h3>
+                <img src="${item.frame_image_url}" alt="原始畫面">
+                <h3>檢測到的螢幕：</h3>
+                <img src="${item.screen_image_url}" alt="螢幕畫面">
+                <h3>醫療數值：</h3>
+                ${valuesHtml}
+                <p><strong>設備型號:</strong> ${item.model}</p>
+            `;
+            
+            modal.style.display = 'block';
+        }
+
+        // 停止處理
+        document.getElementById('stopBtn').addEventListener('click', async function() {
+            try {
+                const response = await fetch('./stop/');
+                const result = await response.json();
+                showMessage(result.message, 'success');
+                if (eventSource) {
+                    eventSource.close();
+                }
+            } catch (error) {
+                showMessage('停止失敗: ' + error.message, 'error');
+            }
+        });
+
+        // 模態視窗關閉
+        document.querySelector('.close').addEventListener('click', function() {
+            document.getElementById('imageModal').style.display = 'none';
+        });
+
+        window.addEventListener('click', function(event) {
+            const modal = document.getElementById('imageModal');
+            if (event.target === modal) {
+                modal.style.display = 'none';
+            }
+        });
+
+        // 顯示訊息
+        function showMessage(message, type) {
+            const container = document.getElementById('statusContainer');
+            const className = type === 'error' ? 'error-message' : 'success-message';
+            container.innerHTML = `<div class="${className}">${message}</div>`;
+        }
+
+        // 切換 MongoDB 視圖
+        function toggleMongoDBView() {
+            const section = document.getElementById('mongoDBSection');
+            if (section.classList.contains('hidden')) {
+                section.classList.remove('hidden');
+                loadMongoDBData();
+            } else {
+                section.classList.add('hidden');
+            }
+        }
+
+        // 載入 MongoDB 資料
+        async function loadMongoDBData() {
+            const contentDiv = document.getElementById('mongoDBContent');
+            const statusSpan = document.getElementById('mongoStatus');
+            
+            try {
+                statusSpan.textContent = '載入中...';
+                contentDiv.innerHTML = '<p style="text-align: center; color: #666;">⏳ 正在讀取 MongoDB 資料...</p>';
+                
+                // 檢查 MongoDB 狀態
+                const statusResponse = await fetch('./api/mongodb/status');
+                const statusData = await statusResponse.json();
+                
+                if (!statusData.mongodb_connected) {
+                    contentDiv.innerHTML = '<p style="color: #dc3545;">❌ MongoDB 未連接</p>';
+                    statusSpan.textContent = '未連接';
+                    return;
+                }
+                
+                // 載入所有影片記錄
+                const videosResponse = await fetch('./api/mongodb/videos');
+                const videosData = await videosResponse.json();
+                
+                if (!videosData.success) {
+                    contentDiv.innerHTML = `<p style="color: #dc3545;">❌ 載入失敗: ${videosData.error}</p>`;
+                    statusSpan.textContent = '載入失敗';
+                    return;
+                }
+                
+                statusSpan.textContent = `已連接 - 共 ${videosData.count} 筆記錄`;
+                displayMongoDBVideos(videosData.data);
+                
+            } catch (error) {
+                contentDiv.innerHTML = `<p style="color: #dc3545;">❌ 錯誤: ${error.message}</p>`;
+                statusSpan.textContent = '錯誤';
+            }
+        }
+
+        // 顯示 MongoDB 影片記錄
+        function displayMongoDBVideos(videos) {
+            const contentDiv = document.getElementById('mongoDBContent');
+            
+            if (videos.length === 0) {
+                contentDiv.innerHTML = '<p style="text-align: center; color: #666;">📭 資料庫中沒有記錄</p>';
+                return;
+            }
+            
+            let html = '<div style="display: grid; gap: 20px;">';
+            
+            videos.forEach((video, index) => {
+                const timestamp = video.timestamp ? new Date(video.timestamp).toLocaleString('zh-TW') : '未知';
+                const statusColor = video.status === 'completed' ? '#28a745' : '#ffc107';
+                const statusText = video.status === 'completed' ? '✅ 已完成' : '⏳ 處理中';
+                
+                html += `
+                    <div style="background: white; border: 2px solid #e9ecef; border-radius: 8px; padding: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+                        <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 15px;">
+                            <div>
+                                <h3 style="color: #333; margin: 0 0 10px 0; font-size: 1.2em;">
+                                    📹 ${video.video_name || '未命名影片'}
+                                </h3>
+                                <p style="color: #666; margin: 5px 0; font-size: 0.9em;">
+                                    🆔 Session ID: <code style="background: #f0f0f0; padding: 2px 6px; border-radius: 3px; font-size: 0.85em;">${video.session_id}</code>
+                                </p>
+                            </div>
+                            <div style="background: ${statusColor}; color: white; padding: 5px 12px; border-radius: 15px; font-size: 0.9em; white-space: nowrap;">
+                                ${statusText}
+                            </div>
+                        </div>
+                        
+                        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-top: 15px;">
+                            <div style="background: #f8f9fa; padding: 10px; border-radius: 5px;">
+                                <div style="color: #666; font-size: 0.85em; margin-bottom: 5px;">📂 檔案路徑</div>
+                                <div style="color: #333; font-size: 0.9em; word-break: break-all;">${video.video_path || '-'}</div>
+                            </div>
+                            <div style="background: #f8f9fa; padding: 10px; border-radius: 5px;">
+                                <div style="color: #666; font-size: 0.85em; margin-bottom: 5px;">⏰ 處理時間</div>
+                                <div style="color: #333; font-size: 0.9em;">${timestamp}</div>
+                            </div>
+                            <div style="background: #f8f9fa; padding: 10px; border-radius: 5px;">
+                                <div style="color: #666; font-size: 0.85em; margin-bottom: 5px;">🎞️ 總幀數</div>
+                                <div style="color: #333; font-size: 0.9em; font-weight: bold;">${video.total_frames || 0}</div>
+                            </div>
+                        </div>
+                        
+                        <div style="margin-top: 15px; display: flex; gap: 10px;">
+                            <button onclick="viewMongoDBDetails('${video.session_id}')"
+                                    style="background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%); color: white; border: none; padding: 8px 16px; border-radius: 5px; cursor: pointer; font-size: 0.9em;">
+                                📊 查看詳細資料
+                            </button>
+                        </div>
+                    </div>
+                `;
+            });
+            
+            html += '</div>';
+            contentDiv.innerHTML = html;
+        }
+
+        // 查看 MongoDB 詳細資料
+        async function viewMongoDBDetails(sessionId) {
+            try {
+                const response = await fetch(`./api/mongodb/medical_values/${sessionId}`);
+                const data = await response.json();
+                
+                if (!data.success) {
+                    alert('載入失敗: ' + data.error);
+                    return;
+                }
+                
+                // 使用現有的顯示函數
+                if (data.data && data.data.length > 0) {
+                    // 轉換資料格式以符合現有的顯示函數
+                    const formattedData = data.data.map(item => ({
+                        time_seconds: item.minute,
+                        screen_number: item.screen_number,
+                        medical_values: item.medical_values,
+                        frame_image_url: item.original_image_url || '',
+                        screen_image_url: item.screen_image_url || '',
+                        model: item.model
+                    }));
+                    
+                    displayMedicalValues(formattedData);
+                    
+                    // 滾動到醫療數值區域
+                    document.getElementById('medicalValuesSection').scrollIntoView({ behavior: 'smooth' });
+                } else {
+                    alert('此影片沒有檢測到醫療數值');
+                }
+            } catch (error) {
+                alert('載入詳細資料失敗: ' + error.message);
+            }
+        }
+    </script>
+</body>
+</html>

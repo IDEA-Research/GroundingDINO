@@ -1,0 +1,37 @@
+name: goreleaser
+
+on:
+  push:
+    # run only against tags
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  goreleaser:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Go
+        uses: actions/setup-go@4dc6199c7b1a012772edbd06daecab0f50c9053c # v6.1.0
+        with:
+          go-version: stable
+          # Do not use any caches when creating a release.
+          cache: false
+
+      - name: Run GoReleaser
+        uses: goreleaser/goreleaser-action@d31d51ab5501a8d6d0f08c7a080136a1d0adb7a3
+        with:
+          distribution: goreleaser
+          # 'latest', 'nightly', or a semver
+          version: "~> v2"
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

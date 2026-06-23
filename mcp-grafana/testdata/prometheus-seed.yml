@@ -1,0 +1,41 @@
+groups:
+  - name: seed
+    interval: 10s
+    rules:
+      # Recording rule
+      - record: test
+        expr: vector(1)
+
+      # Alerting rules for testing datasource-managed alerts
+      - alert: PrometheusTestAlertFiring
+        expr: vector(1) > 0
+        for: 0s
+        labels:
+          severity: warning
+          environment: test
+          source: prometheus
+        annotations:
+          summary: "Test alert that should always be firing"
+          description: "This is a test alert managed by Prometheus ruler"
+
+      - alert: PrometheusTestAlertNormal
+        expr: vector(0) > 0
+        for: 0s
+        labels:
+          severity: info
+          environment: test
+          source: prometheus
+        annotations:
+          summary: "Test alert that should be normal"
+          description: "This alert should not fire"
+
+      - alert: PrometheusTestAlertCritical
+        expr: up == 1
+        for: 1m
+        labels:
+          severity: critical
+          environment: test
+          source: prometheus
+        annotations:
+          summary: "Critical test alert based on up metric"
+          description: "Tests filtering and label matching"

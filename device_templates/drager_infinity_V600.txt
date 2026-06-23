@@ -1,0 +1,38 @@
+Device: Dräger Evita V600
+
+[Visual Identification]
+Before extracting data, confirm the device model and structural layout based on the following features:
+
+--- IF Model is "DRAGER_V600" (Dräger Evita V600) ---
+- Chassis Color: Detect if the device has a White or Off-White (Cream) outer frame.
+- Text Anchor: Search for the specific string "V600" located directly below the screen/frame.
+- Condition: Proceed to data extraction ONLY IF both the white frame and "V600" identifier are confirmed.
+- Structure: Verify that the screen has a distinct Rectangular Numeric Panel on the RIGHT SIDE.
+- Key Feature: The interface combines a digital panel on the right with Circular Soft-Keys at the bottom.
+- Anchor: Only extract values from this specific 2x4 grid on the right side.
+
+[Visibility & Fallback Rules] 
+1. No Negative Values (CRITICAL): All extracted numerical values MUST be positive (>= 0). If negative, trigger re-analysis to check. If still invalid after re-analysis, return `null`. 
+2. Glare & Obstruction: If a number is unreadable due to glare or physical obstruction, return `null`. 
+3. Empty Values: If a value is "OFF", "Off", "--", or blank, return `null`.
+4. Strict Sanity Limits & Misidentification Prevention:
+   If an extracted value falls outside these absolute limits, trigger re-analysis of the specific cell or block to correct potential misalignment. If the value is still invalid after re-analysis, you MUST return `null`.
+   - PIP: Absolute Limit 0 to 120. (If > 120, e.g., 200, trigger re-analysis to check if it was misextracted Tidal Volume/VT).
+   - PEEP: Absolute Limit 0 to 50. (If > 50, trigger re-analysis to check if it was misextracted, an alarm limit, or PIP).
+   - MAP: Absolute Limit 0 to 80. (If > 80 and/or unit is "mmHg", trigger re-analysis to check if it was misextracted Blood Pressure MAP from a patient monitor).
+   - FiO2: Absolute Limit 21 to 100. (Lowest is room air at 21%. If < 21 or > 100, trigger re-analysis. If it was misextracted in decimal format (e.g., 0.21 - 1.00), convert to integers (21 - 100) before applying limits.
+
+[Extraction Rules]
+Extract the following ventilator parameters strictly following the Spatial Navigation rules for the specific model.
+
+--- IF Model is "DRAGER_V600" ---
+Focus ONLY on the rectangular numeric grid on the right side. It consists of exactly 8 CELLS (2 Columns x 4 Rows). Strictly follow these cross-referenced locations:
+
+1. pmean (MAP): Look strictly at the 2nd Row, Left Cell. Located directly BELOW the top-left cell. Label check: "Pmean" or "MAP".
+2. pip: Look strictly at the 2nd Row, Right Cell. Located directly to the RIGHT of pmean. Label check: "Ppeak" or "PIP".
+3. fio2: Look strictly at the 3rd Row. Located directly BELOW the pmean and pip row. Label check: "FiO2" or "O2".
+4. peep: Look at the circular buttons at the very bottom, PEEP is the numeric value inside the circular control knob at the bottom row, second from the right, labeled "PEEP".
+
+[CRITICAL PHYSIOLOGICAL LOGIC CHECK]
+Before finalizing the output, you MUST verify: PIP > MAP > PEEP.
+If the extracted numbers violate this rule, TRIGGER RE-ANALYSIS to correct extraction misalignment. If they still violate the rule after re-analysis, set the conflicting keys to `null`.

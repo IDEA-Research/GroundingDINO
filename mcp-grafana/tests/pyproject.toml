@@ -1,0 +1,29 @@
+[project]
+name = "tests"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+authors = [
+    { name = "Ben Sully", email = "ben.sully@grafana.com" },
+    { name = "Ioanna Armouti", email = "ioanna.armouti@grafana.com" },
+    { name = "Chris Marchbanks", email = "chris.marchbanks@grafana.com" },
+]
+requires-python = ">=3.13"
+dependencies = []
+
+[dependency-groups]
+dev = [
+    "anyio>=4.9.0",
+    "flaky>=3.8.1",
+    "langevals[langevals]>=0.1.8",
+    "litellm>=1.63.12",
+    "mcp>=1.9.3",
+    "pytest>=8.3.5",
+    "python-dotenv>=1.0.0",
+]
+
+[tool.pytest.ini_options]
+
+[tool.uv.sources]
+# Until https://github.com/langwatch/langevals/issues/20.
+langevals = { git = "https://github.com/langwatch/langevals", rev = "3a934d1dc4ea95f039cf7bc4969e6bad1543c719" }

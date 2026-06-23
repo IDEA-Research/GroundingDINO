@@ -1,0 +1,36 @@
+Device: SERVO-U Ventilator
+
+[Visual Identification]
+Before extracting data, confirm the device model and structural layout based on the following features:
+
+--- IF Model is "SERVO-U” ---
+- Detect if the device physical casing features a White frame.
+- Structure: Verify that the screen has a distinct Rectangular Numeric Panel on the RIGHT SIDE.
+- Key Feature: The interface combines a digital panel on the right.
+- Anchor: Only extract values from this specific 2x4 grid on the right side.
+
+[Visibility & Fallback Rules] 
+1. No Negative Values (CRITICAL): All extracted numerical values MUST be positive (>= 0). If negative, trigger re-analysis to check. If still invalid after re-analysis, return `null`. 
+2. Glare & Obstruction: If a number is unreadable due to glare or physical obstruction, return `null`. 
+3. Empty Values: If a value is "OFF", "Off", "--", or blank, return `null`.
+4. Strict Sanity Limits & Misidentification Prevention:
+   If an extracted value falls outside these absolute limits, trigger re-analysis of the specific cell or block to correct potential misalignment. If the value is still invalid after re-analysis, you MUST return `null`.
+   - PIP: Absolute Limit 0 to 120. (If > 120, e.g., 200, trigger re-analysis to check if it was misextracted Tidal Volume/VT).
+   - PEEP: Absolute Limit 0 to 50. (If > 50, trigger re-analysis to check if it was misextracted, an alarm limit, or PIP).
+   - MAP: Absolute Limit 0 to 80. (If > 80 and/or unit is "mmHg", trigger re-analysis to check if it was misextracted Blood Pressure MAP from a patient monitor).
+   - FiO2: Absolute Limit 21 to 100. (Lowest is room air at 21%. If < 21 or > 100, trigger re-analysis. If it was misextracted in decimal format (e.g., 0.21 - 1.00), convert to integers (21 - 100) before applying limits.
+
+[Extraction Rules]
+Extract the following ventilator parameters strictly following the Spatial Navigation rules for the specific model.
+
+--- IF Model is "SERVO-U" ---
+Focus ONLY on the rectangular numeric grid on the top right side of the screen. Strictly follow these cross-referenced locations from top to bottom:
+
+pip: Look strictly at the 1st Row, Left Cell. Label check: "Ppeak".
+map: Look strictly at the 1st Row, Right Cell. Label check: "Pmean".
+peep: Look strictly at the 2nd Row, Right Cell. Located directly BELOW Pmean. Label check: "PEEP".
+fio2: Look strictly at the 4th Row, Right Cell. Located at the bottom of the right column. Label check: "O2 conc." or "O2".
+
+[CRITICAL PHYSIOLOGICAL LOGIC CHECK]
+Before finalizing the output, you MUST verify: PIP > MAP > PEEP.
+If the extracted numbers violate this rule, trigger re-analysis to correct extraction misalignment. If they still violate the rule after re-analysis, set the conflicting keys to `null`.

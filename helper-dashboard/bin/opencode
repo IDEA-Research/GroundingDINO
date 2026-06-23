@@ -1,0 +1,1852 @@
+#!/usr/bin/env python3
+"""Helper Dashboard OpenCode CLI.
+
+Implements the subprocess protocol that backend/app/helper/runtime.py
+expects in `opencode` mode:
+
+    stdin:  {"operation": str, "agent": str, "args": {...}}
+    stdout: a single JSON object with a "type" field that is valid
+            for `EXPECTED_OUTPUT_TYPES[operation]`.
+    exit 0 on success, non-zero on any error.
+
+Provider dispatch:
+- OPENCODE_LLM_PROVIDER=openrouter (default): POST to openrouter.ai
+  with the agent's `.md` prompt as system message and the stdin args
+  as the user message.
+- OPENCODE_LLM_PROVIDER=heuristic: deterministic rules identical to
+  MockHelperRuntime. Useful for CI and local dev without a key.
+
+Models:
+- OPENCODE_HELPER_MODEL (default moonshotai/kimi-k2-thinking) for
+  user-facing Helper agents.
+- OPENCODE_BIG_GUY_MODEL (default moonshotai/kimi-k2-thinking) for
+  big-guy-developer-agent in both rescue_review and developer_fix.
+
+Safety: This is a one-shot subprocess. The LLM never gets tool access
+from this CLI. The only way anything happens is via JSON on stdout.
+"""
+
+from __future__ import annotations
+
+import json
+import os
+import re
+import signal as _signal
+import ssl
+import sys
+import time
+import traceback
+import urllib.error
+import urllib.request
+import uuid
+from pathlib import Path
+from typing import Any
+
+
+# -------------------------------------------------------------------------
+# Signal diagnostics. If something kills this process, log to stderr
+# (which the runtime captures) so tickets contain the cause.
+# -------------------------------------------------------------------------
+
+_START_TS = time.monotonic()
+
+
+def _on_signal(signum, frame):
+    name = None
+    try:
+        name = _signal.Signals(signum).name
+    except Exception:
+        name = f"signal {signum}"
+    elapsed = time.monotonic() - _START_TS
+    sys.stderr.write(
+        f"[opencode] received {name} after {elapsed:.1f}s  pid={os.getpid()}  "
+        f"ppid={os.getppid()}\n"
+    )
+    sys.stderr.flush()
+    # Re-raise the default handler so we exit with the signal.
+    _signal.signal(signum, _signal.SIG_DFL)
+    os.kill(os.getpid(), signum)
+
+
+for _sig in (_signal.SIGTERM, _signal.SIGINT, _signal.SIGHUP, _signal.SIGQUIT):
+    try:
+        _signal.signal(_sig, _on_signal)
+    except Exception:
+        pass
+
+
+_SELF = Path(__file__).resolve()
+# bin/opencode -> helper-dashboard/
+_ROOT = _SELF.parent.parent
+_AGENTS_DIR = _ROOT / ".opencode" / "agent"
+
+
+# ---------------------------------------------------------------------------
+# Optional: import the widget / envelope schema doc generators from the
+# backend. These produce the markdown blocks we append to LLM system
+# prompts so the model has the authoritative widget field shapes and
+# envelope schemas without re-deriving them from prompts (Fix 4 + A).
+#
+# The import is best-effort: bin/opencode runs as a standalone script and
+# may be invoked before backend/ is on sys.path (e.g. inside CI for a
+# CLI smoke test). On import failure we silently fall back to no
+# injection — the agent prompts still work, just without the extra
+# schema docs.
+# ---------------------------------------------------------------------------
+
+try:
+    sys.path.insert(0, str(_ROOT / "backend"))
+    from app.specs.widget_schema_doc import (  # type: ignore[import-not-found]
+        render_envelope_schemas_markdown,
+        render_widget_schema_markdown,
+    )
+    _SCHEMA_DOCS_AVAILABLE = True
+except Exception as _schema_import_exc:  # pragma: no cover - optional
+    _SCHEMA_DOCS_AVAILABLE = False
+
+    def render_widget_schema_markdown() -> str:  # type: ignore[no-redef]
+        return ""
+
+    def render_envelope_schemas_markdown(operation: str) -> str:  # type: ignore[no-redef]
+        return ""
+
+# Operations whose system prompt should carry the widget-toolkit schema.
+# These are the ones that author or evaluate widget content. Other
+# operations (user_message classifier, developer_fix) don't need it.
+_SCHEMA_AWARE_OPERATIONS: set[str] = {
+    "generate_dashboard",
+    "patch_dashboard",
+    "review_rendered",
+    "rescue_review",
+    "evaluate_dashboard",
+}
+
+
+# ---------------------------------------------------------------------------
+# Agent -> expected output contract (mirrors runtime.EXPECTED_OUTPUT_TYPES
+# but keyed by operation).
+# ---------------------------------------------------------------------------
+
+EXPECTED_TYPES: dict[str, set[str]] = {
+    "user_message": {
+        "UserResponse", "DashboardIntent", "PatchIntent",
+        "PrometheusIntent", "ClarificationRequest", "DeveloperTicket",
+    },
+    "generate_dashboard": {"DashboardSpec", "DeveloperTicket"},
+    "patch_dashboard": {"PatchSpec", "DeveloperTicket"},
+    "prometheus_query": {"PrometheusQueryReport", "DeveloperTicket"},
+    "evaluate_dashboard": {
+        "BrowserEvaluationReport", "BugReport", "PatchSpec",
+        "DeveloperTicket",
+    },
+    "review_rendered": {"ReviewDecision"},
+    "rescue_review": {"RescueDecision"},
+    "rescue_extend": {"DeveloperReport"},
+    "developer_fix": {"DeveloperReport"},
+}
+
+BIG_GUY_OPERATIONS = {"rescue_review", "rescue_extend", "developer_fix"}
+
+# Operations that require tool-using mode (LLM may call read_file,
+# write_file, replace_in_file, run_command, done). All other operations
+# stay in JSON-only mode. Currently the only one — see __TOOL_USE__
+# section near the bottom of this file for the full machinery.
+TOOL_USE_OPERATIONS = {"rescue_extend"}
+
+
+# ---------------------------------------------------------------------------
+# Entry point
+# ---------------------------------------------------------------------------
+
+def main() -> int:
+    try:
+        payload = json.loads(sys.stdin.read())
+    except Exception as exc:
+        _err(f"bad stdin JSON: {exc}")
+        return 2
+
+    try:
+        operation = payload["operation"]
+        agent = payload["agent"]
+        args = payload.get("args") or {}
+    except Exception:
+        _err("stdin missing operation/agent")
+        return 2
+
+    if operation not in EXPECTED_TYPES:
+        _err(f"unknown operation: {operation!r}")
+        return 2
+
+    _dbg(
+        f"main:start operation={operation!r} agent={agent!r} "
+        f"args_keys={_safe_arg_keys(args)!r}"
+    )
+
+    provider = os.getenv("OPENCODE_LLM_PROVIDER", "openrouter").strip().lower()
+    if provider in ("", "auto"):
+        provider = "openrouter" if os.getenv("OPENROUTER_API_KEY") else "heuristic"
+    _dbg(f"provider:selected provider={provider!r}")
+
+    try:
+        if provider == "heuristic":
+            result = _heuristic_run(operation, agent, args)
+        elif provider == "openrouter":
+            if operation in TOOL_USE_OPERATIONS:
+                # Big guy in tool-using mode: function-calling loop
+                # that may read/write files and run allow-listed shell
+                # commands. Gated by:
+                #   - per-operation tool-allowlist (this file)
+                #   - per-operation path-allowlist (this file)
+                #   - per-operation shell-allowlist (this file)
+                #   - safety gates in `backend/app/helper/extend_gate.py`
+                #     (denylist, prompt-injection, quota, audit log)
+                result = _openrouter_run_with_tools(operation, agent, args)
+            else:
+                result = _openrouter_run(operation, agent, args)
+        else:
+            _err(f"unknown OPENCODE_LLM_PROVIDER: {provider!r}")
+            return 3
+    except _ProviderError as exc:
+        _err(f"provider error: {exc}")
+        return 4
+    except Exception as exc:
+        _err("internal error: " + "".join(
+            traceback.format_exception_only(type(exc), exc)
+        ))
+        return 5
+    _dbg(f"provider:done type={result.get('type') if isinstance(result, dict) else None!r}")
+
+    # Enforce the output contract before printing.
+    t = result.get("type") if isinstance(result, dict) else None
+    if t not in EXPECTED_TYPES[operation]:
+        _err(
+            f"output type {t!r} not in allow-list for {operation!r}: "
+            f"{sorted(EXPECTED_TYPES[operation])}"
+        )
+        return 6
+
+    _dbg(f"main:success output_type={t!r}")
+
+    sys.stdout.write(json.dumps(result))
+    sys.stdout.write("\n")
+    sys.stdout.flush()
+    return 0
+
+
+def _err(msg: str) -> None:
+    line = f"[opencode] {msg}"
+    sys.stderr.write(line + "\n")
+    _append_trace_file(line)
+
+
+def _debug_enabled() -> bool:
+    return (os.getenv("OPENCODE_DEBUG", "").strip().lower()
+            in {"1", "true", "yes", "on"})
+
+
+def _dbg(msg: str) -> None:
+    if not _debug_enabled():
+        return
+    elapsed = time.monotonic() - _START_TS
+    line = f"[opencode][debug][{elapsed:.3f}s] {msg}"
+    sys.stderr.write(line + "\n")
+    sys.stderr.flush()
+    _append_trace_file(line)
+
+
+def _append_trace_file(line: str) -> None:
+    path = (os.getenv("OPENCODE_TRACE_FILE") or "").strip()
+    if not path:
+        return
+    try:
+        with open(path, "a", encoding="utf-8") as f:
+            f.write(line + "\n")
+    except Exception:
+        pass
+
+
+def _safe_arg_keys(args: dict[str, Any]) -> list[str]:
+    try:
+        return sorted(str(k) for k in args.keys())
+    except Exception:
+        return ["<unavailable>"]
+
+
+class _ProviderError(Exception):
+    pass
+
+
+# ---------------------------------------------------------------------------
+# OpenRouter provider (Kimi K2 Thinking by default)
+# ---------------------------------------------------------------------------
+
+_OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
+
+
+def _openrouter_run(operation: str, agent: str, args: dict) -> dict:
+    api_key = os.getenv("OPENROUTER_API_KEY", "").strip()
+    if not api_key:
+        raise _ProviderError("OPENROUTER_API_KEY is not set")
+    _dbg("openrouter:start")
+
+    model = _pick_model(operation)
+    system_prompt = _build_system_prompt(operation, agent, model)
+    user_prompt = _build_user_prompt(operation, args)
+
+    body = {
+        "model": model,
+        "messages": [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt},
+        ],
+        "temperature": 0.2,
+        # Nudge models that support it toward JSON-only output.
+        "response_format": {"type": "json_object"},
+    }
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json",
+        "HTTP-Referer": "https://helper-dashboard.local/",
+        "X-Title": "Helper Dashboard",
+    }
+
+    timeout = float(os.getenv("OPENCODE_HTTP_TIMEOUT", "60"))
+    req = urllib.request.Request(
+        _OPENROUTER_URL,
+        data=json.dumps(body).encode("utf-8"),
+        headers=headers,
+        method="POST",
+    )
+
+    try:
+        ctx = ssl.create_default_context()
+        _dbg(f"openrouter:request model={model!r} timeout={timeout}s")
+        with urllib.request.urlopen(req, timeout=timeout, context=ctx) as resp:
+            raw = resp.read().decode("utf-8")
+    except urllib.error.HTTPError as exc:
+        detail = exc.read().decode("utf-8", errors="replace")[:400]
+        if exc.code == 402:
+            raise _ProviderError(
+                "OpenRouter credits exhausted — top up at "
+                "https://openrouter.ai/settings/credits "
+                f"(HTTP 402: {detail})"
+            ) from exc
+        if exc.code == 401:
+            raise _ProviderError(
+                "OpenRouter rejected the API key — check "
+                "OPENROUTER_API_KEY in .env "
+                f"(HTTP 401: {detail})"
+            ) from exc
+        if exc.code == 429:
+            raise _ProviderError(
+                f"OpenRouter rate-limited — wait and retry "
+                f"(HTTP 429: {detail})"
+            ) from exc
+        raise _ProviderError(f"openrouter HTTP {exc.code}: {detail}") from exc
+    except urllib.error.URLError as exc:
+        raise _ProviderError(f"openrouter network: {exc}") from exc
+
+    try:
+        data = json.loads(raw)
+        content = data["choices"][0]["message"]["content"]
+    except Exception as exc:
+        raise _ProviderError(f"openrouter response parse: {exc}") from exc
+
+    parsed = _extract_first_json_object(content)
+    _dbg(f"openrouter:response content_len={len(content)} parsed={parsed is not None}")
+    if parsed is None:
+        raise _ProviderError("model did not produce valid JSON")
+    return parsed
+
+
+def _pick_model(operation: str) -> str:
+    if operation in BIG_GUY_OPERATIONS:
+        return os.getenv("OPENCODE_BIG_GUY_MODEL", "moonshotai/kimi-k2-thinking")
+    return os.getenv("OPENCODE_HELPER_MODEL", "moonshotai/kimi-k2-thinking")
+
+
+def _build_system_prompt(operation: str, agent: str, model: str) -> str:
+    agent_md = _AGENTS_DIR / f"{agent}.md"
+    if not agent_md.exists():
+        raise _ProviderError(f"missing agent file: {agent_md}")
+    body = agent_md.read_text(encoding="utf-8")
+
+    contract = (
+        f"\n\n## Output contract (enforced by the CLI)\n\n"
+        f"You are being invoked for operation `{operation}`. You MUST "
+        f"return a single JSON object (no prose, no code fences) whose "
+        f"top-level `type` field is one of: "
+        f"{sorted(EXPECTED_TYPES[operation])}.\n"
+        f"If you cannot comply, return a valid DeveloperTicket if "
+        f"permitted for this operation; otherwise the closest allowed "
+        f"error-shaped response from the list above.\n"
+        f"\n## Operation hint\n\n"
+    )
+
+    if operation == "review_rendered":
+        contract += (
+            "Return a ReviewDecision with one of these shapes:\n"
+            "  {\"type\":\"ReviewDecision\",\"decision\":\"approve\","
+            "\"rationale\":\"<short>\"}\n"
+            "  {\"type\":\"ReviewDecision\",\"decision\":\"patch\","
+            "\"rationale\":\"<short>\",\"patch\":{<PatchSpec-inner>}}\n"
+            "  {\"type\":\"ReviewDecision\",\"decision\":\"escalate\","
+            "\"rationale\":\"<why Helper cannot fix it>\"}\n"
+            "The `patch` field is the inner PatchSpec object (patch_id, "
+            "reason, target_dashboard_id, created_by, operations).\n"
+        )
+    elif operation == "rescue_review":
+        contract += (
+            "You are Big guy in rescue mode. You cannot edit code in "
+            "this flow; only JSON. Return a RescueDecision with one "
+            "of these shapes:\n"
+            "  {\"type\":\"RescueDecision\",\"kind\":\"patch\","
+            "\"rationale\":\"<short>\",\"patch\":{<PatchSpec-inner>}}\n"
+            "  {\"type\":\"RescueDecision\",\"kind\":\"ask_user\","
+            "\"rationale\":\"<short>\",\"questions\":[\"Q1\",\"Q2\"]}\n"
+            "  {\"type\":\"RescueDecision\",\"kind\":\"ticket\","
+            "\"rationale\":\"<short>\",\"ticket\":{<DeveloperTicket-inner>}}"
+            "\n"
+        )
+    elif operation == "developer_fix":
+        contract += (
+            "Return a DeveloperReport:\n"
+            "  {\"type\":\"DeveloperReport\",\"report_id\":\"<slug>\","
+            "\"ticket_id\":\"<optional>\",\"instruction\":\"<optional>\","
+            "\"actions_taken\":[\"...\"],\"tests_run\":[\"...\"],"
+            "\"summary\":\"<what you did>\",\"status\":\"resolved\"}\n"
+        )
+    elif operation == "user_message":
+        contract += (
+            "For clarification needs, you may return:\n"
+            "  {\"type\":\"ClarificationRequest\",\"questions\":"
+            "[\"Q1\",\"Q2\"],\"message_to_user\":\"<short>\"}\n"
+        )
+
+    # Fix 4: append the authoritative widget-toolkit schema for any
+    # operation that authors / evaluates widget specs. Without this,
+    # the LLM has to imagine field shapes (e.g. `thresholds.op`) which
+    # the Pydantic validator then rejects, wasting retries.
+    schema_block = ""
+    if _SCHEMA_DOCS_AVAILABLE and operation in _SCHEMA_AWARE_OPERATIONS:
+        schema_md = render_widget_schema_markdown()
+        if schema_md:
+            schema_block = (
+                "\n\n## Widget-toolkit schema (authoritative — do not paraphrase)\n\n"
+                + schema_md
+            )
+
+    # Fix A: append the envelope schemas (DeveloperTicket, RescueDecision,
+    # BugReport, ClarificationRequest, DeveloperReport, PrometheusQueryReport)
+    # whose exact field names the LLM previously had to guess. The
+    # `_OPERATION_ENVELOPES` map inside widget_schema_doc decides which
+    # envelopes apply to which operation.
+    envelope_block = ""
+    if _SCHEMA_DOCS_AVAILABLE:
+        envelope_md = render_envelope_schemas_markdown(operation)
+        if envelope_md:
+            envelope_block = (
+                "\n\n## Envelope schemas (authoritative — exact field names)\n\n"
+                + envelope_md
+            )
+
+    return body + contract + schema_block + envelope_block
+
+
+def _build_user_prompt(operation: str, args: dict) -> str:
+    # Kimi-style: give it a clear JSON blob + a short instruction.
+    return (
+        f"OPERATION: {operation}\n"
+        f"ARGS (JSON):\n{json.dumps(args, indent=2)[:16000]}\n"
+        "Respond with a single JSON object as specified. No prose."
+    )
+
+
+# Find the first balanced JSON object anywhere in text.
+_JSON_FENCE = re.compile(r"```(?:json)?\s*(\{.*?\})\s*```", re.DOTALL)
+
+
+def _extract_first_json_object(text: str) -> dict | None:
+    text = text.strip()
+    if not text:
+        return None
+
+    # ```json { ... } ``` fences
+    m = _JSON_FENCE.search(text)
+    if m:
+        try:
+            return json.loads(m.group(1))
+        except Exception:
+            pass
+
+    # Walk and find balanced { ... } at top level.
+    start = text.find("{")
+    while start != -1:
+        depth = 0
+        in_str = False
+        esc = False
+        for i in range(start, len(text)):
+            c = text[i]
+            if in_str:
+                if esc:
+                    esc = False
+                elif c == "\\":
+                    esc = True
+                elif c == '"':
+                    in_str = False
+                continue
+            if c == '"':
+                in_str = True
+                continue
+            if c == "{":
+                depth += 1
+            elif c == "}":
+                depth -= 1
+                if depth == 0:
+                    candidate = text[start : i + 1]
+                    try:
+                        return json.loads(candidate)
+                    except Exception:
+                        break
+        start = text.find("{", start + 1)
+    return None
+
+
+# ---------------------------------------------------------------------------
+# Heuristic provider (same rules as MockHelperRuntime)
+# ---------------------------------------------------------------------------
+
+def _heuristic_run(operation: str, agent: str, args: dict) -> dict:
+    if operation == "user_message":
+        return _h_user_message(args)
+    if operation == "generate_dashboard":
+        return _h_generate_dashboard(args)
+    if operation == "patch_dashboard":
+        return _h_patch_dashboard(args)
+    if operation == "prometheus_query":
+        return _h_prometheus(args)
+    if operation == "evaluate_dashboard":
+        return _h_browser_eval(args)
+    if operation == "review_rendered":
+        return _h_review_rendered(args)
+    if operation == "rescue_review":
+        return _h_rescue_review(args)
+    if operation == "developer_fix":
+        return _h_developer_fix(args)
+    raise _ProviderError(f"no heuristic handler for {operation!r}")
+
+
+def _h_user_message(args: dict) -> dict:
+    msg = (args.get("message") or "").strip()
+    low = msg.lower()
+    current = args.get("current_dashboard_id")
+    saved = args.get("saved_dashboards") or []
+
+    if not msg:
+        return {"type": "UserResponse", "message": "What dashboard would you like?"}
+
+    # Semantic-ish reuse: if the user's message matches a saved name,
+    # relay it via UserResponse.
+    for s in saved:
+        name = (s.get("name") or "").lower()
+        if name and name in low:
+            return {
+                "type": "UserResponse",
+                "message": (
+                    f"I have a saved dashboard called {s['name']!r}. "
+                    f"Say 'load it' to reuse it, or ask for a fresh one."
+                ),
+            }
+
+    patch_triggers = [
+        "change ", "rename ", "remove ", "delete ", "add a ", "add an ",
+        "add error", "add latency", "add threshold", "add alert",
+        "edit ", "update ", "set ", "make the ", "make latency",
+        "make error", "reorder ", "move ", "resize", "threshold",
+        "more prominent", "bigger", "highlight", "promote",
+    ]
+    if current and any(t in low for t in patch_triggers):
+        return {
+            "type": "PatchIntent",
+            "target_dashboard_id": current,
+            "requested_changes": [msg],
+            "message_to_user": "Working on those changes.",
+        }
+
+    if any(t in low for t in ["metric", "promql", "query", "prometheus"]):
+        return {
+            "type": "PrometheusIntent",
+            "question": msg,
+            "message_to_user": "Let me check your Prometheus data.",
+        }
+
+    if any(t in low for t in ["dashboard", "chart", "graph", "show me",
+                               "monitor", "overview"]):
+        return {
+            "type": "DashboardIntent",
+            "summary": (msg[:60]).strip() or "New dashboard",
+            "requirements": {
+                "title": _extract_title(msg) or "New dashboard",
+                "goal": msg,
+                "metrics_hints": _extract_metric_hints(low),
+                "widget_hints": _extract_widget_hints(low),
+                "refresh_interval_hint": "30s",
+            },
+            "clarification_needed": False,
+            "message_to_user": "Building that dashboard now.",
+        }
+
+    return {
+        "type": "UserResponse",
+        "message": (
+            "Tell me what you'd like to see - for example "
+            "'a CPU and memory dashboard for my nodes'."
+        ),
+    }
+
+
+def _h_generate_dashboard(args: dict) -> dict:
+    intent = args.get("intent") or {}
+    req = intent.get("requirements") or {}
+    title = req.get("title") or intent.get("summary") or "New dashboard"
+    dashboard_id = _slugify(title) or f"dash-{uuid.uuid4().hex[:8]}"
+    goal = (req.get("goal") or "").lower()
+    metric_hints = req.get("metrics_hints") or []
+
+    if _looks_like_api_observability(goal, metric_hints, title):
+        widgets = _api_observability_widgets()
+    else:
+        widgets = _build_widgets(req.get("widget_hints") or [], metric_hints)
+
+    return {
+        "type": "DashboardSpec",
+        "spec": {
+            "dashboard_id": dashboard_id,
+            "title": title,
+            "description": req.get("goal") or "",
+            "layout": {"columns": 12, "row_height": 40},
+            "variables": [],
+            "widgets": widgets,
+            "refresh_interval": req.get("refresh_interval_hint") or "30s",
+        },
+    }
+
+
+def _h_patch_dashboard(args: dict) -> dict:
+    intent = args.get("intent") or {}
+    dashboard = args.get("dashboard") or {}
+    target = intent.get("target_dashboard_id") or dashboard.get("dashboard_id")
+    changes = intent.get("requested_changes") or []
+    text = " ".join(changes).lower()
+    existing = dashboard.get("widgets") or []
+    ops: list[dict] = []
+
+    # -- reorder: move critical widgets to the top -----------------
+    if any(k in text for k in [
+        "move critical", "critical widgets", "critical to the top",
+        "reorder", "move to the top", "promote critical",
+    ]):
+        critical_types = {"gauge", "alert_list"}
+        critical_keywords = ("error", "latency", "p95", "p99",
+                              "availability", "up")
+
+        def crit_rank(w):
+            t = w.get("type") or ""
+            title = (w.get("title") or "").lower()
+            if any(k in title for k in critical_keywords):
+                return 0
+            if t in critical_types:
+                return 1
+            return 2
+
+        if len(existing) >= 2:
+            ids = sorted(
+                [w.get("id") for w in existing if w.get("id")],
+                key=lambda wid: crit_rank(
+                    next((w for w in existing if w.get("id") == wid), {})
+                ),
+            )
+            ops.append({"op": "reorder_widgets", "order": ids})
+
+    # -- make X more prominent: grow widget to full width ----------
+    if any(k in text for k in ["prominent", "bigger", "highlight"]):
+        wid = _first_id_in_text(text, existing)
+        if wid:
+            ops.append({
+                "op": "update_widget",
+                "widget_id": wid,
+                "fields": {"position": {"x": 0, "y": 0, "w": 12, "h": 6}},
+            })
+
+    # -- add threshold at X% / Xms / Xs ----------------------------
+    if "threshold" in text:
+        m = re.search(r"(\d+(?:\.\d+)?)\s*(%|percent|s|ms)?", text)
+        if m:
+            raw = float(m.group(1))
+            unit = (m.group(2) or "").lower()
+            if unit in ("%", "percent"):
+                value = raw / 100.0
+            elif unit == "ms":
+                value = raw / 1000.0
+            else:
+                value = raw
+            wid = _first_id_in_text(text, existing)
+            if wid:
+                target_w = next(
+                    (w for w in existing if w.get("id") == wid), None
+                )
+                thresholds = list((target_w or {}).get("thresholds") or [])
+                thresholds.append({
+                    "value": value,
+                    "color": "#f59e0b",
+                    "label": f"warn >{raw}{unit}".strip(),
+                })
+                ops.append({
+                    "op": "update_widget",
+                    "widget_id": wid,
+                    "fields": {"thresholds": thresholds},
+                })
+
+    # -- swap chart subject: "change X chart to Y chart" ------------
+    swap_match = re.search(
+        r"change (?:the\s+)?(\w+)\s+chart\s+to\s+(?:a\s+)?(\w+)(?:\s+chart)?",
+        text,
+    )
+    if swap_match:
+        from_kw = swap_match.group(1)
+        to_kw = swap_match.group(2)
+        metric_map = {
+            "cpu": ("rate(process_cpu_seconds_total[5m])", "s/s"),
+            "memory": ("process_resident_memory_bytes", "bytes"),
+            "ram": ("process_resident_memory_bytes", "bytes"),
+            "requests": ("sum(rate(http_requests_total[5m]))", "req/s"),
+            "latency": (
+                "histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket[5m])) by (le))",
+                "s",
+            ),
+            "errors": (
+                'sum(rate(http_requests_total{status=~"5.."}[5m])) / sum(rate(http_requests_total[5m]))',
+                "%",
+            ),
+        }
+        wid = None
+        for w in existing:
+            title = (w.get("title") or "").lower()
+            promql = (w.get("query") or {}).get("promql", "").lower()
+            if from_kw in title or from_kw in promql:
+                wid = w.get("id")
+                break
+        to = metric_map.get(to_kw)
+        if wid and to:
+            promql, unit = to
+            ops.append({
+                "op": "update_widget",
+                "widget_id": wid,
+                "fields": {
+                    "title": to_kw.capitalize(),
+                    "query": {
+                        "source": "prometheus", "promql": promql,
+                        "query_type": "range", "range": "1h", "step": "30s",
+                    },
+                    "encoding": {"unit": unit},
+                },
+            })
+
+    # -- classic remove / rename / add / refresh -------------------
+    if not ops and any(k in text for k in ["remove", "delete"]):
+        wid = _first_id_in_text(text, existing)
+        if wid:
+            ops.append({"op": "remove_widget", "widget_id": wid})
+
+    if not ops and "rename" in text and " to " in text:
+        new_title = text.split(" to ", 1)[1].strip().strip("'\"")
+        if new_title:
+            ops.append({
+                "op": "update_dashboard",
+                "fields": {"title": new_title[:120]},
+            })
+
+    if not ops and "add" in text and any(
+        t in text for t in ["chart", "widget", "graph", "stat", "gauge",
+                             "table", "alert"]
+    ):
+        wtype = _guess_widget_type(text)
+        wid = f"w-{uuid.uuid4().hex[:6]}"
+        ops.append({
+            "op": "add_widget",
+            "widget": _default_widget(
+                wid, wtype, title=f"New {wtype}",
+                promql=_default_promql_for(wtype),
+            ),
+        })
+
+    if not ops and "refresh" in text:
+        m = re.search(r"(\d{1,3})\s*(s|m|h)", text)
+        if m:
+            ops.append({
+                "op": "update_dashboard",
+                "fields": {"refresh_interval": f"{m.group(1)}{m.group(2)}"},
+            })
+
+    if not ops:
+        ops.append({
+            "op": "update_dashboard",
+            "fields": {
+                "description": (dashboard.get("description") or "")
+                + " (updated)",
+            },
+        })
+
+    return {
+        "type": "PatchSpec",
+        "spec": {
+            "patch_id": f"patch-{uuid.uuid4().hex[:8]}",
+            "reason": changes[0][:240] if changes else "user requested change",
+            "target_dashboard_id": target,
+            "created_by": "patch-agent",
+            "operations": ops,
+        },
+    }
+
+
+def _h_prometheus(args: dict) -> dict:
+    question = (args.get("question") or "").strip()
+    return {
+        "type": "PrometheusQueryReport",
+        "report": {
+            "queries": [],
+            "metric_suggestions": [
+                {"metric": m, "reason": "common metric"}
+                for m in ["up", "process_cpu_seconds_total",
+                           "node_memory_MemAvailable_bytes"]
+            ],
+            "notes": f"question echoed: {question[:200]}" if question else "",
+        },
+    }
+
+
+def _h_browser_eval(args: dict) -> dict:
+    # Same logic the previous MockHelperRuntime had — keeps the older
+    # evaluate_dashboard operation path backwards compatible.
+    report = args.get("report") or {}
+    missing = report.get("missing_widgets") or []
+    console = report.get("console_errors") or []
+
+    if not report.get("page_loaded", False):
+        return {
+            "type": "DeveloperTicket",
+            "source_agent": "browser-eval-agent",
+            "severity": "high",
+            "summary": "page failed to load",
+            "user_visible_effect": "dashboard page does not render",
+            "technical_evidence": {"console_errors": console},
+            "requested_action": "investigate frontend /dashboard route",
+            "safety_notes": "",
+        }
+    if missing and not console:
+        return {
+            "type": "BugReport",
+            "report": {
+                "bug_id": f"bug-{uuid.uuid4().hex[:8]}",
+                "source": "browser_evaluator",
+                "severity": "medium",
+                "summary": f"{len(missing)} widget(s) missing",
+                "evidence": {
+                    "console_errors": console,
+                    "missing_widgets": missing,
+                    "layout_errors": report.get("layout_errors") or [],
+                    "prometheus_errors": report.get("prometheus_errors") or [],
+                    "screenshot_path": report.get("screenshot_path"),
+                },
+                "suspected_cause": "renderer miss",
+                "suggested_fix_type": "code",
+            },
+        }
+    return {
+        "type": "BugReport",
+        "report": {
+            "bug_id": f"bug-{uuid.uuid4().hex[:8]}",
+            "source": "browser_evaluator",
+            "severity": "low",
+            "summary": "clean render",
+            "evidence": {},
+            "suspected_cause": "",
+            "suggested_fix_type": "unknown",
+        },
+    }
+
+
+def _h_review_rendered(args: dict) -> dict:
+    """Helper reviews the rendered dashboard.
+
+    Heuristics:
+      - page didn't load -> escalate (Helper small model gives up)
+      - widgets missing -> patch (replace missing widget's position,
+        or re-add by remove+add)
+      - otherwise approve
+    """
+    report = args.get("report") or {}
+    spec = args.get("dashboard") or {}
+
+    if not report.get("page_loaded", False):
+        return {
+            "type": "ReviewDecision",
+            "decision": "escalate",
+            "rationale": "page did not load; beyond Helper patch",
+        }
+
+    missing = report.get("missing_widgets") or []
+    if missing:
+        # Simplest recoverable patch: remove the missing widget
+        # (renderer failure) and ask user for clarification by
+        # escalating if it was the only widget.
+        remaining = [w for w in spec.get("widgets") or []
+                     if w.get("id") not in missing]
+        if not remaining:
+            return {
+                "type": "ReviewDecision",
+                "decision": "escalate",
+                "rationale": "every widget failed to render",
+            }
+        ops = [{"op": "remove_widget", "widget_id": wid} for wid in missing]
+        return {
+            "type": "ReviewDecision",
+            "decision": "patch",
+            "rationale": f"remove {len(missing)} widget(s) that failed to render",
+            "patch": {
+                "patch_id": f"rv-{uuid.uuid4().hex[:8]}",
+                "reason": "auto-remove missing widgets",
+                "target_dashboard_id": spec.get("dashboard_id"),
+                "created_by": "helper-review-agent",
+                "operations": ops,
+            },
+        }
+
+    if (report.get("console_errors") or []) and \
+       args.get("attempt", 1) >= 3:
+        return {
+            "type": "ReviewDecision",
+            "decision": "escalate",
+            "rationale": "console errors persist after retries",
+        }
+
+    return {
+        "type": "ReviewDecision",
+        "decision": "approve",
+        "rationale": "rendered cleanly",
+    }
+
+
+def _h_rescue_review(args: dict) -> dict:
+    """Big guy rescue in review mode.
+
+    Heuristics:
+      - if the last report has console errors -> file a ticket.
+      - if widgets missing across attempts -> ask user for clarification.
+      - otherwise ask_user (safer than guessing).
+    """
+    report = args.get("report") or {}
+    console = report.get("console_errors") or []
+    missing = report.get("missing_widgets") or []
+
+    if console:
+        return {
+            "type": "RescueDecision",
+            "kind": "ticket",
+            "rationale": "console errors indicate a code-level bug",
+            "ticket": {
+                "ticket_id": f"tkt-{uuid.uuid4().hex[:8]}",
+                "source_agent": "big-guy-developer-agent",
+                "severity": "high",
+                "summary": "rescue review: console errors",
+                "user_visible_effect": "dashboard renders but has JS errors",
+                "technical_evidence": {"console_errors": console[:5]},
+                "requested_action": "investigate widget-toolkit components",
+                "safety_notes": "",
+            },
+        }
+
+    if missing:
+        return {
+            "type": "RescueDecision",
+            "kind": "ask_user",
+            "rationale": "widgets failed to render after retries",
+            "questions": [
+                "The visual I tried to build didn't render cleanly. "
+                "Could you describe the dashboard you want in more detail, "
+                "and tell me which metrics you're interested in?",
+            ],
+        }
+
+    return {
+        "type": "RescueDecision",
+        "kind": "ask_user",
+        "rationale": "need more detail to fix",
+        "questions": [
+            "I built the dashboard but something seems off. "
+            "Can you tell me exactly what you expected to see?",
+        ],
+    }
+
+
+def _h_developer_fix(args: dict) -> dict:
+    instruction = args.get("instruction") or args.get("ticket_id") or "fix"
+    return {
+        "type": "DeveloperReport",
+        "report_id": f"rpt-{uuid.uuid4().hex[:8]}",
+        "ticket_id": args.get("ticket_id"),
+        "instruction": instruction[:256],
+        "actions_taken": ["heuristic mode: no code changes made"],
+        "tests_run": [],
+        "summary": "heuristic provider cannot make code changes",
+        "status": "rejected",
+    }
+
+
+# ---------------------------------------------------------------------------
+# Small utilities shared with the mock runtime
+# ---------------------------------------------------------------------------
+
+
+def _slugify(text: str) -> str:
+    s = re.sub(r"[^a-zA-Z0-9]+", "-", text.strip().lower()).strip("-")
+    return s[:48]
+
+
+def _extract_title(msg: str) -> str:
+    m = re.search(r"(?:dashboard|board|page)\s+(?:for|about|called)\s+([^.?!\n]+)",
+                   msg, re.I)
+    return m.group(1).strip()[:80] if m else ""
+
+
+def _extract_widget_hints(msg: str) -> list[str]:
+    hints: list[str] = []
+    if any(k in msg for k in ["trend", "time", "graph", "line"]):
+        hints.append("line_chart")
+    if any(k in msg for k in ["stat", "number", "single value", "kpi", "count"]):
+        hints.append("stat_card")
+    if any(k in msg for k in ["gauge", "percent"]):
+        hints.append("gauge")
+    if any(k in msg for k in ["table", "list of"]):
+        hints.append("table")
+    if "alert" in msg:
+        hints.append("alert_list")
+    return hints or ["line_chart", "stat_card"]
+
+
+def _extract_metric_hints(msg: str) -> list[str]:
+    hints: list[str] = []
+    if "cpu" in msg:
+        hints.append("node_cpu_seconds_total")
+    if "memory" in msg or "ram" in msg:
+        hints.append("node_memory_MemAvailable_bytes")
+    if "http" in msg or "request" in msg:
+        hints.append("http_requests_total")
+    if "alert" in msg:
+        hints.append("ALERTS")
+    return hints
+
+
+def _default_promql_for(wtype: str) -> str:
+    return {
+        "line_chart": "rate(http_requests_total[5m])",
+        "stat_card": "sum(up)",
+        "gauge": "avg(up)",
+        "table": "topk(10, http_requests_total)",
+        "alert_list": 'ALERTS{alertstate="firing"}',
+    }.get(wtype, "up")
+
+
+def _default_widget(wid: str, wtype: str, *, title: str, promql: str) -> dict:
+    query_type = ("instant" if wtype in
+                  {"stat_card", "gauge", "alert_list", "table"} else "range")
+    query = {"source": "prometheus", "promql": promql, "query_type": query_type}
+    if query_type == "range":
+        query["range"] = "1h"
+        query["step"] = "30s"
+    return {
+        "id": wid,
+        "type": wtype,
+        "title": title,
+        "description": "",
+        "query": query,
+        "position": {"x": 0, "y": 0, "w": 6, "h": 6},
+        "encoding": {},
+        "thresholds": [],
+        "options": {},
+    }
+
+
+def _build_widgets(widget_hints: list[str],
+                    metric_hints: list[str]) -> list[dict]:
+    widgets: list[dict] = []
+    x = 0
+    y = 0
+    idx = 0
+    wants = list(dict.fromkeys(widget_hints)) or ["line_chart", "stat_card"]
+    allowed = {"line_chart", "stat_card", "gauge", "table", "alert_list"}
+    for wtype in wants:
+        if wtype not in allowed:
+            continue
+        metric = (metric_hints[idx % len(metric_hints)]
+                  if metric_hints else None)
+        promql = _default_promql_for(wtype)
+        if metric:
+            if wtype == "line_chart":
+                promql = (f"rate({metric}[5m])"
+                          if metric.endswith("_total") else metric)
+            elif wtype in {"stat_card", "gauge"}:
+                promql = f"avg({metric})"
+            elif wtype == "table":
+                promql = f"topk(10, {metric})"
+        w = 6 if wtype in {"line_chart", "table"} else 3
+        h = 6 if wtype in {"line_chart", "table"} else 4
+        if x + w > 12:
+            x = 0
+            y += h
+        widget = _default_widget(
+            f"w-{idx}-{wtype}", wtype,
+            title=(metric or wtype).replace("_", " ").title(),
+            promql=promql,
+        )
+        widget["position"] = {"x": x, "y": y, "w": w, "h": h}
+        widgets.append(widget)
+        x += w
+        idx += 1
+    return widgets
+
+
+_TITLE_STOPWORDS = frozenset({
+    "the", "a", "an", "and", "or", "of", "to", "for", "in", "on",
+    "usage", "rate", "chart", "widget", "panel", "list",
+})
+
+
+def _first_id_in_text(text: str, widgets: list[dict]) -> str | None:
+    """Match a widget id given a free-text user instruction.
+
+    Falls through from exact-id to full-title to significant-word
+    scoring. Returns None if no widget is a good match so callers
+    can avoid patching the wrong widget.
+    """
+    text_l = text.lower()
+
+    for w in widgets:
+        wid = w.get("id") or ""
+        if wid and wid.lower() in text_l:
+            return wid
+
+    for w in widgets:
+        t = (w.get("title") or "").lower().strip()
+        if t and t in text_l:
+            return w.get("id")
+
+    def score(w):
+        t = (w.get("title") or "").lower()
+        tokens = [
+            tok for tok in re.split(r"[\s/\-]+", t)
+            if tok and tok not in _TITLE_STOPWORDS and len(tok) > 2
+        ]
+        return sum(1 for tok in tokens if tok in text_l)
+
+    ranked = sorted(widgets, key=score, reverse=True)
+    if ranked and score(ranked[0]) > 0:
+        return ranked[0].get("id")
+    return None
+
+
+def _guess_widget_type(text: str) -> str:
+    if "stat" in text or "number" in text or "kpi" in text:
+        return "stat_card"
+    if "gauge" in text or "percent" in text:
+        return "gauge"
+    if "table" in text:
+        return "table"
+    if "alert" in text:
+        return "alert_list"
+    return "line_chart"
+
+
+# ---------------------------------------------------------------------------
+# Golden API-observability composition (kept in sync with
+# backend/app/samples/api_observability.json and with the backend's
+# MockHelperRuntime heuristic of the same name).
+# ---------------------------------------------------------------------------
+
+_API_OBS_KEYWORDS = (
+    "api", "http request", "http_requests", "request rate", "latency",
+    "p95", "p99", "error rate", "service availability", "observability",
+    "rps", "http_request_duration",
+)
+
+
+def _looks_like_api_observability(goal, metric_hints, title):
+    blob = " ".join([goal, title, " ".join(metric_hints or [])]).lower()
+    hits = sum(1 for kw in _API_OBS_KEYWORDS if kw in blob)
+    return hits >= 2
+
+
+def _api_observability_widgets():
+    return [
+        {"id": "w-request-rate", "type": "line_chart",
+         "title": "HTTP request rate", "description": "",
+         "query": {"source": "prometheus",
+                   "promql": "sum(rate(http_requests_total[5m]))",
+                   "query_type": "range", "range": "1h", "step": "30s"},
+         "position": {"x": 0, "y": 0, "w": 6, "h": 6},
+         "encoding": {"unit": "req/s"}, "thresholds": [], "options": {}},
+        {"id": "w-error-rate", "type": "line_chart",
+         "title": "5xx error rate", "description": "",
+         "query": {"source": "prometheus",
+                   "promql": "sum(rate(http_requests_total{status=~\"5..\"}[5m])) / sum(rate(http_requests_total[5m]))",
+                   "query_type": "range", "range": "1h", "step": "30s"},
+         "position": {"x": 6, "y": 0, "w": 6, "h": 6},
+         "encoding": {"unit": "%"},
+         "thresholds": [
+             {"value": 0.01, "color": "#f59e0b", "label": "warn >1%"},
+             {"value": 0.05, "color": "#ef4444", "label": "crit >5%"},
+         ],
+         "options": {}},
+        {"id": "w-latency-p95", "type": "line_chart",
+         "title": "Request latency p95", "description": "",
+         "query": {"source": "prometheus",
+                   "promql": "histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket[5m])) by (le))",
+                   "query_type": "range", "range": "1h", "step": "30s"},
+         "position": {"x": 0, "y": 6, "w": 6, "h": 6},
+         "encoding": {"unit": "s"},
+         "thresholds": [
+             {"value": 0.5, "color": "#f59e0b", "label": "warn >500ms"},
+             {"value": 1.0, "color": "#ef4444", "label": "crit >1s"},
+         ],
+         "options": {}},
+        {"id": "w-latency-p99", "type": "line_chart",
+         "title": "Request latency p99", "description": "",
+         "query": {"source": "prometheus",
+                   "promql": "histogram_quantile(0.99, sum(rate(http_request_duration_seconds_bucket[5m])) by (le))",
+                   "query_type": "range", "range": "1h", "step": "30s"},
+         "position": {"x": 6, "y": 6, "w": 6, "h": 6},
+         "encoding": {"unit": "s"},
+         "thresholds": [
+             {"value": 1.0, "color": "#f59e0b", "label": "warn >1s"},
+             {"value": 2.0, "color": "#ef4444", "label": "crit >2s"},
+         ],
+         "options": {}},
+        {"id": "w-availability", "type": "gauge",
+         "title": "Service availability", "description": "",
+         "query": {"source": "prometheus",
+                   "promql": "avg(up)",
+                   "query_type": "instant"},
+         "position": {"x": 0, "y": 12, "w": 3, "h": 4},
+         "encoding": {},
+         "thresholds": [
+             {"value": 0.95, "color": "#f59e0b", "label": "warn <95%"},
+             {"value": 0.99, "color": "#34d399", "label": "healthy"},
+         ],
+         "options": {"min": 0, "max": 1, "decimals": 2}},
+        {"id": "w-cpu", "type": "line_chart",
+         "title": "CPU usage", "description": "",
+         "query": {"source": "prometheus",
+                   "promql": "rate(process_cpu_seconds_total[5m])",
+                   "query_type": "range", "range": "1h", "step": "30s"},
+         "position": {"x": 3, "y": 12, "w": 5, "h": 4},
+         "encoding": {"unit": "s/s"},
+         "thresholds": [], "options": {}},
+        {"id": "w-memory", "type": "line_chart",
+         "title": "Resident memory", "description": "",
+         "query": {"source": "prometheus",
+                   "promql": "process_resident_memory_bytes",
+                   "query_type": "range", "range": "1h", "step": "30s"},
+         "position": {"x": 8, "y": 12, "w": 4, "h": 4},
+         "encoding": {"unit": "bytes"},
+         "thresholds": [], "options": {}},
+        {"id": "w-alerts", "type": "alert_list",
+         "title": "Firing alerts", "description": "",
+         "query": {"source": "prometheus",
+                   "promql": "ALERTS{alertstate=\"firing\"}",
+                   "query_type": "instant"},
+         "position": {"x": 0, "y": 16, "w": 12, "h": 4},
+         "encoding": {},
+         "thresholds": [],
+         "options": {"severity_filter": "warning", "row_limit": 20}},
+    ]
+
+
+# ---------------------------------------------------------------------------
+# __TOOL_USE__  (M3: rescue_extend tool-using mode)
+# ---------------------------------------------------------------------------
+#
+# Big guy, when invoked for the `rescue_extend` operation, gets access
+# to a small set of allow-listed Python tools (`read_file`,
+# `write_file`, `replace_in_file`, `run_command`, `done`). The runtime
+# proxies each tool call through hard-coded path / shell allow-lists,
+# so a compromised LLM cannot escape the sandbox by asking nicely.
+#
+# Defense in depth — three layers must all permit the action:
+#
+#   1. The OpenRouter tool-schema only declares these 5 tools.
+#   2. The dispatcher in `_openrouter_run_with_tools` only knows how
+#      to route those 5 names — any other name returns a ToolError to
+#      the LLM (which the LLM may or may not understand).
+#   3. Each tool handler revalidates path / command against its own
+#      allow-list before touching the filesystem or subprocess.
+#
+# M5 adds an env-flag gate on the *backend* side so the user-facing
+# chat flow never reaches this code unless an operator opts in.
+#
+# Allow-listed shells for rescue_extend. shell=False always; this is
+# the argv[0] only.
+_SHELL_ALLOWLIST: set[str] = {"pytest", "npm", "node", "npx", "python3", "python3.10"}
+
+# Loop bounds — break the LLM out of pathological repetition.
+_TOOL_LOOP_MAX_ITERS = 30
+_TOOL_FILE_MAX_BYTES = 200_000
+_TOOL_RUN_TIMEOUT_S = 120
+
+# Files the LLM may always *read* under rescue_extend (read access
+# is broader than write — Big guy needs to understand the codebase
+# before changing it). We still pin to the helper-dashboard tree.
+_EXTEND_READ_ROOTS: tuple[str, ...] = (
+    "backend/",
+    "frontend/",
+    ".opencode/",
+    "tests/",
+    "docs/",
+)
+
+
+class _ToolError(Exception):
+    """A tool refused to run. The error string is fed back to the LLM
+    as the tool result so it can decide to retry or give up gracefully.
+
+    DO NOT raise _ProviderError from inside a tool handler — that aborts
+    the whole subprocess, which loses the LLM's chain of thought."""
+
+
+def _validate_safe_relative_path(raw: str) -> Path:
+    """Resolve `raw` as a path relative to _ROOT.
+
+    Rejects:
+      - Absolute paths.
+      - Path traversal that escapes _ROOT after resolution.
+      - Empty strings, non-strings.
+
+    Returns the resolved Path. Does NOT check whether the file exists.
+    """
+    if not isinstance(raw, str) or not raw.strip():
+        raise _ToolError("path must be a non-empty string")
+    if raw.startswith("/") or raw.startswith("~"):
+        raise _ToolError(f"absolute paths not allowed: {raw!r}")
+    # Resolve under _ROOT; reject anything that walks outside.
+    candidate = (_ROOT / raw).resolve()
+    try:
+        candidate.relative_to(_ROOT.resolve())
+    except ValueError:
+        raise _ToolError(f"path escapes project root: {raw!r}") from None
+    return candidate
+
+
+def _camel_case_widget_type(widget_type: str) -> str:
+    """pie_chart -> PieChart  (snake_case -> PascalCase)."""
+    return "".join(p[:1].upper() + p[1:] for p in widget_type.split("_") if p)
+
+
+def _extend_write_allowlist(widget_type: str) -> tuple[Path, ...]:
+    """Files the LLM may write/replace for an extend-widget operation.
+
+    Exactly six paths — the 5-layer change + an optional test file.
+    The Pydantic ExtendRequest already validated widget_type's shape,
+    so the camel-cased name is safe to interpolate into a filename.
+    """
+    camel = _camel_case_widget_type(widget_type)
+    rels = (
+        "backend/app/specs/widget_spec.py",
+        "backend/app/specs/widget_schema_doc.py",
+        "frontend/lib/spec-schema.ts",
+        "frontend/lib/renderer.tsx",
+        f"frontend/widget-toolkit/{camel}Widget.tsx",
+        f"tests/spec_validation/test_extend_{widget_type}.py",
+    )
+    return tuple((_ROOT / r).resolve() for r in rels)
+
+
+def _path_allowed_for_read(path: Path) -> bool:
+    """Anything under one of `_EXTEND_READ_ROOTS` is readable."""
+    try:
+        rel = path.relative_to(_ROOT.resolve())
+    except ValueError:
+        return False
+    rel_s = str(rel).replace("\\", "/")
+    return any(rel_s.startswith(r) for r in _EXTEND_READ_ROOTS)
+
+
+def _path_allowed_for_write(path: Path, widget_type: str) -> bool:
+    return path in _extend_write_allowlist(widget_type)
+
+
+# ---------------------------------------------------------------------------
+# Tool handlers (M3b + M3c)
+# ---------------------------------------------------------------------------
+
+
+def _tool_read_file(args: dict) -> str:
+    path = _validate_safe_relative_path(args.get("path", ""))
+    if not _path_allowed_for_read(path):
+        raise _ToolError(
+            f"read_file refused: path {args.get('path')!r} is not under "
+            f"the allowed roots {list(_EXTEND_READ_ROOTS)}"
+        )
+    if not path.exists():
+        raise _ToolError(f"file not found: {args.get('path')!r}")
+    if not path.is_file():
+        raise _ToolError(f"not a regular file: {args.get('path')!r}")
+    try:
+        data = path.read_bytes()
+    except Exception as exc:
+        raise _ToolError(f"read failed: {exc}") from exc
+    if len(data) > _TOOL_FILE_MAX_BYTES:
+        raise _ToolError(
+            f"file too large ({len(data)} bytes > "
+            f"{_TOOL_FILE_MAX_BYTES}); refusing to read"
+        )
+    try:
+        return data.decode("utf-8")
+    except UnicodeDecodeError:
+        raise _ToolError(f"file is not utf-8: {args.get('path')!r}")
+
+
+def _tool_write_file(args: dict, widget_type: str) -> str:
+    raw_path = args.get("path", "")
+    content = args.get("content", "")
+    if not isinstance(content, str):
+        raise _ToolError("write_file: content must be a string")
+    if len(content.encode("utf-8")) > _TOOL_FILE_MAX_BYTES:
+        raise _ToolError(
+            f"write_file: content too large; max {_TOOL_FILE_MAX_BYTES} bytes"
+        )
+    path = _validate_safe_relative_path(raw_path)
+    if not _path_allowed_for_write(path, widget_type):
+        allowed = [str(p.relative_to(_ROOT.resolve()))
+                    for p in _extend_write_allowlist(widget_type)]
+        raise _ToolError(
+            f"write_file refused: {raw_path!r} is not in the extend "
+            f"allow-list for widget_type={widget_type!r}. Allowed: {allowed}"
+        )
+    path.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        path.write_text(content, encoding="utf-8")
+    except Exception as exc:
+        raise _ToolError(f"write failed: {exc}") from exc
+    return json.dumps({"ok": True, "path": str(path.relative_to(_ROOT.resolve())),
+                        "bytes": len(content.encode("utf-8"))})
+
+
+def _tool_replace_in_file(args: dict, widget_type: str) -> str:
+    raw_path = args.get("path", "")
+    old = args.get("old_string", "")
+    new = args.get("new_string", "")
+    if not isinstance(old, str) or not isinstance(new, str):
+        raise _ToolError("replace_in_file: old_string and new_string must be strings")
+    if old == "":
+        raise _ToolError("replace_in_file: old_string cannot be empty")
+    path = _validate_safe_relative_path(raw_path)
+    if not _path_allowed_for_write(path, widget_type):
+        allowed = [str(p.relative_to(_ROOT.resolve()))
+                    for p in _extend_write_allowlist(widget_type)]
+        raise _ToolError(
+            f"replace_in_file refused: {raw_path!r} is not in the extend "
+            f"allow-list for widget_type={widget_type!r}. Allowed: {allowed}"
+        )
+    if not path.exists():
+        raise _ToolError(f"file not found: {raw_path!r}")
+    try:
+        data = path.read_text(encoding="utf-8")
+    except Exception as exc:
+        raise _ToolError(f"read for replace failed: {exc}") from exc
+    occurrences = data.count(old)
+    if occurrences == 0:
+        raise _ToolError(
+            f"old_string not found in {raw_path!r}; nothing was changed"
+        )
+    if occurrences > 1:
+        raise _ToolError(
+            f"old_string appears {occurrences} times in {raw_path!r}; "
+            f"provide more surrounding context to make it unique"
+        )
+    new_data = data.replace(old, new, 1)
+    try:
+        path.write_text(new_data, encoding="utf-8")
+    except Exception as exc:
+        raise _ToolError(f"write back failed: {exc}") from exc
+    return json.dumps({
+        "ok": True,
+        "path": str(path.relative_to(_ROOT.resolve())),
+        "delta_bytes": len(new_data.encode("utf-8")) - len(data.encode("utf-8")),
+    })
+
+
+def _tool_run_command(args: dict) -> str:
+    import subprocess  # local import — only needed for tool use
+    cmd = args.get("cmd", "")
+    cmd_args = args.get("args", []) or []
+    if not isinstance(cmd, str) or not cmd:
+        raise _ToolError("run_command: cmd must be a non-empty string")
+    if not isinstance(cmd_args, list) or not all(isinstance(a, str) for a in cmd_args):
+        raise _ToolError("run_command: args must be a list of strings")
+    if cmd not in _SHELL_ALLOWLIST:
+        raise _ToolError(
+            f"run_command refused: {cmd!r} not in shell allow-list "
+            f"{sorted(_SHELL_ALLOWLIST)}"
+        )
+    # Reject shell metacharacters in args defensively. We pass shell=False
+    # so they'd be treated as literal anyway, but a literal "; rm -rf"
+    # in argv often signals an LLM trying to escape.
+    bad_chars = set(";&|`$><\n")
+    for a in cmd_args:
+        if any(c in bad_chars for c in a):
+            raise _ToolError(
+                f"run_command refused: arg {a!r} contains shell "
+                f"metacharacter; pass argv elements, not a shell string"
+            )
+    try:
+        proc = subprocess.run(  # noqa: S603 shell=False, allow-listed
+            [cmd, *cmd_args],
+            capture_output=True,
+            text=True,
+            timeout=_TOOL_RUN_TIMEOUT_S,
+            shell=False,
+            cwd=str(_ROOT),
+            check=False,
+        )
+    except FileNotFoundError as exc:
+        raise _ToolError(f"command not found: {cmd!r}") from exc
+    except subprocess.TimeoutExpired:
+        raise _ToolError(f"command timed out after {_TOOL_RUN_TIMEOUT_S}s")
+    return json.dumps({
+        "returncode": proc.returncode,
+        "stdout": (proc.stdout or "")[-4000:],
+        "stderr": (proc.stderr or "")[-2000:],
+    })
+
+
+# ---------------------------------------------------------------------------
+# OpenRouter tools schema (M3e)
+# ---------------------------------------------------------------------------
+
+
+_RESCUE_EXTEND_TOOLS: list[dict] = [
+    {
+        "type": "function",
+        "function": {
+            "name": "read_file",
+            "description": (
+                "Read the contents of a file under the helper-dashboard "
+                "project. Use to understand existing code before modifying. "
+                "Returns the file contents as a string. Max 200KB."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "path": {
+                        "type": "string",
+                        "description": "Relative path under helper-dashboard/ (e.g. 'backend/app/specs/widget_spec.py').",
+                    },
+                },
+                "required": ["path"],
+                "additionalProperties": False,
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "write_file",
+            "description": (
+                "Create or overwrite a file. Allowed only for the small "
+                "set of files involved in extending the widget toolkit. "
+                "Use replace_in_file for incremental edits to existing files."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "path": {"type": "string"},
+                    "content": {"type": "string"},
+                },
+                "required": ["path", "content"],
+                "additionalProperties": False,
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "replace_in_file",
+            "description": (
+                "Replace one occurrence of old_string with new_string in a "
+                "file. Fails if old_string is empty, not found, or appears "
+                "more than once (provide more surrounding context to make it "
+                "unique). Allowed only for the widget-toolkit extension files."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "path": {"type": "string"},
+                    "old_string": {"type": "string"},
+                    "new_string": {"type": "string"},
+                },
+                "required": ["path", "old_string", "new_string"],
+                "additionalProperties": False,
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "run_command",
+            "description": (
+                "Run a shell-free subprocess. Argv elements only; the cmd "
+                "must be in the allow-list (pytest, npm, node, npx, python3). "
+                "Use to run tests after editing. Returns {returncode, stdout, stderr}."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "cmd": {"type": "string"},
+                    "args": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                    },
+                },
+                "required": ["cmd"],
+                "additionalProperties": False,
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "done",
+            "description": (
+                "Call this exactly once at the end with the final "
+                "DeveloperReport. After this call, the loop terminates and "
+                "the report is returned to the backend."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "report": {
+                        "type": "object",
+                        "description": "A complete DeveloperReport object with type='DeveloperReport'.",
+                    },
+                },
+                "required": ["report"],
+                "additionalProperties": False,
+            },
+        },
+    },
+]
+
+
+def _build_extend_system_prompt(agent: str, widget_type: str, extend: dict) -> str:
+    """System prompt for rescue_extend. Combines the standard agent
+    body with a Mode C extension that names the widget_type, lists the
+    allowed file paths verbatim, and describes the 5-layer change."""
+    agent_md = _AGENTS_DIR / f"{agent}.md"
+    if not agent_md.exists():
+        raise _ProviderError(f"missing agent file: {agent_md}")
+    body = agent_md.read_text(encoding="utf-8")
+    camel = _camel_case_widget_type(widget_type)
+    allowed = [str(p.relative_to(_ROOT.resolve()))
+                for p in _extend_write_allowlist(widget_type)]
+    mode_c = (
+        f"\n\n## Operation: rescue_extend (Mode C)\n\n"
+        f"You are extending the widget toolkit with a new type "
+        f"`{widget_type}`. The user-facing dashboard pipeline failed "
+        f"because this type does not yet exist. You have tool access: "
+        f"`read_file`, `write_file`, `replace_in_file`, `run_command`, "
+        f"`done`.\n\n"
+        f"### Required 5-layer change\n\n"
+        f"1. Add `{widget_type} = \"{widget_type}\"` to the WidgetType "
+        f"enum in `backend/app/specs/widget_spec.py`.\n"
+        f"2. Document the type in `backend/app/specs/widget_schema_doc.py` "
+        f"(add to allowed-options table if widget-specific options apply).\n"
+        f"3. Add `\"{widget_type}\"` to the WidgetType literal in "
+        f"`frontend/lib/spec-schema.ts`.\n"
+        f"4. Create `frontend/widget-toolkit/{camel}Widget.tsx` exporting "
+        f"a React component. Use a small functional component; keep it "
+        f"under 200 lines. Mirror the structure of the existing "
+        f"LineChartWidget / TableWidget files.\n"
+        f"5. Add a case for the new type in the renderer switch in "
+        f"`frontend/lib/renderer.tsx`.\n\n"
+        f"### Required tests\n\n"
+        f"After editing, run:\n"
+        f"  run_command(cmd='pytest', args=['tests/spec_validation/', '-x', '--tb=short'])\n"
+        f"All tests must pass before you call `done`.\n\n"
+        f"### Path allow-list (writes only)\n\n"
+        f"You may only write/replace these exact paths:\n"
+        + "".join(f"  - `{p}`\n" for p in allowed)
+        + f"\nReads under backend/, frontend/, .opencode/, tests/, docs/ "
+        f"are allowed.\n\n"
+        f"### Final output\n\n"
+        f"When done (and only when pytest is green), call `done(report={{"
+        f"\"type\":\"DeveloperReport\",\"report_id\":\"<slug>\","
+        f"\"summary\":\"<what you did>\",\"actions_taken\":[...],"
+        f"\"tests_run\":[...],\"status\":\"resolved\"}})`.\n"
+    )
+    return body + mode_c
+
+
+def _normalize_developer_report(raw: dict) -> dict:
+    """Ensure the report dict has type='DeveloperReport' and at least
+    the required keys. Missing keys get safe defaults so the runtime
+    contract check doesn't reject a near-miss."""
+    if not isinstance(raw, dict):
+        raw = {}
+    r = dict(raw)
+    r["type"] = "DeveloperReport"
+    r.setdefault("report_id", f"rep-{uuid.uuid4().hex[:8]}")
+    r.setdefault("summary", "rescue_extend completed")
+    r.setdefault("actions_taken", [])
+    r.setdefault("tests_run", [])
+    r.setdefault("status", "resolved")
+    return r
+
+
+def _openrouter_run_with_tools(operation: str, agent: str, args: dict) -> dict:
+    """Function-calling loop for rescue_extend. Each iteration POSTs to
+    OpenRouter with the running message history + the tools schema,
+    executes any tool calls in the response (proxied through the
+    allow-lists above), appends results to history, and repeats. The
+    loop exits when the LLM calls `done` or hits _TOOL_LOOP_MAX_ITERS.
+    """
+    api_key = os.getenv("OPENROUTER_API_KEY", "").strip()
+    if not api_key:
+        raise _ProviderError("OPENROUTER_API_KEY is not set")
+    extend = args.get("extend") or {}
+    widget_type = (extend.get("widget_type") or "").strip()
+    if not widget_type:
+        raise _ProviderError("rescue_extend missing extend.widget_type")
+    # Belt-and-braces — Pydantic already validated this regex backend-side,
+    # but bin/opencode is a separate process and shouldn't trust args blindly.
+    if not re.fullmatch(r"[a-z][a-z0-9_]{2,31}", widget_type):
+        raise _ProviderError(f"invalid widget_type for rescue_extend: {widget_type!r}")
+
+    model = _pick_model(operation)
+    system_prompt = _build_extend_system_prompt(agent, widget_type, extend)
+    user_prompt = _build_user_prompt(operation, args)
+    messages: list[dict] = [
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": user_prompt},
+    ]
+
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json",
+        "HTTP-Referer": "https://helper-dashboard.local/",
+        "X-Title": "Helper Dashboard (rescue_extend)",
+    }
+    timeout = float(os.getenv("OPENCODE_HTTP_TIMEOUT", "120"))
+
+    _dbg(f"tool_loop:start widget_type={widget_type!r} model={model!r}")
+
+    for iter_n in range(1, _TOOL_LOOP_MAX_ITERS + 1):
+        body = {
+            "model": model,
+            "messages": messages,
+            "tools": _RESCUE_EXTEND_TOOLS,
+            "tool_choice": "auto",
+            "temperature": 0.2,
+        }
+        req = urllib.request.Request(
+            _OPENROUTER_URL,
+            data=json.dumps(body).encode("utf-8"),
+            headers=headers,
+            method="POST",
+        )
+        try:
+            ctx = ssl.create_default_context()
+            with urllib.request.urlopen(req, timeout=timeout, context=ctx) as resp:
+                raw = resp.read().decode("utf-8")
+        except urllib.error.HTTPError as exc:
+            detail = exc.read().decode("utf-8", errors="replace")[:400]
+            raise _ProviderError(
+                f"openrouter HTTP {exc.code} in tool loop iter {iter_n}: {detail}"
+            ) from exc
+        except urllib.error.URLError as exc:
+            raise _ProviderError(
+                f"openrouter network in tool loop iter {iter_n}: {exc}"
+            ) from exc
+
+        try:
+            data = json.loads(raw)
+            msg = data["choices"][0]["message"]
+        except Exception as exc:
+            raise _ProviderError(f"openrouter response parse: {exc}") from exc
+
+        # Echo the assistant message into history so the model can see
+        # its own prior tool calls on the next iteration.
+        messages.append({
+            "role": "assistant",
+            "content": msg.get("content"),
+            "tool_calls": msg.get("tool_calls"),
+        })
+
+        tool_calls = msg.get("tool_calls") or []
+        if not tool_calls:
+            # No tool call — try to extract a DeveloperReport from the
+            # content. This is the "LLM forgot to call done" fallback.
+            parsed = _extract_first_json_object(msg.get("content") or "")
+            if parsed is not None and parsed.get("type") == "DeveloperReport":
+                _dbg(f"tool_loop:end iter={iter_n} via content fallback")
+                return _normalize_developer_report(parsed)
+            raise _ProviderError(
+                f"tool loop iter {iter_n}: no tool_calls and no DeveloperReport "
+                f"in content; aborting"
+            )
+
+        for tc in tool_calls:
+            try:
+                name = tc["function"]["name"]
+                raw_args = tc["function"]["arguments"]
+                tc_args = json.loads(raw_args) if isinstance(raw_args, str) else (raw_args or {})
+            except Exception as exc:
+                _dbg(f"tool_loop:bad tool_call: {exc}")
+                name, tc_args = "", {}
+
+            if name == "done":
+                report = tc_args.get("report") if isinstance(tc_args, dict) else {}
+                _dbg(f"tool_loop:end iter={iter_n} via done()")
+                return _normalize_developer_report(report or {})
+
+            try:
+                if name == "read_file":
+                    result_str = _tool_read_file(tc_args)
+                elif name == "write_file":
+                    result_str = _tool_write_file(tc_args, widget_type)
+                elif name == "replace_in_file":
+                    result_str = _tool_replace_in_file(tc_args, widget_type)
+                elif name == "run_command":
+                    result_str = _tool_run_command(tc_args)
+                else:
+                    raise _ToolError(f"unknown tool: {name!r}")
+                # Tag the result so the LLM can grep for it in long histories.
+                preview = result_str if len(result_str) < 80 else result_str[:77] + "..."
+                _dbg(f"tool_loop:iter={iter_n} tool={name!r} ok={preview!r}")
+            except _ToolError as exc:
+                # Feed the error back to the LLM as the tool result.
+                result_str = json.dumps({"error": str(exc)})
+                _dbg(f"tool_loop:iter={iter_n} tool={name!r} err={exc}")
+
+            messages.append({
+                "role": "tool",
+                "tool_call_id": tc.get("id", ""),
+                "content": result_str,
+            })
+
+    raise _ProviderError(
+        f"rescue_extend tool loop exceeded {_TOOL_LOOP_MAX_ITERS} iterations "
+        f"without calling done()"
+    )
+
+
+if __name__ == "__main__":
+    sys.exit(main())

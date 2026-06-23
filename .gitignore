@@ -23,6 +23,8 @@ lib64/
 parts/
 sdist/
 var/
+data/
+*.swp
 wheels/
 pip-wheel-metadata/
 share/python-wheels/
@@ -141,6 +143,24 @@ logs/
 
 grounding/config/configs
 grounding/version.py
-
+video_screen_analysis/
+uploads/
+test_frames/
+*.mkv
 vis/
 tmp/
+.aider*
+
+# Large files and databases
+Test_video/
+*.pth
+groundingdino_swint_ogc.pth
+mongodb_data/
+mongodb_data_backup_old/
+mongodb_data.bak.*/
+mediamtx
+mediamtx_v1.16.3_linux_arm64.tar.gz
+mongosh-2.1.1-linux-x64.tgz
+mongosh-2.1.1-linux-x64/
+
+

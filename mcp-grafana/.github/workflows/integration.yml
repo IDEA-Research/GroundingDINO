@@ -1,0 +1,74 @@
+name: Integration Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    - cron: "0 0 * * *"
+
+permissions:
+  contents: read
+
+jobs:
+  test-integration:
+    name: Test Integration
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+        with:
+          persist-credentials: false
+
+      # Start the Grafana server.
+      # Do this early so that it can start up in time for the tests to run.
+      # We may need to add a wait here.
+      - name: Start docker-compose services
+        uses: hoverkraft-tech/compose-action@05da55b2bb8a5a759d1c4732095044bd9018c050
+        with:
+          compose-file: "docker-compose.yaml"
+
+      - name: Set up Go
+        uses: actions/setup-go@4dc6199c7b1a012772edbd06daecab0f50c9053c # v6.1.0
+        with:
+          go-version: "1.24"
+          cache: true
+
+      - name: Wait for Grafana server and Prometheus server to start and scrape
+        run: sleep 30
+
+      - name: Run integration tests
+        run: make test-integration
+
+  test-cloud:
+    name: Test Cloud
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Go
+        uses: actions/setup-go@4dc6199c7b1a012772edbd06daecab0f50c9053c # v6.1.0
+        with:
+          go-version: "1.24"
+          cache: true
+
+      - id: get-secrets
+        uses: grafana/shared-workflows/actions/get-vault-secrets@a37de51f3d713a30a9e4b21bcdfbd38170020593 # get-vault-secrets/v1.3.0
+        with:
+          # Secrets placed in the ci/repo/grafana/mcp-grafana/<path> path in Vault
+          repo_secrets: |
+            GRAFANA_SERVICE_ACCOUNT_TOKEN=mcptests-grafana:api-key
+            ASSERTS_GRAFANA_SERVICE_ACCOUNT_TOKEN=dev-grafana:api-key
+
+      - name: Run cloud tests
+        env:
+          GRAFANA_URL: ${{ vars.CLOUD_GRAFANA_URL }}
+          ASSERTS_GRAFANA_URL: ${{ vars.ASSERTS_GRAFANA_URL }}
+        run: make test-cloud

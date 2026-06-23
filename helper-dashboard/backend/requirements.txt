@@ -1,0 +1,8 @@
+fastapi>=0.110
+uvicorn[standard]>=0.27
+pydantic>=2.6
+# Optional — browser evaluator will fall back if not installed.
+playwright>=1.41
+pytest>=8.0
+httpx>=0.27
+prometheus-fastapi-instrumentator>=7.1.0

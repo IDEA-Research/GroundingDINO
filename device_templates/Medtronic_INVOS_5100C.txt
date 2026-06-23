@@ -1,0 +1,32 @@
+Device:Medtronic INVOS 5100C
+
+[Visual Identification]
+Primary Target: Locate the "INVOS", "SOMANETICS", or "rSO2" label.
+Spatial Layout: The screen is strictly divided into Left (L) and Right (R) zones.
+Key Feature: Real-time values are the LARGEST numerical digits on the screen.
+
+[Extraction Strategy: Spatial Anchoring]
+DO NOT mix values from different sides. Each side must be treated as an independent data zone.
+
+1. Left Side (Zone L) (Strictly Top RIGHT of the screen)
+Anchor: Locate the large letter "L", "Lt", or the word "Left".
+rso2_left: The BIGGEST number within the Left Zone.
+rso2_left_avg: The SMALLER number directly below or adjacent to the big "L" number (often labeled "Avg", "BL", or "Base").
+When the zone is empty, set value to null. dont return any number
+
+2. Right Side (Zone R) (Strictly Bottom  RIGHT of the screen)
+Anchor: Locate the large letter "R", "Rt", or the word "Right".
+rso2_right: The BIGGEST number within the Right Zone.
+rso2_right_avg: The SMALLER number directly below or adjacent to the big "R" number (often labeled "Avg", "BL", or "Base").
+When the zone is empty, set value to null. dont return any number
+
+[Safety & Validation Rules]
+1.Ambiguity Protocol: If L/R is unclear, set keys to null.
+2. Sanity Check ($15 \text{--} 100$): If value $< 15$ or $> 100$, set to null and trigger re-analysis.
+3. Negative Values: If - is detected, set to null.
+4. Disconnected Sensors: If showing -- or OFF, set the specific side to null.
+5. Glare/Obscurity: If the number is unreadable, set to null.
+6. Strict Output: Data fields must ONLY contain a Number or null. No descriptive text (e.g., "Error") allowed.
+7. Delta Limit: `rso2_left` vs `rso2_left_avg` and `rso2_right` vs `rso2_right_avg` typically differ by ≤ 15.
+8. Anti-Misread Rule: Digital "8" is often misread as "6".
+9. Action (CRITICAL): If the difference between a real-time value and its average is > 15 (e.g., 80 vs 62), TRIGGER RE-ANALYSIS. Strictly re-evaluate the tens digit for the "8" vs "6" visual error before finalizing.

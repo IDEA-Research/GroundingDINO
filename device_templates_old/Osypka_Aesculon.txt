@@ -1,0 +1,26 @@
+Device: Osypka Aesculon Hemodynamic Monitor
+
+[Visual Identification]
+- **Physical Feature**: Distinctive BLUE physical bezel/frame around the screen.
+- **Logo**: "OSYPKA MEDICAL" or "AESCULON" usually visible at the bottom.
+- **Screen Layout**: Top section is a black horizontal bar containing TWO LARGE WHITE NUMBERS.
+- **Content**: Below the top bar, there are usually yellow/green bars or waveforms, but we focus on the top.
+
+[Visibility & Safety Rules]
+- **Glare/Blur**: If the top numbers are covered by white glare or are too blurry to distinguish (e.g., cannot tell "0.19" from "0.79"), return null.
+- **"---"**: If the display shows dashed lines "---", return null.
+
+[Extraction Rules]
+Extract the **Two Large White Numbers** located at the very top of the screen (in the black banner).
+
+1. **Left Big Number (CI)**
+   - **Key**: `ci_meas`
+   - **Visual Location**: The large white number on the TOP LEFT side.
+   - **Label Check**: Usually labeled "CI" (Cardiac Index) just above the number.
+   - **Example**: In the reference image, this is "0.19".
+
+2. **Right Big Number (SVI)**
+   - **Key**: `svi_meas`
+   - **Visual Location**: The large white number on the TOP RIGHT side.
+   - **Label Check**: Usually labeled "SVI" (Stroke Volume Index) or "VI" just above the number.
+   - **Example**: In the reference image, this is "1.29".
