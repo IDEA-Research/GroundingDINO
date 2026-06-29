@@ -117,7 +117,7 @@ def get_grounding_output(model, image, caption, box_threshold, text_threshold=No
     else:
         # given-phrase mode
         positive_maps = create_positive_map_from_span(
-            model.tokenizer(text_prompt),
+            model.tokenizer(caption),
             token_span=token_spans
         ).to(image.device) # n_phrase, 256
 
