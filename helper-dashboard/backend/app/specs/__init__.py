@@ -25,6 +25,18 @@ from .evaluation_report import BrowserEvaluationReport
 from .review_decision import ExtendRequest, ReviewDecision, RescueDecision
 from .clarification_request import ClarificationRequest
 from .saved_dashboard import SavedDashboard, SavedDashboardSummary
+from .alert_rule_spec import (
+    AlertRuleSpec,
+    BaselineSpec,
+    AlertSeverity,
+    RuleMode,
+)
+from .anomaly_evaluation_report import (
+    AnomalyEvaluationReport,
+    AlertEvent,
+    AlertState,
+    SignalLostReason,
+)
 
 __all__ = [
     "WidgetSpec",
@@ -53,4 +65,12 @@ __all__ = [
     "ClarificationRequest",
     "SavedDashboard",
     "SavedDashboardSummary",
+    "AlertRuleSpec",
+    "BaselineSpec",
+    "AlertSeverity",
+    "RuleMode",
+    "AnomalyEvaluationReport",
+    "AlertEvent",
+    "AlertState",
+    "SignalLostReason",
 ]
