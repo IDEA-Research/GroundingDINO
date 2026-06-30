@@ -209,6 +209,30 @@
         margin-top: 8px;
     }
 
+    .quality-marker {
+        margin-top: 10px;
+        display: flex;
+        gap: 10px;
+        flex-wrap: wrap;
+    }
+
+    .quality-marker label {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 0.9em;
+        color: #333;
+        background: #f5f7fa;
+        border: 1px solid #d9e2ec;
+        border-radius: 6px;
+        padding: 4px 8px;
+        cursor: pointer;
+    }
+
+    .quality-marker input[type="checkbox"] {
+        cursor: pointer;
+    }
+
     .medical-value-item img {
         max-width: 100%;
         height: auto;
@@ -842,7 +866,9 @@
                     model: item.model,
                     corrected_model: item.corrected_model,
                     analyzed_at: item.analyzed_at, // 保存主機時間
-                    llm_model: item.llm_model
+                    llm_model: item.llm_model,
+                    has_glare: !!item.has_glare,
+                    has_occlusion: !!item.has_occlusion
                 }));
                 
                 document.getElementById('totalRecords').textContent = medicalValuesData.length;
@@ -1093,7 +1119,8 @@
             div.onclick = (e) => {
                 // 如果點擊的是 span (數值標籤) 或 div.model (型號區域) 或 btn-resend，不觸發模態視窗
                 if (e.target.tagName === 'SPAN' || e.target.parentElement.tagName === 'SPAN' || 
-                    e.target.closest('.model-selector') || e.target.closest('.btn-resend')) return;
+                    e.target.closest('.model-selector') || e.target.closest('.btn-resend') ||
+                    e.target.closest('.quality-marker')) return;
                 showImageModal(item);
             };
             
@@ -1126,6 +1153,22 @@
             const seconds = timeSeconds % 60;
             
             const hasModelCorrection = item.corrected_model !== undefined && item.corrected_model !== null;
+            const qualityHtml = `
+                <div class="quality-marker">
+                    <label onclick="event.stopPropagation()">
+                        <input type="checkbox"
+                               ${item.has_glare ? 'checked' : ''}
+                               onchange="toggleQualityMark('${item.id}', 'has_glare', this.checked, event)">
+                        ☀️ 有反光
+                    </label>
+                    <label onclick="event.stopPropagation()">
+                        <input type="checkbox"
+                               ${item.has_occlusion ? 'checked' : ''}
+                               onchange="toggleQualityMark('${item.id}', 'has_occlusion', this.checked, event)">
+                        🧱 有遮擋
+                    </label>
+                </div>
+            `;
             
             // 時間顯示邏輯
             let timeDisplay = '';
@@ -1175,6 +1218,7 @@
                     <span class="${hasModelCorrection ? 'original-text' : ''}">${item.model}</span>
                     ${hasModelCorrection ? `<span class="corrected-text">${item.corrected_model}</span>` : ''}
                 </div>
+                ${qualityHtml}
                 ${item.is_resent ? '<div style="margin-top:5px; text-align:right;"><span class="new-result-tag">✨ 最新重送結果 (未存檔)</span></div>' : ''}
             `;
             
@@ -1304,6 +1348,46 @@
             }
         } catch (error) {
             alert('撤銷失敗: ' + error.message);
+        }
+    }
+
+    async function toggleQualityMark(analysisId, field, checked, event) {
+        event.stopPropagation();
+        const item = medicalValuesData.find(i => i.id === analysisId);
+        if (!item) return;
+
+        const previousGlare = !!item.has_glare;
+        const previousOcclusion = !!item.has_occlusion;
+
+        if (field === 'has_glare') {
+            item.has_glare = checked;
+        } else if (field === 'has_occlusion') {
+            item.has_occlusion = checked;
+        }
+
+        try {
+            const response = await fetch('./api/mongodb/mark_quality/', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    analysis_id: analysisId,
+                    has_glare: !!item.has_glare,
+                    has_occlusion: !!item.has_occlusion
+                })
+            });
+
+            const data = await response.json();
+            if (!data.success) {
+                item.has_glare = previousGlare;
+                item.has_occlusion = previousOcclusion;
+                displayMedicalValues(medicalValuesData);
+                alert('更新畫面品質標註失敗: ' + (data.error || '未知錯誤'));
+            }
+        } catch (error) {
+            item.has_glare = previousGlare;
+            item.has_occlusion = previousOcclusion;
+            displayMedicalValues(medicalValuesData);
+            alert('更新畫面品質標註失敗: ' + error.message);
         }
     }
 

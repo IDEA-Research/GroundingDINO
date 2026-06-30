@@ -28,10 +28,11 @@ try:
         ctypes.CDLL(libtorch_cpu_path, mode=ctypes.RTLD_GLOBAL)
         print(f"✅ 預載入 libtorch_cpu.so")
     
-    # 載入 libtorch_cuda.so (如果存在)
-    for cuda_lib in glob.glob(os.path.join(torch_lib_path, 'libtorch_cuda*.so')):
-        ctypes.CDLL(cuda_lib, mode=ctypes.RTLD_GLOBAL)
-        print(f"✅ 預載入 {os.path.basename(cuda_lib)}")
+    # 僅載入 libtorch_cuda.so (避免載入不相容 CUDA 更新版 libtorch_cuda_linalg.so 引發符號未定義錯誤)
+    libtorch_cuda_path = os.path.join(torch_lib_path, 'libtorch_cuda.so')
+    if os.path.exists(libtorch_cuda_path):
+        ctypes.CDLL(libtorch_cuda_path, mode=ctypes.RTLD_GLOBAL)
+        print(f"✅ 預載入 libtorch_cuda.so")
         
 except Exception as e:
     print(f"⚠️  預載入庫時發生錯誤: {e}")
@@ -1047,6 +1048,37 @@ def correct_model():
             return jsonify({'success': True, 'message': '型號訂正成功'})
         else:
             return jsonify({'error': '更新資料庫失敗'}), 500
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/mongodb/mark_quality/', methods=['POST'])
+def mark_quality():
+    """更新反光/遮擋人工標註"""
+    if not mongo_manager:
+        return jsonify({'error': 'MongoDB 未啟用'}), 503
+
+    try:
+        data = request.get_json()
+        analysis_id = data.get('analysis_id')
+
+        if not analysis_id:
+            return jsonify({'error': '缺少必要參數 analysis_id'}), 400
+
+        has_glare = data.get('has_glare')
+        has_occlusion = data.get('has_occlusion')
+
+        if has_glare is None and has_occlusion is None:
+            return jsonify({'error': '至少要提供 has_glare 或 has_occlusion'}), 400
+
+        success = mongo_manager.update_quality_flags(
+            analysis_id=analysis_id,
+            has_glare=has_glare,
+            has_occlusion=has_occlusion
+        )
+
+        if success:
+            return jsonify({'success': True, 'message': '畫面品質標註已更新'})
+        return jsonify({'error': '更新資料庫失敗'}), 500
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 

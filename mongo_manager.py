@@ -71,8 +71,6 @@ class LocalMongoDBManager:
         """創建 MongoDB 配置檔案"""
         config_content = f"""storage:
   dbPath: {self.data_dir}/db
-  journal:
-    enabled: true
 
 systemLog:
   destination: file
@@ -379,7 +377,9 @@ security:
                         "is_merged_result": len(result['screen_analyses']) < original_screen_count,
                         # 修改：優先使用擷取時間，若無則使用當下時間
                         "analyzed_at": result.get('capture_timestamp', datetime.now()),
-                        "llm_model": llm_model  # 記錄使用的模型
+                        "llm_model": llm_model,  # 記錄使用的模型
+                        "has_glare": False,
+                        "has_occlusion": False
                     }
                     
                     # 對於 screen，使用 (frame_result_id, original_screen_number, llm_model) 作為唯一標識
@@ -529,6 +529,8 @@ security:
                 "corrected_medical_values": "$screens.corrected_medical_values",
                 "model": "$screens.detected_model",
                 "corrected_model": "$screens.corrected_model",
+                "has_glare": "$screens.has_glare",
+                "has_occlusion": "$screens.has_occlusion",
                 "analyzed_at": "$screens.analyzed_at",
                 "original_image_path": "$frames.original_image_path",
                 "screen_image_path": "$screens.screen_image_path",
@@ -727,7 +729,9 @@ security:
                 "success": analysis_result.get('success', False),
                 "error_message": analysis_result.get('error') if not analysis_result.get('success') else None,
                 "analyzed_at": datetime.now(),
-                "llm_model": llm_model
+                "llm_model": llm_model,
+                "has_glare": False,
+                "has_occlusion": False
             }
             
             self.db.screen_analysis.update_one(
@@ -795,6 +799,31 @@ security:
             return True
         except Exception as e:
             print(f"❌ 型號訂正失敗: {e}")
+            return False
+
+    def update_quality_flags(self, analysis_id, has_glare=None, has_occlusion=None):
+        """更新反光/遮擋人工標註欄位"""
+        from bson.objectid import ObjectId
+        if self.db is None:
+            return False
+
+        try:
+            set_fields = {"quality_marked_at": datetime.now()}
+            if has_glare is not None:
+                set_fields["has_glare"] = bool(has_glare)
+            if has_occlusion is not None:
+                set_fields["has_occlusion"] = bool(has_occlusion)
+
+            if len(set_fields) == 1:
+                return False
+
+            self.db.screen_analysis.update_one(
+                {"_id": ObjectId(analysis_id)},
+                {"$set": set_fields}
+            )
+            return True
+        except Exception as e:
+            print(f"❌ 更新畫面品質標註失敗: {e}")
             return False
 
     def get_all_videos(self, source_filter=None, search_query=None):
