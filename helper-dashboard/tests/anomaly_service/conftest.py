@@ -17,5 +17,6 @@ import pytest
 @pytest.fixture(autouse=True)
 def _isolated_audit(tmp_path, monkeypatch):
     monkeypatch.setenv("ANOMALY_BUILD_AUDIT_DIR", str(tmp_path / "audit"))
+    monkeypatch.setenv("ANOMALY_LIFECYCLE_AUDIT_DIR", str(tmp_path / "lifecycle"))
     monkeypatch.setenv("ANOMALY_ALERT_STATE_DIR", str(tmp_path / "state_default"))
     yield

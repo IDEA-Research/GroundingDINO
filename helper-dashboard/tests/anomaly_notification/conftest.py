@@ -16,6 +16,7 @@ import pytest
 @pytest.fixture(autouse=True)
 def _isolated_notify(tmp_path, monkeypatch):
     monkeypatch.setenv("ANOMALY_BUILD_AUDIT_DIR", str(tmp_path / "audit"))
+    monkeypatch.setenv("ANOMALY_LIFECYCLE_AUDIT_DIR", str(tmp_path / "lifecycle"))
     monkeypatch.setenv("ANOMALY_ALERT_STATE_DIR", str(tmp_path / "state_default"))
     # Inviolable: a test must NEVER hit the real Discord endpoint. Ensure the
     # env var is absent so build_default_notifier() falls back to local file.

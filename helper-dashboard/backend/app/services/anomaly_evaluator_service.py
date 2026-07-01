@@ -32,8 +32,13 @@ from datetime import datetime, timezone
 from typing import Callable
 
 from ..specs.alert_rule_spec import AlertRuleSpec
-from ..specs.anomaly_evaluation_report import AlertState, AnomalyEvaluationReport
+from ..specs.anomaly_evaluation_report import (
+    AlertEvent,
+    AlertState,
+    AnomalyEvaluationReport,
+)
 from . import anomaly_build_audit as audit
+from . import anomaly_lifecycle_audit as lifecycle
 from .alert_state_store import AlertStateStore
 from .anomaly_core import AnomalyEvaluatorCore
 from .anomaly_data_provider import DataProvider
@@ -131,6 +136,11 @@ class AnomalyEvaluatorService:
             )
             self._rehydrate(core, rule)
             self._cores[rule.id] = core
+            # Clinical lifecycle: a rule entering the running set is an audited
+            # activation event (shadow by default; paging is separate).
+            lifecycle.record_rule_activated(
+                rule, promoted=core.promoted, increment=self.increment
+            )
 
         if self.store.load_error:
             # Surface a corrupt-state load loudly; do NOT pretend healthy.
@@ -204,13 +214,24 @@ class AnomalyEvaluatorService:
                 if report.state in _DEGRADED_STATES:
                     any_degraded = True
                 self._audit_report(rule, report)
+                # Clinical lifecycle audit: every transition captured (INC5).
+                for ev in report.events:
+                    lifecycle.record_transition(
+                        ev, mode=report.mode, increment=self.increment
+                    )
 
                 # Out-of-band delivery (INC3) runs AFTER the clinical verdict
                 # is persisted, so a notifier hiccup can never lose or delay a
                 # clinical record. A dispatch failure is caught below and made
                 # visible; it does not corrupt the clinical state.
                 if self.dispatcher is not None:
-                    result.dispatch[rule.id] = self.dispatcher.dispatch_report(report)
+                    outcome = self.dispatcher.dispatch_report(report)
+                    result.dispatch[rule.id] = outcome
+                    # INC5: reconcile expected vs actual paging. A MISSED
+                    # must-fire (a pageable event the rule was promoted to
+                    # deliver, but no successful ack landed and it was not a
+                    # legitimate dedup) is the top-severity clinical event.
+                    self._audit_delivery_lifecycle(rule, report, outcome)
             except Exception as exc:  # noqa: BLE001
                 # A tick that raises must be VISIBLE (watchdog + audit), not
                 # a silent "no anomaly". Record and keep the loop alive.
@@ -317,6 +338,124 @@ class AnomalyEvaluatorService:
                 },
                 outcome=ev.state.value,
             )
+
+    # ------------------------------------------------------------------
+    def _audit_delivery_lifecycle(
+        self,
+        rule: AlertRuleSpec,
+        report: AnomalyEvaluationReport,
+        outcome: DispatchOutcome,
+    ) -> None:
+        """Record delivery / would-fire / suppression / MISSED per pageable event.
+
+        Reconciles the report's pageable events against what the dispatcher
+        actually did. A promoted (paged=True) pageable event that produced
+        neither a successful delivery nor a legitimate dedup is a MISSED
+        must-fire — the top-severity clinical-safety event.
+        """
+        delivered_keys = {r.dedup_key for r in outcome.delivered}
+        acked_keys = {r.dedup_key for r in outcome.delivered if r.acked}
+        deduped_keys = set(outcome.deduped)
+        would_fire_keys = set(outcome.would_fire_only)
+        refused_keys = set(outcome.refused)
+
+        for ev in report.events:
+            if ev.state not in (AlertState.firing, AlertState.signal_lost):
+                continue
+            key = self._dedup_key(ev)
+
+            # Shadow would-fire: recorded, never paged (visible, not silent).
+            if not ev.paged:
+                if key in would_fire_keys or ev.would_page:
+                    lifecycle.record_would_fire(ev, increment=self.increment)
+                continue
+
+            # Promoted + this event actually paged: reconcile delivery.
+            receipt = next(
+                (r for r in outcome.delivered if r.dedup_key == key), None
+            )
+            if receipt is not None and receipt.acked:
+                lifecycle.record_delivery(
+                    ev,
+                    channel=receipt.channel,
+                    masked_target=self._masked_target(),
+                    delivered=receipt.delivered,
+                    acked=receipt.acked,
+                    attempts=receipt.attempts,
+                    error=receipt.error,
+                    increment=self.increment,
+                )
+            elif key in deduped_keys:
+                # A legitimate page-once dedup: recorded as suppressed, NOT a
+                # miss (the first edge already delivered).
+                lifecycle.record_suppressed(
+                    ev.rule_id,
+                    state=ev.state.value,
+                    severity=ev.severity,
+                    reason="deduped_page_once",
+                    increment=self.increment,
+                )
+            elif key in refused_keys:
+                # Suppression of a paging alert was REFUSED loudly upstream.
+                lifecycle.record_suppressed(
+                    ev.rule_id,
+                    state=ev.state.value,
+                    severity=ev.severity,
+                    reason="suppression_refused",
+                    increment=self.increment,
+                )
+            else:
+                # Expected a page, none acked, not a dedup -> MISSED (top sev).
+                detail = (
+                    f"delivered={receipt.delivered if receipt else False} "
+                    f"acked=False key={key}"
+                )
+                lifecycle.record_missed(
+                    ev.rule_id,
+                    state=ev.state.value,
+                    severity=ev.severity,
+                    detail=detail,
+                    increment=self.increment,
+                )
+                if receipt is not None:
+                    # Also record the un-acked delivery attempt so the operator
+                    # sees we tried but it never landed.
+                    lifecycle.record_delivery(
+                        ev,
+                        channel=receipt.channel,
+                        masked_target=self._masked_target(),
+                        delivered=receipt.delivered,
+                        acked=receipt.acked,
+                        attempts=receipt.attempts,
+                        error=receipt.error,
+                        increment=self.increment,
+                    )
+
+    @staticmethod
+    def _dedup_key(event: AlertEvent) -> str:
+        slr = (
+            event.signal_lost_reason.value
+            if event.signal_lost_reason is not None
+            else None
+        )
+        parts = [event.rule_id, event.state.value, event.ts]
+        if slr:
+            parts.append(slr)
+        return "|".join(parts)
+
+    def _masked_target(self) -> str:
+        if self.dispatcher is not None and self.dispatcher.notifier is not None:
+            try:
+                return self.dispatcher.notifier.masked_target()
+            except Exception:  # noqa: BLE001
+                return "****"
+        return "****"
+
+    # ------------------------------------------------------------------
+    def acknowledge(self, rule_id: str, *, by: str) -> None:
+        """Record a human ack of a firing alert (durable + lifecycle audit)."""
+        self.store.acknowledge(rule_id, by=by)
+        lifecycle.record_ack(rule_id, by=by, increment=self.increment)
 
     # ------------------------------------------------------------------
     def status(self) -> dict:

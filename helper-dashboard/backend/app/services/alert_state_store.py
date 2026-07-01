@@ -277,6 +277,85 @@ class AlertStateStore:
             "rules": {rid: st.to_json() for rid, st in self._states.items()},
         }
 
+    # ------------------------------------------------------------------
+    # Last-known-good backup / restore (INC5 break-glass recovery hatch)
+    # ------------------------------------------------------------------
+    @property
+    def _lkg_path(self) -> Path:
+        return self.base_dir / "last_known_good.json"
+
+    def backup_last_known_good(self) -> Path:
+        """Capture the current snapshot as the last-known-good baseline.
+
+        Written atomically so a crash mid-backup never leaves a torn LKG that
+        would restore garbage. Called by break-glass BEFORE a risky action and
+        implicitly whenever the loop is in a healthy steady state.
+        """
+        payload = self.snapshot_dict()
+        data = json.dumps(payload, ensure_ascii=False, indent=2)
+        fd, tmp_name = tempfile.mkstemp(
+            dir=str(self.base_dir), prefix=".lkg-", suffix=".tmp"
+        )
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as fh:
+                fh.write(data)
+                fh.flush()
+                os.fsync(fh.fileno())
+            os.replace(tmp_name, self._lkg_path)
+        except Exception:
+            try:
+                os.unlink(tmp_name)
+            except OSError:
+                pass
+            raise
+        return self._lkg_path
+
+    def has_last_known_good(self) -> bool:
+        return self._lkg_path.exists()
+
+    def restore_last_known_good(self) -> dict[str, Any]:
+        """Restore rule state from the last-known-good baseline.
+
+        Returns the restored payload. Raises if there is no LKG to restore or
+        if it is unreadable — a recovery hatch must FAIL LOUD rather than
+        silently leave a corrupt/blank state that reads back as "healthy".
+        """
+        if not self._lkg_path.exists():
+            raise AlertStateStoreError(
+                "no last-known-good snapshot to restore from"
+            )
+        try:
+            raw = json.loads(self._lkg_path.read_text(encoding="utf-8"))
+        except Exception as exc:  # noqa: BLE001
+            raise AlertStateStoreError(
+                f"last-known-good snapshot unreadable: {type(exc).__name__}: {exc}"
+            ) from exc
+        states: dict[str, RuleState] = {}
+        for rule_id, blob in (raw.get("rules") or {}).items():
+            states[rule_id] = RuleState.from_json(blob)
+        self._states = states
+        # A successful restore also clears any prior load-error: the operator
+        # has deliberately chosen the LKG as the new source of truth.
+        self._load_error = None
+        self._atomic_write_snapshot()
+        return raw
+
+    # ------------------------------------------------------------------
+    def history_records(self) -> list[dict[str, Any]]:
+        """Read back the append-only lifecycle history (for audit assertions)."""
+        if not self._history_path.exists():
+            return []
+        out: list[dict[str, Any]] = []
+        for line in self._history_path.read_text(encoding="utf-8").splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                out.append(json.loads(line))
+            except Exception:  # noqa: BLE001 — a torn tail line is surfaced, not fatal
+                out.append({"_unparseable": line})
+        return out
+
 
 def _tick_epoch(ts_iso: str) -> float | None:
     """Best-effort epoch seconds from an ISO timestamp for last_tick_ts."""
