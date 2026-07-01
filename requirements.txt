@@ -1,6 +1,8 @@
 torch
 torchvision
-transformers
+transformers==4.33.2
+tokenizers==0.13.3
+huggingface_hub==0.17.3
 addict
 yapf
 timm

@@ -28,11 +28,10 @@ try:
         ctypes.CDLL(libtorch_cpu_path, mode=ctypes.RTLD_GLOBAL)
         print(f"✅ 預載入 libtorch_cpu.so")
     
-    # 僅載入 libtorch_cuda.so (避免載入不相容 CUDA 更新版 libtorch_cuda_linalg.so 引發符號未定義錯誤)
-    libtorch_cuda_path = os.path.join(torch_lib_path, 'libtorch_cuda.so')
-    if os.path.exists(libtorch_cuda_path):
-        ctypes.CDLL(libtorch_cuda_path, mode=ctypes.RTLD_GLOBAL)
-        print(f"✅ 預載入 libtorch_cuda.so")
+    # 載入 libtorch_cuda.so (如果存在)
+    for cuda_lib in glob.glob(os.path.join(torch_lib_path, 'libtorch_cuda*.so')):
+        ctypes.CDLL(cuda_lib, mode=ctypes.RTLD_GLOBAL)
+        print(f"✅ 預載入 {os.path.basename(cuda_lib)}")
         
 except Exception as e:
     print(f"⚠️  預載入庫時發生錯誤: {e}")

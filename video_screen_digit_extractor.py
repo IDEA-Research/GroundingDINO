@@ -321,15 +321,17 @@ class VideoScreenDigitExtractor:
             # 呼叫現有的分析邏輯 (其中 detect_screens_in_image 已被 self.gpu_lock 保護)
             frame_result = self.process_single_video_frame(filepath, time_seconds, analysis_base_dir)
             
-            # 檢查是否有 API 錯誤
-            has_api_error = False
+            # 檢查是否有分析錯誤（包含整張畫面分析失敗）
+            has_analysis_error = not frame_result.get("processing_success", True)
+            if has_analysis_error:
+                self.last_error = frame_result.get("processing_error")
             for sa in frame_result.get('screen_analyses', []):
                 if not sa['analysis']['success']:
                     self.last_error = sa['analysis']['error']
-                    has_api_error = True
+                    has_analysis_error = True
                     break
             
-            if not has_api_error:
+            if not has_analysis_error:
                 self.last_error = None # 如果成功，清除之前的錯誤
 
             frame_result['capture_timestamp'] = datetime.fromtimestamp(capture_timestamp)
@@ -341,7 +343,10 @@ class VideoScreenDigitExtractor:
                         video_path_for_db, session_id, [frame_result], source="stream",
                         llm_model=self.model, camera_name=camera_name
                     )
-                    print(f"[背景分析] ✅ [{datetime.fromtimestamp(capture_timestamp).strftime('%H:%M:%S')}] 已成功分析並保存到 MongoDB")
+                    if has_analysis_error:
+                        print(f"[背景分析] ⚠️ [{datetime.fromtimestamp(capture_timestamp).strftime('%H:%M:%S')}] 已保存到 MongoDB，但分析失敗: {self.last_error}")
+                    else:
+                        print(f"[背景分析] ✅ [{datetime.fromtimestamp(capture_timestamp).strftime('%H:%M:%S')}] 已成功分析並保存到 MongoDB")
                 except Exception as e:
                     print(f"[背景分析] ⚠️ MongoDB 保存失敗: {e}")
 
@@ -615,7 +620,9 @@ class VideoScreenDigitExtractor:
             "time_seconds": time_seconds,
             "image_path": image_path,
             "screens_detected": 0,
-            "screen_analyses": []
+            "screen_analyses": [],
+            "processing_success": True,
+            "processing_error": None
         }
         
         try:
@@ -718,6 +725,8 @@ class VideoScreenDigitExtractor:
         except Exception as e:
             print(traceback.format_exc())
             print(f"  處理畫面時發生錯誤: {str(e)}")
+            frame_result["processing_success"] = False
+            frame_result["processing_error"] = str(e)
         
         return frame_result
     
