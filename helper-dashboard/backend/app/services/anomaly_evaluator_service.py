@@ -37,6 +37,7 @@ from . import anomaly_build_audit as audit
 from .alert_state_store import AlertStateStore
 from .anomaly_core import AnomalyEvaluatorCore
 from .anomaly_data_provider import DataProvider
+from .anomaly_notification_dispatch import DispatchOutcome, NotificationDispatcher
 
 
 def _iso(ts: float) -> str:
@@ -84,6 +85,9 @@ class TickResult:
     now: float
     reports: dict[str, AnomalyEvaluationReport] = field(default_factory=dict)
     errors: dict[str, str] = field(default_factory=dict)
+    # Per-rule notification-dispatch outcome (INC3). Empty when no dispatcher
+    # is wired. Delivery is out of band and never gates the clinical verdict.
+    dispatch: dict[str, DispatchOutcome] = field(default_factory=dict)
 
 
 class AnomalyEvaluatorService:
@@ -100,10 +104,15 @@ class AnomalyEvaluatorService:
         promoted: bool = False,
         monotonic: Callable[[], float] | None = None,
         increment: str = "INC2",
+        dispatcher: NotificationDispatcher | None = None,
     ) -> None:
         self.rules = list(rules)
         self.provider = provider
         self.store = store or AlertStateStore()
+        # Optional out-of-band notifier wiring (INC3). When absent, the loop
+        # behaves exactly as INC2 (record-only). Delivery NEVER gates or
+        # delays the clinical verdict; it runs after the verdict is persisted.
+        self.dispatcher = dispatcher
         self.staleness_budget_s = float(staleness_budget_s)
         # Watchdog budget defaults to 3x a 15s tick — a missed tick is caught
         # quickly but a single slow tick does not false-alarm.
@@ -195,6 +204,13 @@ class AnomalyEvaluatorService:
                 if report.state in _DEGRADED_STATES:
                     any_degraded = True
                 self._audit_report(rule, report)
+
+                # Out-of-band delivery (INC3) runs AFTER the clinical verdict
+                # is persisted, so a notifier hiccup can never lose or delay a
+                # clinical record. A dispatch failure is caught below and made
+                # visible; it does not corrupt the clinical state.
+                if self.dispatcher is not None:
+                    result.dispatch[rule.id] = self.dispatcher.dispatch_report(report)
             except Exception as exc:  # noqa: BLE001
                 # A tick that raises must be VISIBLE (watchdog + audit), not
                 # a silent "no anomaly". Record and keep the loop alive.

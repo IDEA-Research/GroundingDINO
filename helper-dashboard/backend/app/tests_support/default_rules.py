@@ -31,6 +31,21 @@ def neonatal_rso2_rule(
     )
 
 
+def promoted_neonatal_rso2_rule(
+    *, metric: str = "rso2_left", rule_id: str | None = None
+) -> AlertRuleSpec:
+    """A rule DECLARED active (mode=active).
+
+    Declaring a rule `active` is necessary but NOT sufficient to page: the
+    evaluator core additionally requires an explicit `promoted=True` from the
+    supervisor (defence in depth). This helper exists so the INC3 notifier
+    tests can exercise the real paging path; production promotion is still a
+    deliberate, supervisor-gated act.
+    """
+    rule = neonatal_rso2_rule(metric=metric, rule_id=rule_id)
+    return rule.model_copy(update={"mode": type(rule.mode)("active")})
+
+
 def default_neonatal_rules() -> list[AlertRuleSpec]:
     """Both cerebral hemispheres — the running service watches both."""
     return [
