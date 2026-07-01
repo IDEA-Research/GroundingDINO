@@ -2,13 +2,60 @@
 
 from __future__ import annotations
 
+import asyncio
+import contextlib
 import os
+import time
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from prometheus_fastapi_instrumentator import Instrumentator
 
 from .api import chat, dashboard, evaluate, developer, saved_dashboards
+
+
+def _anomaly_tick_interval_s() -> float:
+    try:
+        return float(os.getenv("ANOMALY_TICK_INTERVAL_S", "15"))
+    except ValueError:
+        return 15.0
+
+
+async def _anomaly_loop(app: FastAPI) -> None:
+    """Drive the synchronous evaluator `tick` on a real timer.
+
+    This is the ONLY wall-clock driver. It is deliberately thin: it just calls
+    the injectable-clock `tick(now)` — all clinical logic lives in the core and
+    the service, both of which the golden/integration tests step synchronously
+    with an injected clock (pytest_asyncio is not installed). The loop is
+    OPT-IN via `ANOMALY_EVALUATOR_ENABLED=1` so it never interferes with the
+    existing app or the test suite; rules stay in SHADOW (never page) here.
+    """
+    # Imported lazily so a missing optional dep never breaks app import.
+    from .prometheus.neonatal_sim import Scenario
+    from .services.anomaly_data_provider import SimDataProvider
+    from .services.anomaly_evaluator_service import AnomalyEvaluatorService
+    from .tests_support.default_rules import default_neonatal_rules
+
+    interval = _anomaly_tick_interval_s()
+    # Default to the synthetic source: real medical data is not flowing yet.
+    provider = SimDataProvider(scenario=Scenario.healthy, step_s=interval)
+    service = AnomalyEvaluatorService(
+        default_neonatal_rules(),
+        provider,
+        watchdog_budget_s=max(45.0, interval * 3),
+        promoted=False,  # SHADOW: never pages in INC2.
+    )
+    app.state.anomaly_service = service
+    try:
+        while True:
+            now = time.time()
+            # tick is synchronous + fast; run it directly. Errors inside a
+            # rule are already caught + audited by the service.
+            service.tick(now)
+            await asyncio.sleep(interval)
+    except asyncio.CancelledError:  # graceful shutdown
+        raise
 
 
 def create_app() -> FastAPI:
@@ -71,6 +118,22 @@ def create_app() -> FastAPI:
         return {"status": "ok"}
 
     Instrumentator().instrument(app).expose(app)
+
+    # Background anomaly evaluator — OPT-IN, shadow-only. Wired via lifecycle
+    # events so it is a non-load-bearing timer around the synchronous tick.
+    if os.getenv("ANOMALY_EVALUATOR_ENABLED", "0") == "1":
+
+        @app.on_event("startup")
+        async def _start_anomaly_loop() -> None:  # pragma: no cover - timer glue
+            app.state.anomaly_task = asyncio.create_task(_anomaly_loop(app))
+
+        @app.on_event("shutdown")
+        async def _stop_anomaly_loop() -> None:  # pragma: no cover - timer glue
+            task = getattr(app.state, "anomaly_task", None)
+            if task is not None:
+                task.cancel()
+                with contextlib.suppress(asyncio.CancelledError):
+                    await task
 
     return app
 
