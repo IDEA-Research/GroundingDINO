@@ -69,6 +69,7 @@ _TYPICAL_OPTIONS: dict[str, list[str]] = {
     "pie_chart": ["show_labels", "show_legend", "donut", "decimals"],
     "bar_chart": ["show_grid", "show_legend", "show_values", "horizontal", "stacked", "decimals"],
     "heatmap": ["x_label", "y_label", "color_scale", "decimals", "show_legend"],
+    "decision_flow": [],
 }
 
 
@@ -81,11 +82,20 @@ _TYPE_PURPOSE: dict[str, str] = {
     "pie_chart": "Proportional breakdown from an instant query. Best for share-of-total by label.",
     "bar_chart": "Categorical comparison from an instant query. Best for per-node / per-service breakdowns.",
     "heatmap": "Two-dimensional grid of values coloured by intensity. Best for latency-by-endpoint-and-hour, error-rate matrices.",
+    "decision_flow": (
+        "Clinical decision-support flowchart. Carries a nested "
+        "`decision_flow` config (nodes/edges/steps + a multi-input labeled "
+        "query set over rSO2+SpO2+HR+MAP+FiO2). The FIRST node MUST be the "
+        "data-integrity gate; it reads REAL alert events, shows a persistent "
+        "non-diagnostic disclaimer, and never uses mock inputs."
+    ),
 }
 
 
 def _types_section() -> str:
-    lines = ["## Widget types (authoritative — only these eight exist)"]
+    lines = [
+        f"## Widget types (authoritative — only these {len(list(WidgetType))} exist)"
+    ]
     for wt in sorted(WidgetType, key=lambda x: x.value):
         purpose = _TYPE_PURPOSE.get(wt.value, "")
         typical = _TYPICAL_OPTIONS.get(wt.value, [])
@@ -129,6 +139,33 @@ def _options_section() -> str:
         "your spec."
     )
     return "\n".join(lines)
+
+
+def _decision_flow_section() -> str:
+    from .widget_spec import DECISION_FLOW_SIGNALS, DATA_INTEGRITY_GATE_KIND
+
+    signals = ", ".join(f"`{s}`" for s in DECISION_FLOW_SIGNALS)
+    return (
+        "## `decision_flow` config (required only for a decision_flow widget)\n"
+        "A `decision_flow` widget adds one top-level `decision_flow` object "
+        "(forbidden on every other widget type). It contains:\n"
+        "- `nodes` — 2..64 `{id, kind, label, signal?}`. `kind` is one of "
+        f"`{DATA_INTEGRITY_GATE_KIND}`, `decision`, `action`, `terminal`, "
+        "`signal_lost`. The FIRST node MUST be the "
+        f"`{DATA_INTEGRITY_GATE_KIND}` (data-integrity gate runs first, "
+        "always). `signal` (on a decision node) must be one of the neonatal "
+        f"signals: {signals}.\n"
+        "- `edges` — 0..128 `{from, to, condition}`; `from`/`to` must resolve "
+        "to node ids, `condition` is the human-readable branch guard.\n"
+        "- `steps` — 1..64 `{id, title, node, guidance}`; drive the client-side "
+        "guided wizard, each pointing at a node.\n"
+        "- `inputs` — 1..16 `{label, query}` labeled query set. `label` is a "
+        f"neonatal signal ({signals}); every `query.source` MUST be "
+        "`prometheus` (a `mock` input is rejected — a clinical flow may never "
+        "branch on fake/stale data).\n"
+        "The widget reads REAL alert events from the anomaly store (never the "
+        "alert_list mock) and always shows the non-diagnostic disclaimer."
+    )
 
 
 def _forbidden_section() -> str:
@@ -176,6 +213,7 @@ def render_widget_schema_markdown() -> str:
         _types_section(),
         _widget_fields_section(),
         _options_section(),
+        _decision_flow_section(),
         _forbidden_section(),
         _patch_section(),
         _authoritativeness_footer(),
