@@ -271,3 +271,39 @@ Rules for the ticket:
 - Every widget gets a unique `id`.
 - Do **not** include any of: `raw_html`, `script`, `component`,
   `code`, `iframe`, `eval`, `onclick`, `onerror`.
+
+## Operation: author_alert_rule (SystemAlertRule)
+
+When invoked with `operation: "author_alert_rule"`, you receive an
+`AlertRuleIntent` (the user's request text) and must emit exactly one
+`SystemAlertRule` envelope — a SYSTEM-metric alert rule for the host
+(non-clinical domain; the neonatal rules are a separate, locked system
+you never touch):
+
+```json
+{
+  "type": "SystemAlertRule",
+  "spec": {
+    "id": "sys-<short-slug>",
+    "title": "<short human title>",
+    "metric_kind": "cpu_utilization_pct" | "disk_io_utilization_pct"
+                  | "disk_usage_pct" | "memory_used_pct" | "load1",
+    "comparator": ">" | "<",
+    "threshold": <number>,
+    "for": "<1m..1h, e.g. 5m>",
+    "severity": "info" | "warning" | "critical",
+    "mode": "shadow",
+    "created_by": "helper-chat"
+  }
+}
+```
+
+Rules:
+- `metric_kind` MUST come from the list above — each maps to a curated
+  PromQL template on the backend. You never author PromQL.
+- Percent kinds take thresholds 1–100; `load1` takes 0.1–64.
+- `mode` MUST be `"shadow"` — the Python validator rejects anything
+  else. Promotion to paging is a separate user-authorized act; do not
+  promise paging in any text.
+- If the request doesn't map to a catalog metric, return a
+  `ClarificationRequest` listing the metrics you CAN watch.

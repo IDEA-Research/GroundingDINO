@@ -82,6 +82,11 @@ OPERATIONS: dict[str, dict[str, str | None]] = {
     # in `bin/opencode`. See docs/SECURITY_BOUNDARIES.md.
     "rescue_extend":      {"agent": "big-guy-developer-agent", "command": "rescue-extend"},
     "developer_fix":      {"agent": "big-guy-developer-agent", "command": "developer-fix"},
+    # `author_alert_rule` turns an AlertRuleIntent into a SystemAlertRule
+    # envelope (system-metric domain, structurally SHADOW — see
+    # specs/system_rule_spec.py). JSON-only; the Python validator is the
+    # authority on the result.
+    "author_alert_rule":  {"agent": "dashboard-spec-agent",    "command": None},
 }
 
 # Only these operations are reachable from the user-facing API.
@@ -98,6 +103,7 @@ USER_OPERATIONS: frozenset[str] = frozenset({
     "review_rendered",
     "rescue_review",
     "rescue_extend",
+    "author_alert_rule",
 })
 
 # developer_fix is the only developer-only operation. It requires
@@ -119,6 +125,7 @@ EXPECTED_OUTPUT_TYPES: dict[str, frozenset[str]] = {
         "DashboardIntent",
         "PatchIntent",
         "PrometheusIntent",
+        "AlertRuleIntent",
         "ClarificationRequest",
         "DeveloperTicket",
     }),
@@ -135,6 +142,7 @@ EXPECTED_OUTPUT_TYPES: dict[str, frozenset[str]] = {
     "rescue_review": frozenset({"RescueDecision"}),
     "rescue_extend": frozenset({"DeveloperReport"}),
     "developer_fix": frozenset({"DeveloperReport"}),
+    "author_alert_rule": frozenset({"SystemAlertRule", "ClarificationRequest"}),
 }
 
 
@@ -575,6 +583,8 @@ class MockHelperRuntime:
             return self._rescue_review(args)
         if operation == "developer_fix":
             return self._developer_fix(args)
+        if operation == "author_alert_rule":
+            return self._author_alert_rule(args)
 
         # Legacy agent-based dispatch for user-facing Helpers.
         if agent == "helper-chat-agent":
@@ -617,6 +627,24 @@ class MockHelperRuntime:
                 "message_to_user": "Working on those changes.",
             }
 
+        # Alert-rule intent: an alert keyword PLUS a threshold-ish signal.
+        # Checked before the dashboard branch so "alert me when CPU is
+        # above 90%" doesn't fall through to chart-building.
+        alert_kw = any(t in low for t in [
+            "alert", "notify me", "rule", "警告", "警報", "規則",
+        ])
+        threshold_kw = any(t in low for t in [
+            "when", "if", "above", "below", "over", "under", "exceed",
+            ">", "<", "%", "超過", "低於", "高於",
+        ])
+        if alert_kw and threshold_kw:
+            return {
+                "type": "AlertRuleIntent",
+                "summary": msg[:120],
+                "request_text": msg,
+                "message_to_user": "Setting up that alert rule now.",
+            }
+
         if any(t in low for t in ["metric", "promql", "query", "prometheus"]):
             return {
                 "type": "PrometheusIntent",
@@ -648,6 +676,58 @@ class MockHelperRuntime:
                 "Tell me what you'd like to see — for example "
                 "'a CPU and memory dashboard for my nodes'."
             ),
+        }
+
+    # -- author_alert_rule (system-metric rule author) ------------------------
+    def _author_alert_rule(self, args: dict[str, Any]) -> dict[str, Any]:
+        """Deterministic SystemAlertRule author. Mirrors the JSON contract
+        in bin/opencode; the Python validator downstream is authoritative."""
+        intent = args.get("intent") or {}
+        text = str(
+            intent.get("request_text") or intent.get("summary") or ""
+        ).lower()
+
+        kind = "cpu_utilization_pct"
+        if "disk" in text and ("io" in text or "i/o" in text):
+            kind = "disk_io_utilization_pct"
+        elif "disk" in text or "space" in text or "磁碟" in text:
+            kind = "disk_usage_pct"
+        elif "memory" in text or "ram" in text or "記憶體" in text:
+            kind = "memory_used_pct"
+        elif "load" in text:
+            kind = "load1"
+
+        comparator = "<" if any(
+            t in text for t in ["below", "under", "低於", "less than"]
+        ) else ">"
+
+        threshold = 90.0
+        m = re.search(
+            r"(?:above|below|over|under|exceeds?|超過|低於|高於|>|<)\s*"
+            r"(\d+(?:\.\d+)?)",
+            text,
+        ) or re.search(r"(\d+(?:\.\d+)?)\s*%", text)
+        if m:
+            threshold = float(m.group(1))
+
+        minutes = 5
+        fm = re.search(r"(\d+)\s*(?:minutes?|min\b|分鐘)", text)
+        if fm:
+            minutes = max(1, min(60, int(fm.group(1))))
+
+        return {
+            "type": "SystemAlertRule",
+            "spec": {
+                "id": f"sys-{kind.replace('_', '-')}-{uuid.uuid4().hex[:6]}",
+                "title": f"System alert: {kind} {comparator} {threshold:g}",
+                "metric_kind": kind,
+                "comparator": comparator,
+                "threshold": threshold,
+                "for": f"{minutes}m",
+                "severity": "warning",
+                "mode": "shadow",
+                "created_by": "helper-chat",
+            },
         }
 
     # -- dashboard-spec-agent -----------------------------------------------

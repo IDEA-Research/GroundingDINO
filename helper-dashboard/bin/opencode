@@ -130,7 +130,8 @@ _SCHEMA_AWARE_OPERATIONS: set[str] = {
 EXPECTED_TYPES: dict[str, set[str]] = {
     "user_message": {
         "UserResponse", "DashboardIntent", "PatchIntent",
-        "PrometheusIntent", "ClarificationRequest", "DeveloperTicket",
+        "PrometheusIntent", "AlertRuleIntent", "ClarificationRequest",
+        "DeveloperTicket",
     },
     "generate_dashboard": {"DashboardSpec", "DeveloperTicket"},
     "patch_dashboard": {"PatchSpec", "DeveloperTicket"},
@@ -143,6 +144,7 @@ EXPECTED_TYPES: dict[str, set[str]] = {
     "rescue_review": {"RescueDecision"},
     "rescue_extend": {"DeveloperReport"},
     "developer_fix": {"DeveloperReport"},
+    "author_alert_rule": {"SystemAlertRule", "ClarificationRequest"},
 }
 
 BIG_GUY_OPERATIONS = {"rescue_review", "rescue_extend", "developer_fix"}
@@ -426,6 +428,31 @@ def _build_system_prompt(operation: str, agent: str, model: str) -> str:
             "For clarification needs, you may return:\n"
             "  {\"type\":\"ClarificationRequest\",\"questions\":"
             "[\"Q1\",\"Q2\"],\"message_to_user\":\"<short>\"}\n"
+            "When the user asks to be ALERTED/NOTIFIED about a host "
+            "metric crossing a threshold (CPU, disk, memory, load), "
+            "return:\n"
+            "  {\"type\":\"AlertRuleIntent\",\"summary\":\"<short>\","
+            "\"request_text\":\"<the user's message verbatim>\","
+            "\"message_to_user\":\"<short>\"}\n"
+        )
+    elif operation == "author_alert_rule":
+        contract += (
+            "Turn the AlertRuleIntent in args into ONE SystemAlertRule:\n"
+            "  {\"type\":\"SystemAlertRule\",\"spec\":{"
+            "\"id\":\"sys-<slug>\",\"title\":\"<short>\","
+            "\"metric_kind\":\"<see below>\",\"comparator\":\">\"|\"<\","
+            "\"threshold\":<number>,\"for\":\"5m\","
+            "\"severity\":\"info\"|\"warning\"|\"critical\","
+            "\"mode\":\"shadow\",\"created_by\":\"helper-chat\"}}\n"
+            "metric_kind MUST be one of: cpu_utilization_pct, "
+            "disk_io_utilization_pct, disk_usage_pct, memory_used_pct, "
+            "load1 — these map to curated PromQL templates; you never "
+            "write PromQL yourself. Percent kinds take thresholds "
+            "1-100; load1 takes 0.1-64. `for` is 1m-1h. mode MUST be "
+            "\"shadow\" — the backend rejects anything else; promotion "
+            "to paging is a separate user-authorized act. If the request "
+            "doesn't map to a catalog metric, return a "
+            "ClarificationRequest instead.\n"
         )
 
     # Fix 4: append the authoritative widget-toolkit schema for any
@@ -538,6 +565,8 @@ def _heuristic_run(operation: str, agent: str, args: dict) -> dict:
         return _h_rescue_review(args)
     if operation == "developer_fix":
         return _h_developer_fix(args)
+    if operation == "author_alert_rule":
+        return _h_author_alert_rule(args)
     raise _ProviderError(f"no heuristic handler for {operation!r}")
 
 
@@ -576,6 +605,24 @@ def _h_user_message(args: dict) -> dict:
             "target_dashboard_id": current,
             "requested_changes": [msg],
             "message_to_user": "Working on those changes.",
+        }
+
+    # Alert-rule intent: an alert keyword PLUS a threshold-ish signal —
+    # checked before the dashboard branch so "alert me when CPU is above
+    # 90%" doesn't fall through to chart-building.
+    alert_kw = any(t in low for t in [
+        "alert", "notify me", "rule", "警告", "警報", "規則",
+    ])
+    threshold_kw = any(t in low for t in [
+        "when", "if", "above", "below", "over", "under", "exceed",
+        ">", "<", "%", "超過", "低於", "高於",
+    ])
+    if alert_kw and threshold_kw:
+        return {
+            "type": "AlertRuleIntent",
+            "summary": msg[:120],
+            "request_text": msg,
+            "message_to_user": "Setting up that alert rule now.",
         }
 
     if any(t in low for t in ["metric", "promql", "query", "prometheus"]):
@@ -991,6 +1038,54 @@ def _h_rescue_review(args: dict) -> dict:
             "I built the dashboard but something seems off. "
             "Can you tell me exactly what you expected to see?",
         ],
+    }
+
+
+def _h_author_alert_rule(args: dict) -> dict:
+    """Deterministic SystemAlertRule author (mirrors the backend mock
+    runtime). The backend's Python validator is authoritative."""
+    intent = args.get("intent") or {}
+    text = str(intent.get("request_text") or intent.get("summary") or "").lower()
+
+    kind = "cpu_utilization_pct"
+    if "disk" in text and ("io" in text or "i/o" in text):
+        kind = "disk_io_utilization_pct"
+    elif "disk" in text or "space" in text:
+        kind = "disk_usage_pct"
+    elif "memory" in text or "ram" in text:
+        kind = "memory_used_pct"
+    elif "load" in text:
+        kind = "load1"
+
+    comparator = "<" if any(
+        t in text for t in ["below", "under", "less than"]
+    ) else ">"
+
+    threshold = 90.0
+    m = re.search(
+        r"(?:above|below|over|under|exceeds?|>|<)\s*(\d+(?:\.\d+)?)", text
+    ) or re.search(r"(\d+(?:\.\d+)?)\s*%", text)
+    if m:
+        threshold = float(m.group(1))
+
+    minutes = 5
+    fm = re.search(r"(\d+)\s*(?:minutes?|min\b)", text)
+    if fm:
+        minutes = max(1, min(60, int(fm.group(1))))
+
+    return {
+        "type": "SystemAlertRule",
+        "spec": {
+            "id": f"sys-{kind.replace('_', '-')}-{uuid.uuid4().hex[:6]}",
+            "title": f"System alert: {kind} {comparator} {threshold:g}",
+            "metric_kind": kind,
+            "comparator": comparator,
+            "threshold": threshold,
+            "for": f"{minutes}m",
+            "severity": "warning",
+            "mode": "shadow",
+            "created_by": "helper-chat",
+        },
     }
 
 

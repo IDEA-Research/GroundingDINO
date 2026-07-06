@@ -71,6 +71,27 @@ Return exactly one JSON object matching one of these shapes.
 }
 ```
 
+### AlertRuleIntent (user wants to be alerted on a host metric threshold)
+
+When the user asks to be alerted/notified about a SYSTEM metric of the
+host crossing a threshold — CPU, disk usage, disk I/O, memory, load —
+e.g. "alert me when CPU is above 90% for 5 minutes":
+
+```json
+{
+  "type": "AlertRuleIntent",
+  "summary": "<short>",
+  "request_text": "<the user's message verbatim>",
+  "message_to_user": "<optional friendly ack>"
+}
+```
+
+The downstream `author_alert_rule` operation turns this into a
+validated rule (curated metric catalog, absolute threshold, always
+SHADOW mode). Do not invent PromQL and do not promise paging — new
+rules only record would-fire events until the user explicitly promotes
+them.
+
 ### DeveloperTicket (only when something fundamentally cannot be done)
 ```json
 {

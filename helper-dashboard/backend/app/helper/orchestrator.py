@@ -561,6 +561,13 @@ class Orchestrator:
                 runtime_meta=runtime_meta,
             )
 
+        if rtype == "SystemAlertRule":
+            print("[orchestrator] branch=SystemAlertRule")
+            _progress("Validating alert rule…", 90)
+            return self._handle_system_alert_rule(
+                result, runtime_meta=runtime_meta,
+            )
+
         if rtype == "DeveloperTicket":
             print("[orchestrator] branch=DeveloperTicket")
             _progress("Completed with ticket", 100)
@@ -790,6 +797,57 @@ class Orchestrator:
         )
 
     # ---------------------------------------------------------------
+    def _handle_system_alert_rule(
+        self, result: dict[str, Any], *, runtime_meta: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Validate + install a Helper-authored system alert rule.
+
+        The Python validator is authoritative (the spec forces SHADOW and
+        the curated metric catalog — see specs/system_rule_spec.py). On
+        success the rule is persisted and hot-added to the running
+        evaluator; the reply is honest about shadow mode and about the
+        decision-support disclaimer."""
+        from pydantic import ValidationError
+
+        from ..services import system_rules
+        from ..specs.system_rule_spec import SystemAlertRuleSpec
+
+        raw = result.get("spec") or {}
+        try:
+            rule = SystemAlertRuleSpec.model_validate(raw)
+        except ValidationError as exc:
+            errs = "; ".join(
+                f"{'.'.join(str(p) for p in e.get('loc', ()))}: {e.get('msg')}"
+                for e in exc.errors()[:4]
+            )
+            return self._response(
+                user_reply=(
+                    "I couldn't turn that into a valid alert rule "
+                    f"({errs}). Try naming the metric (CPU, disk, memory, "
+                    "load), a threshold, and a duration — e.g. 'alert me "
+                    "when CPU is above 90% for 5 minutes'."
+                ),
+                intent_type="AlertRuleIntent",
+                warnings=["alert rule failed validation"],
+                runtime_meta=runtime_meta,
+            )
+
+        system_rules.get_service().add_rule(rule)
+        return self._response(
+            user_reply=(
+                f"Alert rule created: {rule.human_summary()}.\n\n"
+                "It starts in SHADOW mode — breaches are recorded as "
+                "would-fire events (visible under /api/system-rules and "
+                "its alerts feed) but nothing pages. If the metric source "
+                "is unreachable or stale the rule reports SIGNAL_LOST "
+                "instead of guessing. This is decision support, not a "
+                "diagnosis."
+            ),
+            intent_type="SystemAlertRule",
+            runtime_meta=runtime_meta,
+        )
+
+    # ---------------------------------------------------------------
     def _review_or_passthrough(
         self, draft: DashboardSpec, *, user_intent: str,
     ) -> tuple[DashboardSpec | None, ReviewOutcome | None]:
@@ -1010,6 +1068,10 @@ class Orchestrator:
             return self._runtime.invoke_operation(
                 "prometheus_query",
                 {"question": intent.get("question", "")},
+            )
+        if t == "AlertRuleIntent":
+            return self._runtime.invoke_operation(
+                "author_alert_rule", {"intent": intent},
             )
         return intent
 

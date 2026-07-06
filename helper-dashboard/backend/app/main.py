@@ -12,7 +12,15 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from prometheus_fastapi_instrumentator import Instrumentator
 
-from .api import anomaly, chat, dashboard, evaluate, developer, saved_dashboards
+from .api import (
+    anomaly,
+    chat,
+    dashboard,
+    evaluate,
+    developer,
+    saved_dashboards,
+    system_rules as system_rules_api,
+)
 
 
 def _anomaly_tick_interval_s() -> float:
@@ -121,6 +129,12 @@ def create_app() -> FastAPI:
     # ANOMALY_DEMO-only driver. The /alerts endpoint fails loud (store_unavailable)
     # when no evaluator is wired, so it is always safe to mount.
     app.include_router(anomaly.router, prefix="/api/anomaly", tags=["anomaly"])
+    # System-metric rules (CPU/disk/memory/load) — non-clinical, structurally
+    # SHADOW, authored via Helper chat. Read surface + validated CRUD.
+    app.include_router(
+        system_rules_api.router, prefix="/api/system-rules",
+        tags=["system-rules"],
+    )
 
     @app.get("/api/health")
     def health() -> dict[str, str]:
@@ -143,6 +157,40 @@ def create_app() -> FastAPI:
                 task.cancel()
                 with contextlib.suppress(asyncio.CancelledError):
                     await task
+
+    # System-rule wall-clock loop — ON by default (SYSTEM_RULES_ENABLED=0 to
+    # kill). Reads the real Prometheus and records SHADOW events only; the
+    # E7 sim-clock hazard does not apply because both the data and the tick
+    # clock are wall-clock here. Tests keep it off via conftest.
+    from .services import system_rules as system_rules_svc
+
+    async def _system_rules_loop() -> None:  # pragma: no cover - timer glue
+        try:
+            interval = float(os.getenv("SYSTEM_RULES_TICK_INTERVAL_S", "30"))
+        except ValueError:
+            interval = 30.0
+        service = system_rules_svc.get_service()
+        while True:
+            await asyncio.to_thread(service.tick, time.time())
+            await asyncio.sleep(interval)
+
+    # The enabled-check runs INSIDE the startup hook (not at create_app
+    # time): pytest imports this module at collection, before conftest's
+    # SYSTEM_RULES_ENABLED=0 fixture is active — a create_app-time check
+    # would bake the loop in and tick against a live Prometheus mid-test.
+    @app.on_event("startup")
+    async def _start_system_rules_loop() -> None:  # pragma: no cover
+        if not system_rules_svc.is_enabled():
+            return
+        app.state.system_rules_task = asyncio.create_task(_system_rules_loop())
+
+    @app.on_event("shutdown")
+    async def _stop_system_rules_loop() -> None:  # pragma: no cover
+        task = getattr(app.state, "system_rules_task", None)
+        if task is not None:
+            task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await task
 
     # Demo driver — OPT-IN via ANOMALY_DEMO=1. Drives the REAL pipeline with an
     # accelerated injected clock so the /api/anomaly/demo/* endpoints can walk
