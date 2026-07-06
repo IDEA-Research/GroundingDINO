@@ -234,6 +234,10 @@ def test_helper_escalates_then_big_guy_files_ticket():
     assert out.kind == "ticket"
     assert out.ticket is not None
     assert out.ticket.ticket_id == "tkt-1"
+    # LD-1/LD-2: the ticket outcome must carry the validated draft so
+    # the orchestrator can deliver it instead of blocking on a human.
+    assert out.dashboard is not None
+    assert out.dashboard.dashboard_id == spec.dashboard_id
 
 
 # ---------------------------------------------------------------------------
@@ -557,6 +561,10 @@ def test_rescue_bad_ticket_then_good_ticket_succeeds():
     assert out.kind == "ticket"
     assert out.ticket is not None
     assert out.ticket.ticket_id == "tkt-1"
+    # LD-1/LD-2: the ticket outcome must carry the validated draft so
+    # the orchestrator can deliver it instead of blocking on a human.
+    assert out.dashboard is not None
+    assert out.dashboard.dashboard_id == spec.dashboard_id
 
 
 def test_rescue_runtime_error_degrades_to_clarify():

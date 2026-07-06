@@ -18,7 +18,10 @@ Flow:
      patch | ask_user | ticket | extend. Rescue itself retries up
      to `_RESCUE_MAX_ATTEMPTS` times with structured Pydantic
      errors when the response is malformed; out of budget degrades
-     to a user-clarify (never RuntimeError).
+     to a user-clarify (never RuntimeError). A `ticket` is a
+     diagnostic record only: the outcome still carries the
+     validated draft and the orchestrator delivers it — there is
+     no ticket-and-wait / human-interrupt path (LD-1/LD-2).
   5. If rescue `patch`, apply → render once more to confirm. If
      still bad, fall through to ask_user.
 
@@ -373,7 +376,15 @@ class ReviewLoop:
                          "Could you rephrase what you'd like to see "
                          "(metrics, layout, refresh interval)?"],
                     )
-                return ReviewOutcome(kind="ticket", ticket=ticket, trail=trail)
+                # No-human-interrupt policy (LD-1/LD-2): the ticket is a
+                # durable diagnostic record, not a hand-off. `current`
+                # already passed Python schema validation, so hand it
+                # back too — the orchestrator delivers it with a caveat
+                # instead of blocking the user on a "team notified" wait.
+                return ReviewOutcome(
+                    kind="ticket", ticket=ticket, dashboard=current,
+                    trail=trail,
+                )
 
             if kind == "extend":
                 # M4: Big guy asks to extend the toolkit. Run extend

@@ -33,9 +33,11 @@ potential code change.
    **operation allow-list** (`user_message`, `generate_dashboard`,
    `patch_dashboard`, `prometheus_query`, `evaluate_dashboard`,
    `developer_fix`). Callers never pass free-form agent names.
-4. `developer_fix` is the only operation that reaches Big guy. It
-   requires `invoke_operation(..., developer=True)`, which only the
-   dev-token-gated `/api/developer/*` endpoints set.
+4. `developer_fix` requires `invoke_operation(..., developer=True)`.
+   Two callers set it: the dev-token-gated `/api/developer/*`
+   endpoints, and the gated background auto-fix scheduler
+   (`backend/app/helper/auto_fix.py`, see §5b) — never the chat
+   surface directly.
 5. We do **not** rely on CLI permission flags when invoking OpenCode
    as a subprocess. The safety model does not assume the CLI
    supports them.
@@ -73,8 +75,10 @@ Helper does **not** need a `DeveloperTicket` for any of these.
 
 ## 2c. Widget toolkit source-code extension still requires Big guy
 
+> **Stale (LD-1, 2026-07-04):** out-of-toolkit widget requests now default to agent code-gen (in-app `rescue_extend`, or a dev-time Claude session) — not DeveloperTicket-and-wait. See `docs/agent-ops/LOCKED_DECISIONS.md` LD-1.
+
 If the user asks for a visualization the current toolkit cannot
-represent (heatmap, service map, flame graph, …), Helper:
+represent (service map, flame graph, …), Helper:
 
 - Does **not** inject arbitrary React, JSX, HTML, or JS into the spec.
 - Does **not** invent a new `WidgetType` string.
@@ -131,6 +135,41 @@ always correspond to a ticket or a logged developer command.
 - Orchestrator only writes tickets through
   `services/dashboard_store.save_ticket`.
 
+## 5b. Auto-fix — tickets are consumed by Big guy automatically
+
+Per LD-1/LD-2 and the user's 2026-07-06 directive, diagnostic tickets
+never wait for a human. When the orchestrator persists one, the
+background scheduler in `backend/app/helper/auto_fix.py` runs Big guy
+(`developer_fix`, tool-using mode) against it. The chat turn is never
+blocked; the user's validated dashboard is delivered regardless.
+
+Boundaries (each fails closed, mirrored in `bin/opencode` as an
+independent trust layer):
+
+1. Enabled only in `opencode`/`auto` runtime modes by default;
+   `HELPER_DASHBOARD_AUTO_FIX=0` is the kill switch.
+2. Prompt-injection signature check over all user-influenced ticket
+   text; daily quota (`HELPER_DASHBOARD_AUTO_FIX_DAILY_QUOTA`,
+   default 10); single-flight (one run at a time).
+3. Write scope is the render/product layer ONLY:
+   `services/browser_evaluator.py`, `frontend/lib/renderer.tsx`,
+   `frontend/lib/spec-schema.ts`, `frontend/widget-toolkit/`, and the
+   matching test dirs. The clinical anomaly files
+   (`services/anomaly_*`, `prometheus/`, `alert_rule_spec.py`,
+   `api/anomaly.py`), the gates, the runtime, and `bin/opencode`
+   itself are denied at the tool layer AND byte-verified afterwards —
+   any difference reverts the entire run no matter what the report
+   claims.
+4. Full snapshot before the run; anything short of an honest
+   `status="resolved"` report rolls every touched file back.
+5. Every decision and attempt is appended to
+   `backend/app/storage/auto_fix_audit/<date>.jsonl`; ticket status
+   transitions (`open → in_progress → resolved|open`) record the
+   attempt in `technical_evidence`.
+
+Backend changes take effect on the next backend restart; frontend
+changes after a bundle rebuild (same caveat as `rescue_extend`).
+
 ## 6. PatchSpec validation is not optional
 
 **Why.** A patch path that bypasses validation would be a second way to
@@ -164,8 +203,11 @@ Helper agents must not echo:
 - Internal prompts, system messages, agent names, or file paths.
 - Raw evaluation reports with debugging traces.
 
-They may summarize outcomes ("I noticed a rendering problem and the
-team has been notified") without exposing internals.
+They may summarize outcomes ("I noticed a rendering problem and
+logged a diagnostic") without exposing internals. Never claim a human
+was notified — tickets are automated diagnostic records, and nothing
+in the product waits on a person (LD-1/LD-2: no ticket-and-wait,
+no human interrupt in the user path).
 
 ## 9. Runtime modes — no silent fallback in `opencode` mode
 

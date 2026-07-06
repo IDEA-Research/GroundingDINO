@@ -208,7 +208,7 @@ def test_generate_all_attempts_fail_files_ticket(monkeypatch):
         message="show me a dashboard",
     )
     assert res["dashboard"] is None
-    assert "team has been notified" in res["user_reply"].lower()
+    assert "logged a diagnostic" in res["user_reply"].lower()
     # Ticket on disk.
     from pathlib import Path
     tickets = list(
@@ -273,7 +273,7 @@ def test_patch_all_attempts_fail_files_ticket(monkeypatch):
         current_dashboard_id="d",
     )
     assert res["patch"] is None
-    assert "team has been notified" in res["user_reply"].lower()
+    assert "logged a diagnostic" in res["user_reply"].lower()
 
 
 # ---------------------------------------------------------------------------
@@ -352,3 +352,130 @@ def test_review_loop_does_not_wrap_with_retry(monkeypatch):
     assert "AgentValidationRetryLoop" not in src
     assert "runtime.invoke_operation" in src.replace(" ", "") \
         or "self._runtime.invoke_operation" in src
+
+
+# ---------------------------------------------------------------------------
+# LD-1/LD-2: review outcome "ticket" delivers the dashboard, no human wait
+# ---------------------------------------------------------------------------
+
+
+def test_review_ticket_outcome_still_delivers_dashboard(monkeypatch):
+    """A rescue `ticket` is a diagnostic record, not a hand-off to
+    humans. The Python-validated draft must still be delivered with
+    an honest caveat; the reply must never claim a team was
+    notified."""
+    _reset_storage()
+    monkeypatch.delenv("HELPER_DASHBOARD_OPENCODE", raising=False)
+    # Force pre-output review ON (off by default in mock mode).
+    monkeypatch.setenv("HELPER_DASHBOARD_PRE_OUTPUT_REVIEW", "1")
+    monkeypatch.setenv("HELPER_AGENT_MAX_ATTEMPTS", "2")
+
+    orch = Orchestrator()
+    rt = _ScriptedRuntime()
+    rt.enqueue("user_message", _intent_dashboard())
+    rt.enqueue("generate_dashboard", _valid_simple_dashboard())
+    orch._runtime = rt
+    orch._retry._runtime = rt
+
+    from app.helper.review_loop import ReviewOutcome
+    from app.specs.developer_ticket import DeveloperTicket
+
+    def _fake_review_run(draft, *, user_intent):
+        ticket = DeveloperTicket(
+            ticket_id="tkt-render-flake",
+            source_agent="big-guy-developer-agent",
+            severity="high",
+            summary="render check could not confirm widgets",
+            user_visible_effect="widgets may look empty",
+            requested_action="investigate evaluator race",
+        )
+        return ReviewOutcome(
+            kind="ticket", ticket=ticket, dashboard=draft,
+            trail=[{"stage": "rescue", "kind": "ticket"}],
+        )
+
+    orch._review.run = _fake_review_run  # type: ignore[method-assign]
+
+    res = orch.handle_user_message(
+        session_id="s-ticket-deliver",
+        message="show me a line chart of rSO2 for the last hour",
+    )
+    # Delivered, not withheld behind a ticket.
+    assert res["dashboard"] is not None
+    assert res["intent_type"] == "DashboardSpec"
+    # Honest messaging: diagnostic logged, no humans invoked.
+    reply = res["user_reply"].lower()
+    assert "logged a diagnostic" in reply
+    assert "team" not in reply
+    assert "notified" not in reply
+    joined = " ".join(res["warnings"])
+    assert "diagnostic logged" in joined
+    # The diagnostic record is still persisted for the automated
+    # pipeline. Glob the default tickets dir (module constant, never
+    # mutated) rather than a cwd-relative path so this holds no matter
+    # where pytest runs from.
+    from app.services import dashboard_store as _ds
+    tickets = list(_ds._TICKETS_DIR.glob("*.json"))
+    assert any("tkt-render-flake" in p.name for p in tickets)
+
+
+# ---------------------------------------------------------------------------
+# Review ticket outcome schedules a background Big-guy auto-fix
+# ---------------------------------------------------------------------------
+
+
+def test_review_ticket_outcome_schedules_auto_fix(monkeypatch):
+    """When a rescue ticket is persisted, the orchestrator hands it to
+    the auto-fix pipeline and the caveat tells the user a background
+    fix has started. (auto_fix itself is stubbed — its internals are
+    covered in tests/auto_fix/.)"""
+    _reset_storage()
+    monkeypatch.delenv("HELPER_DASHBOARD_OPENCODE", raising=False)
+    monkeypatch.setenv("HELPER_DASHBOARD_PRE_OUTPUT_REVIEW", "1")
+    monkeypatch.setenv("HELPER_AGENT_MAX_ATTEMPTS", "2")
+
+    orch = Orchestrator()
+    rt = _ScriptedRuntime()
+    rt.enqueue("user_message", _intent_dashboard())
+    rt.enqueue("generate_dashboard", _valid_simple_dashboard())
+    orch._runtime = rt
+    orch._retry._runtime = rt
+
+    from app.helper import auto_fix as auto_fix_mod
+    from app.helper.review_loop import ReviewOutcome
+    from app.specs.developer_ticket import DeveloperTicket
+
+    scheduled: list[str] = []
+
+    class _FakeThread:
+        pass
+
+    def _fake_schedule(ticket, *, runtime, store, user_intent=""):
+        scheduled.append(ticket.ticket_id)
+        return _FakeThread()
+
+    monkeypatch.setattr(auto_fix_mod, "schedule_auto_fix", _fake_schedule)
+
+    def _fake_review_run(draft, *, user_intent):
+        ticket = DeveloperTicket(
+            ticket_id="tkt-schedule-fix",
+            source_agent="big-guy-developer-agent",
+            severity="high",
+            summary="render check could not confirm widgets",
+            user_visible_effect="widgets may look empty",
+            requested_action="investigate evaluator race",
+        )
+        return ReviewOutcome(
+            kind="ticket", ticket=ticket, dashboard=draft,
+            trail=[{"stage": "rescue", "kind": "ticket"}],
+        )
+
+    orch._review.run = _fake_review_run  # type: ignore[method-assign]
+
+    res = orch.handle_user_message(
+        session_id="s-ticket-autofix",
+        message="show me a line chart of rSO2 for the last hour",
+    )
+    assert scheduled == ["tkt-schedule-fix"]
+    assert res["dashboard"] is not None
+    assert "automatic background fix" in res["user_reply"]

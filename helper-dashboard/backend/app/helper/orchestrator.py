@@ -11,9 +11,12 @@ Pipeline per chat message:
   6. If review approved → save final, ask user if they want to save
      it to their library.
   7. If review clarified → return clarification questions to user.
-  8. If review ticketed → file ticket, return safe error.
+  8. If review ticketed → persist the diagnostic, deliver the
+     validated draft with a caveat, and schedule a background Big-guy
+     auto-fix (`auto_fix.py`). No human interrupt anywhere (LD-1/LD-2).
 
-`developer_fix` is NEVER invoked from this pipeline — it's dev-only.
+`developer_fix` runs from this pipeline only via `auto_fix.py`'s gated
+background scheduler — never synchronously, never blocking the user.
 """
 
 from __future__ import annotations
@@ -26,6 +29,7 @@ from ..services.patch_service import PatchApplicationError, PatchService
 from ..services.saved_dashboard_store import SavedDashboardStore
 from ..services.spec_validator import SpecValidationError, SpecValidator
 from ..specs import DashboardSpec
+from . import auto_fix
 from .debug_loop import DebugLoop
 from .extend_request import parse_extend_ticket
 from .extend_runner import ExtendRunner
@@ -307,7 +311,9 @@ class Orchestrator:
         if current_dashboard_id:
             spec = self._store.load_dashboard(current_dashboard_id)
             if spec is not None:
-                current_dashboard = spec.model_dump(mode="json")
+                # by_alias=True keeps the LLM's context canonical (`from`, not
+                # `from_`) so authored patches copy the documented key shape.
+                current_dashboard = spec.model_dump(mode="json", by_alias=True)
 
         # Handle a pending save prompt before asking Helper anything.
         _progress("Checking pending save prompt…", 15)
@@ -404,11 +410,11 @@ class Orchestrator:
                 [f"dispatch returned non-dict result: {type(result).__name__}"],
                 source="orchestrator",
             )
-            self._store.save_ticket(ticket)
+            self._save_ticket_and_schedule_fix(ticket, user_intent=message)
             return self._response(
                 user_reply=_safe_user_reply_on_error(),
                 intent_type="RuntimeError",
-                warnings=["internal error — team notified"],
+                warnings=["internal error — diagnostic logged"],
                 runtime_meta=runtime_meta,
             )
 
@@ -569,7 +575,7 @@ class Orchestrator:
                 else "helper-chat-agent"
             )
             ticket = _ticket_from_raw(result, source_agent=fallback_source)
-            self._store.save_ticket(ticket)
+            self._save_ticket_and_schedule_fix(ticket, user_intent=message)
 
             # Honest fallback when we land here after extend was already
             # attempted: tell the user what we tried, why it didn't work,
@@ -606,8 +612,9 @@ class Orchestrator:
                 )
             else:
                 user_reply = (
-                    "That isn't something I can build right now — I've "
-                    "let the team know."
+                    "That isn't something I could build on this turn — "
+                    "I've logged a diagnostic and will keep improving. "
+                    "Try describing it differently or ask again."
                 )
             return self._response(
                 user_reply=user_reply,
@@ -644,11 +651,11 @@ class Orchestrator:
         ticket = self._debug.from_validation_errors(
             [f"unknown result type: {rtype!r}"], source="orchestrator",
         )
-        self._store.save_ticket(ticket)
+        self._save_ticket_and_schedule_fix(ticket, user_intent=message)
         return self._response(
             user_reply=_safe_user_reply_on_error(),
             intent_type=rtype or "Unknown",
-            warnings=["internal error — team notified"],
+            warnings=["internal error — diagnostic logged"],
             runtime_meta=runtime_meta,
         )
 
@@ -673,7 +680,7 @@ class Orchestrator:
                 intent_type="DashboardSpec",
                 warnings=[
                     f"generation rejected after "
-                    f"{retry_outcome.attempts_used} attempts — team notified"
+                    f"{retry_outcome.attempts_used} attempts — diagnostic logged"
                 ],
                 runtime_meta=runtime_meta,
             )
@@ -684,11 +691,11 @@ class Orchestrator:
             ticket = self._debug.from_validation_errors(
                 exc.errors, source="dashboard-spec-agent",
             )
-            self._store.save_ticket(ticket)
+            self._save_ticket_and_schedule_fix(ticket, user_intent=message)
             return self._response(
                 user_reply=_safe_user_reply_on_error(),
                 intent_type="DashboardSpec",
-                warnings=["internal validation error — team notified"],
+                warnings=["internal validation error — diagnostic logged"],
                 runtime_meta=runtime_meta,
             )
 
@@ -729,13 +736,13 @@ class Orchestrator:
             self._file_retry_ticket(retry_outcome, source="patch-agent")
             return self._response(
                 user_reply=(
-                    "I couldn't apply that change cleanly — the team has "
-                    "been notified."
+                    "I couldn't apply that change cleanly — I've logged a "
+                    "diagnostic. Try rephrasing the change."
                 ),
                 intent_type="PatchSpec",
                 warnings=[
                     f"patch rejected after {retry_outcome.attempts_used} "
-                    "attempts — team notified"
+                    "attempts — diagnostic logged"
                 ],
                 runtime_meta=runtime_meta,
             )
@@ -752,11 +759,11 @@ class Orchestrator:
             ticket = self._debug.from_validation_errors(
                 errors, source="patch-agent",
             )
-            self._store.save_ticket(ticket)
+            self._save_ticket_and_schedule_fix(ticket, user_intent=message)
             return self._response(
                 user_reply=(
-                    "I couldn't apply that change cleanly — the team has "
-                    "been notified."
+                    "I couldn't apply that change cleanly — I've logged a "
+                    "diagnostic. Try rephrasing the change."
                 ),
                 intent_type="PatchSpec",
                 warnings=["patch failed validation"],
@@ -774,7 +781,10 @@ class Orchestrator:
             spec=final_spec,
             outcome=outcome,
             action="patched",
-            patch=patch.model_dump(mode="json"),
+            # by_alias=True: patch ops can embed widgets whose decision_flow
+            # edges must serialize as `from` (canonical), matching the
+            # dashboard dump in _finalize.
+            patch=patch.model_dump(mode="json", by_alias=True),
             runtime_meta=runtime_meta,
             extra_warnings=warnings,
         )
@@ -787,6 +797,11 @@ class Orchestrator:
             return draft, None
         outcome = self._review.run(draft, user_intent=user_intent)
         if outcome.kind == "approved":
+            return outcome.dashboard, outcome
+        if outcome.kind == "ticket":
+            # LD-1/LD-2: a rescue ticket is a diagnostic record, not a
+            # hand-off to humans. The draft passed Python validation —
+            # deliver it; _finalize adds the caveat + logs the ticket.
             return outcome.dashboard, outcome
         return None, outcome
 
@@ -835,19 +850,40 @@ class Orchestrator:
                 runtime_meta=runtime_meta,
             )
 
+        # LD-1/LD-2: no ticket-and-wait. The ticket is persisted purely
+        # as a diagnostic record; the validated dashboard (saved above
+        # when present) is delivered with an honest caveat. No human is
+        # notified and nothing blocks on one.
+        render_caveat: str | None = None
         if outcome is not None and outcome.kind == "ticket":
+            fix_scheduled = False
             if outcome.ticket is not None:
-                self._store.save_ticket(outcome.ticket)
-            return self._response(
-                user_reply=(
-                    "I built the dashboard but noticed a rendering issue. "
-                    "The team has been notified — try asking again in a "
-                    "moment or describe what you need differently."
-                ),
-                intent_type="DeveloperTicket",
-                warnings=["rescue filed a ticket"],
-                review_trail=review_trail,
-                runtime_meta=runtime_meta,
+                fix_scheduled = self._save_ticket_and_schedule_fix(
+                    outcome.ticket, user_intent=message,
+                )
+            if spec is None:
+                # Defensive: a ticket outcome without a deliverable
+                # draft. Stay non-blocking — invite a retry, and be
+                # truthful that diagnosis is automated.
+                return self._response(
+                    user_reply=(
+                        "I couldn't finish building that dashboard this "
+                        "turn — I've logged a diagnostic for the automated "
+                        "pipeline. Please ask again, or describe what you "
+                        "need differently."
+                    ),
+                    intent_type="UserResponse",
+                    warnings=["render check failed — diagnostic logged"],
+                    review_trail=review_trail,
+                    runtime_meta=runtime_meta,
+                )
+            render_caveat = (
+                "Note: my automated render check couldn't confirm every "
+                "widget drew correctly, so I've logged a diagnostic"
+                + (" and started an automatic background fix"
+                   if fix_scheduled else "")
+                + ". If anything looks empty, refresh or ask me to "
+                "rebuild it."
             )
 
         if outcome is not None and outcome.kind == "failed":
@@ -859,7 +895,8 @@ class Orchestrator:
                 runtime_meta=runtime_meta,
             )
 
-        # Approved (or passthrough when review disabled).
+        # Approved (or passthrough when review disabled, or ticket
+        # outcome delivered-with-caveat).
         base_reply = (
             intent.get("message_to_user")
             or (
@@ -869,18 +906,26 @@ class Orchestrator:
             )
         )
         reply = base_reply
+        if render_caveat:
+            reply = f"{reply}\n\n{render_caveat}"
         if pending_save_question:
-            reply = f"{base_reply}\n\n{pending_save_question}"
+            reply = f"{reply}\n\n{pending_save_question}"
 
         return self._response(
             user_reply=reply,
             intent_type="DashboardSpec" if action == "created" else "PatchSpec",
-            dashboard=spec.model_dump(mode="json") if spec else None,
+            # by_alias=True so decision_flow edges serialize their `from` key —
+            # the frontend renders this dump directly (page.tsx setSpec) and
+            # silently drops every branch edge if it sees `from_` instead.
+            dashboard=spec.model_dump(mode="json", by_alias=True) if spec else None,
             patch=patch,
             review_trail=review_trail,
             save_prompt=(spec.dashboard_id if spec else None),
             runtime_meta=runtime_meta,
-            warnings=extra_warnings or [],
+            warnings=(extra_warnings or []) + (
+                ["render check unconfirmed — diagnostic logged"]
+                if render_caveat else []
+            ),
         )
 
     # ---------------------------------------------------------------
@@ -1046,13 +1091,37 @@ class Orchestrator:
             "save_prompt_for": save_prompt,
         }
 
+    def _save_ticket_and_schedule_fix(
+        self, ticket, *, user_intent: str = "",
+    ) -> bool:
+        """Persist a diagnostic ticket and hand it to the background
+        Big-guy auto-fix pipeline (LD-1/LD-2: automated diagnosis AND
+        automated repair; no human interrupt). Returns True when a fix
+        run was actually scheduled — gates may refuse. Never raises."""
+        self._store.save_ticket(ticket)
+        try:
+            thread = auto_fix.schedule_auto_fix(
+                ticket, runtime=self._runtime, store=self._store,
+                user_intent=user_intent,
+            )
+        except Exception as exc:  # pragma: no cover - defensive
+            print(f"[orchestrator] auto-fix scheduling failed: {exc}")
+            return False
+        if thread is not None:
+            print(
+                f"[orchestrator] auto-fix scheduled for ticket "
+                f"{ticket.ticket_id!r}"
+            )
+            return True
+        return False
+
     def _runtime_error_response(self, msg: str) -> dict[str, Any]:
         ticket = self._debug.from_validation_errors([msg], source="runtime")
-        self._store.save_ticket(ticket)
+        self._save_ticket_and_schedule_fix(ticket)
         return self._response(
             user_reply=_safe_user_reply_on_error(),
             intent_type="RuntimeError",
-            warnings=["runtime error — team notified"],
+            warnings=["runtime error — diagnostic logged"],
         )
 
     def _file_retry_ticket(
@@ -1069,7 +1138,7 @@ class Orchestrator:
         ticket = self._debug.from_validation_errors(
             errors_blob, source=source,
         )
-        self._store.save_ticket(ticket)
+        self._save_ticket_and_schedule_fix(ticket)
 
 
 def _runtime_meta(result: dict[str, Any]) -> dict[str, Any]:
@@ -1095,7 +1164,7 @@ def _retry_warnings(outcome: RetryOutcome | None) -> list[str]:
 def _safe_user_reply_on_error() -> str:
     return (
         "Something went wrong while putting that together. "
-        "The team has been notified and will take a look."
+        "I've logged a diagnostic — please try asking again."
     )
 
 

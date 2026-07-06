@@ -94,47 +94,76 @@ class BrowserEvaluator:
                 console_errors.append(f"goto failed: {exc}")
 
             if page_loaded:
-                # Wait until the dashboard page either declares ready
-                # (with the expected number of widget frames mounted)
-                # or declares error. Falling through on timeout still
-                # produces a useful missing-widgets count.
-                try:
-                    page.wait_for_function(
-                        """(expectedCount) => {
-                            const err   = document.querySelector("[data-dashboard-state='error']");
-                            if (err) return true;
-                            const ready = document.querySelector("[data-dashboard-state='ready']");
-                            const n     = document.querySelectorAll("[data-widget-id]").length;
-                            return Boolean(ready) && n >= expectedCount;
-                        }""",
-                        arg=len(expected),
-                        timeout=8000,
-                    )
-                except Exception:
-                    # Real mount failure — fall through; counts will
-                    # reflect what's actually in the DOM.
-                    pass
-
-                try:
-                    dashboard_state = page.evaluate(
-                        """() => {
-                            const el = document.querySelector("[data-dashboard-state]");
-                            return el ? el.getAttribute("data-dashboard-state") : null;
-                        }"""
-                    )
-                except Exception:
-                    dashboard_state = None
-
-                for widget_id in expected:
+                # Two passes: the first with the normal wait, and — only
+                # when the result is the known inconclusive signature
+                # (every widget missing, no real console errors, state
+                # None/loading/error) — a reload with a much longer wait.
+                # On this Jetson, Next.js can take well over 8s to compile
+                # and commit a dashboard route the first time; without the
+                # retry that race reads as "all widgets missing" and used
+                # to sink valid dashboards (the rSO2 line-chart incident,
+                # 2026-07-06).
+                for wait_ms in (8000, 25000):
+                    # Wait until the dashboard page either declares ready
+                    # (with the expected number of widget frames mounted)
+                    # or declares error. Falling through on timeout still
+                    # produces a useful missing-widgets count.
                     try:
-                        loc = page.locator(f"[data-widget-id='{widget_id}']")
-                        if loc.count() > 0:
-                            rendered.append(widget_id)
-                        else:
+                        page.wait_for_function(
+                            """(expectedCount) => {
+                                const err   = document.querySelector("[data-dashboard-state='error']");
+                                if (err) return true;
+                                const ready = document.querySelector("[data-dashboard-state='ready']");
+                                const n     = document.querySelectorAll("[data-widget-id]").length;
+                                return Boolean(ready) && n >= expectedCount;
+                            }""",
+                            arg=len(expected),
+                            timeout=wait_ms,
+                        )
+                    except Exception:
+                        # Real mount failure — fall through; counts will
+                        # reflect what's actually in the DOM.
+                        pass
+
+                    try:
+                        dashboard_state = page.evaluate(
+                            """() => {
+                                const el = document.querySelector("[data-dashboard-state]");
+                                return el ? el.getAttribute("data-dashboard-state") : null;
+                            }"""
+                        )
+                    except Exception:
+                        dashboard_state = None
+
+                    rendered.clear()
+                    missing.clear()
+                    for widget_id in expected:
+                        try:
+                            loc = page.locator(f"[data-widget-id='{widget_id}']")
+                            if loc.count() > 0:
+                                rendered.append(widget_id)
+                            else:
+                                missing.append(widget_id)
+                        except Exception as exc:
                             missing.append(widget_id)
-                    except Exception as exc:
-                        missing.append(widget_id)
-                        console_errors.append(f"locator error for {widget_id}: {exc}")
+                            console_errors.append(f"locator error for {widget_id}: {exc}")
+
+                    inconclusive = (
+                        bool(expected)
+                        and len(missing) == len(expected)
+                        and dashboard_state in (None, "loading", "error")
+                        and not [e for e in console_errors if not _fetch_like(e)]
+                    )
+                    if not inconclusive:
+                        break
+                    if wait_ms != 25000:
+                        console_errors.clear()
+                        try:
+                            page.reload(wait_until="domcontentloaded",
+                                        timeout=15000)
+                        except Exception as exc:
+                            console_errors.append(f"reload failed: {exc}")
+                            break
 
                 # Layout overflow — quick sanity check via JS.
                 try:
@@ -199,6 +228,18 @@ class _PlaywrightUnavailable(Exception):
     pass
 
 
+def _fetch_like(s: str) -> bool:
+    """Console errors that indicate network/fetch trouble rather than a
+    widget-implementation bug."""
+    return (
+        "Failed to load resource" in s
+        or "404" in s
+        or "ERR_CONNECTION" in s
+        or "NetworkError" in s
+        or "Failed to fetch" in s
+    )
+
+
 def _recommendation(
     page_loaded: bool,
     missing: list[str],
@@ -221,14 +262,7 @@ def _recommendation(
     # In both cases the console errors are network/fetch errors, not
     # widget-implementation errors. Tell the LLM not to "fix the spec".
     if expected_total > 0 and len(missing) == expected_total:
-        fetch_like = lambda s: (
-            "Failed to load resource" in s
-            or "404" in s
-            or "ERR_CONNECTION" in s
-            or "NetworkError" in s
-            or "Failed to fetch" in s
-        )
-        non_fetch_errors = [e for e in console_errors if not fetch_like(e)]
+        non_fetch_errors = [e for e in console_errors if not _fetch_like(e)]
         if not non_fetch_errors and dashboard_state in (None, "loading", "error"):
             return (
                 "all widgets missing but only fetch/network errors and "

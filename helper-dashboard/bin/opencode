@@ -149,9 +149,14 @@ BIG_GUY_OPERATIONS = {"rescue_review", "rescue_extend", "developer_fix"}
 
 # Operations that require tool-using mode (LLM may call read_file,
 # write_file, replace_in_file, run_command, done). All other operations
-# stay in JSON-only mode. Currently the only one — see __TOOL_USE__
-# section near the bottom of this file for the full machinery.
-TOOL_USE_OPERATIONS = {"rescue_extend"}
+# stay in JSON-only mode. See the __TOOL_USE__ section near the bottom
+# of this file for the full machinery.
+#   - rescue_extend: write scope = the six per-widget_type files.
+#   - developer_fix: write scope = the auto-fix allow-list (render/
+#     product layer only; clinical anomaly paths denied — see
+#     _path_allowed_for_autofix_write). Scheduled by the backend's
+#     auto_fix.py, which independently snapshots + byte-verifies.
+TOOL_USE_OPERATIONS = {"rescue_extend", "developer_fix"}
 
 
 # ---------------------------------------------------------------------------
@@ -1384,6 +1389,85 @@ def _path_allowed_for_write(path: Path, widget_type: str) -> bool:
 
 
 # ---------------------------------------------------------------------------
+# Auto-fix (developer_fix) write scope — render/product layer only.
+# Mirrored INDEPENDENTLY in backend/app/helper/auto_fix.py (two trust
+# boundaries, deliberately not a shared import; keep in sync). The
+# backend additionally byte-verifies the clinical files after the run
+# and rolls everything back on any difference.
+# ---------------------------------------------------------------------------
+
+_AUTOFIX_WRITE_FILES: tuple[str, ...] = (
+    "backend/app/services/browser_evaluator.py",
+    "frontend/lib/renderer.tsx",
+    "frontend/lib/spec-schema.ts",
+)
+
+_AUTOFIX_WRITE_DIR_PREFIXES: tuple[str, ...] = (
+    "frontend/widget-toolkit/",
+    "tests/browser_evaluation/",
+    "tests/review_loop/",
+    "tests/spec_validation/",
+)
+
+# Deny always wins — checked before the allow lists. Clinical safety
+# code, the gates themselves, the runtime, and this CLI are never
+# writable by any autonomous run.
+_AUTOFIX_DENY_PREFIXES: tuple[str, ...] = (
+    "backend/app/services/anomaly_",
+    "backend/app/services/alert_state_store",
+    "backend/app/prometheus/",
+    "backend/app/specs/alert_rule_spec",
+    "backend/app/api/anomaly",
+    "backend/app/helper/extend_gate",
+    "backend/app/helper/auto_fix",
+    "backend/app/helper/runtime",
+    "bin/",
+    ".opencode/",
+    ".env",
+)
+
+
+def _path_allowed_for_autofix_write(path: Path) -> bool:
+    try:
+        rel = str(path.relative_to(_ROOT.resolve())).replace("\\", "/")
+    except ValueError:
+        return False
+    if any(rel.startswith(d) for d in _AUTOFIX_DENY_PREFIXES):
+        return False
+    if rel in _AUTOFIX_WRITE_FILES:
+        return True
+    return any(rel.startswith(d) for d in _AUTOFIX_WRITE_DIR_PREFIXES)
+
+
+def _check_write_allowed(path: Path, operation: str, widget_type: str) -> None:
+    """Raise _ToolError when `path` is outside the write scope for
+    this operation. Shared by write_file / replace_in_file."""
+    if operation == "developer_fix":
+        if not _path_allowed_for_autofix_write(path):
+            raise _ToolError(
+                f"write refused: {_safe_rel(path)!r} is not in the auto-fix "
+                f"allow-list. Allowed files: {list(_AUTOFIX_WRITE_FILES)}; "
+                f"allowed dirs: {list(_AUTOFIX_WRITE_DIR_PREFIXES)}. "
+                f"Clinical anomaly paths are never writable."
+            )
+        return
+    if not _path_allowed_for_write(path, widget_type):
+        allowed = [str(p.relative_to(_ROOT.resolve()))
+                    for p in _extend_write_allowlist(widget_type)]
+        raise _ToolError(
+            f"write refused: {_safe_rel(path)!r} is not in the extend "
+            f"allow-list for widget_type={widget_type!r}. Allowed: {allowed}"
+        )
+
+
+def _safe_rel(path: Path) -> str:
+    try:
+        return str(path.relative_to(_ROOT.resolve()))
+    except ValueError:
+        return str(path)
+
+
+# ---------------------------------------------------------------------------
 # Tool handlers (M3b + M3c)
 # ---------------------------------------------------------------------------
 
@@ -1414,7 +1498,7 @@ def _tool_read_file(args: dict) -> str:
         raise _ToolError(f"file is not utf-8: {args.get('path')!r}")
 
 
-def _tool_write_file(args: dict, widget_type: str) -> str:
+def _tool_write_file(args: dict, operation: str, widget_type: str) -> str:
     raw_path = args.get("path", "")
     content = args.get("content", "")
     if not isinstance(content, str):
@@ -1424,13 +1508,7 @@ def _tool_write_file(args: dict, widget_type: str) -> str:
             f"write_file: content too large; max {_TOOL_FILE_MAX_BYTES} bytes"
         )
     path = _validate_safe_relative_path(raw_path)
-    if not _path_allowed_for_write(path, widget_type):
-        allowed = [str(p.relative_to(_ROOT.resolve()))
-                    for p in _extend_write_allowlist(widget_type)]
-        raise _ToolError(
-            f"write_file refused: {raw_path!r} is not in the extend "
-            f"allow-list for widget_type={widget_type!r}. Allowed: {allowed}"
-        )
+    _check_write_allowed(path, operation, widget_type)
     path.parent.mkdir(parents=True, exist_ok=True)
     try:
         path.write_text(content, encoding="utf-8")
@@ -1440,7 +1518,7 @@ def _tool_write_file(args: dict, widget_type: str) -> str:
                         "bytes": len(content.encode("utf-8"))})
 
 
-def _tool_replace_in_file(args: dict, widget_type: str) -> str:
+def _tool_replace_in_file(args: dict, operation: str, widget_type: str) -> str:
     raw_path = args.get("path", "")
     old = args.get("old_string", "")
     new = args.get("new_string", "")
@@ -1449,13 +1527,7 @@ def _tool_replace_in_file(args: dict, widget_type: str) -> str:
     if old == "":
         raise _ToolError("replace_in_file: old_string cannot be empty")
     path = _validate_safe_relative_path(raw_path)
-    if not _path_allowed_for_write(path, widget_type):
-        allowed = [str(p.relative_to(_ROOT.resolve()))
-                    for p in _extend_write_allowlist(widget_type)]
-        raise _ToolError(
-            f"replace_in_file refused: {raw_path!r} is not in the extend "
-            f"allow-list for widget_type={widget_type!r}. Allowed: {allowed}"
-        )
+    _check_write_allowed(path, operation, widget_type)
     if not path.exists():
         raise _ToolError(f"file not found: {raw_path!r}")
     try:
@@ -1695,19 +1767,80 @@ def _build_extend_system_prompt(agent: str, widget_type: str, extend: dict) -> s
     return body + mode_c
 
 
-def _normalize_developer_report(raw: dict) -> dict:
+def _build_autofix_system_prompt(agent: str, args: dict) -> str:
+    """System prompt for developer_fix in AUTO-FIX mode: Big guy
+    consumes a diagnostic ticket with tool access, bounded by the
+    auto-fix write allow-list. No human is in the loop."""
+    agent_md = _AGENTS_DIR / f"{agent}.md"
+    if not agent_md.exists():
+        raise _ProviderError(f"missing agent file: {agent_md}")
+    body = agent_md.read_text(encoding="utf-8")
+    ticket = args.get("ticket") or {}
+    try:
+        ticket_json = json.dumps(ticket, indent=2)[:4000]
+    except Exception:
+        ticket_json = str(ticket)[:4000]
+    mode_auto = (
+        "\n\n## Operation: developer_fix (AUTO-FIX mode)\n\n"
+        "The automated review pipeline filed the diagnostic ticket "
+        "below. No human is in the loop: make the smallest correct "
+        "code change that fixes the ROOT CAUSE, run the relevant "
+        "tests, and report honestly. You have tool access: "
+        "`read_file`, `write_file`, `replace_in_file`, `run_command`, "
+        "`done`.\n\n"
+        "### Ticket\n\n"
+        "```json\n" + ticket_json + "\n```\n\n"
+        "### Path allow-list (writes only)\n\n"
+        "Exact files:\n"
+        + "".join(f"  - `{p}`\n" for p in _AUTOFIX_WRITE_FILES)
+        + "Any file under:\n"
+        + "".join(f"  - `{p}`\n" for p in _AUTOFIX_WRITE_DIR_PREFIXES)
+        + "\nClinical anomaly-detection files (backend/app/services/"
+        "anomaly_*, prometheus/, alert_rule_spec.py, api/anomaly.py) "
+        "are NEVER writable. The backend byte-verifies them after "
+        "your run and reverts EVERYTHING you did if any changed — "
+        "including via run_command side effects. Do not touch them.\n"
+        "Reads under backend/, frontend/, .opencode/, tests/, docs/ "
+        "are allowed.\n\n"
+        "### Required validation\n\n"
+        "After editing, run the pytest suite(s) covering the files "
+        "you changed, e.g.:\n"
+        "  run_command(cmd='pytest', args=['tests/review_loop/', '--tb=short'])\n"
+        "Never list a test in tests_run that you did not actually "
+        "run in this session.\n\n"
+        "### Honesty rules\n\n"
+        "- status='resolved' ONLY if you made a real change AND the "
+        "tests you ran passed.\n"
+        "- If the fix is outside your allowed paths, or you cannot "
+        "reproduce/fix it, call done with status='rejected' and a "
+        "clear summary — the diagnostic then remains for the dev-time "
+        "agents. A rejected-but-honest report is always better than "
+        "a fabricated resolution.\n\n"
+        "### Final output\n\n"
+        "Exactly one call: done(report={\"type\":\"DeveloperReport\","
+        "\"report_id\":\"<slug>\",\"ticket_id\":\"<ticket_id>\","
+        "\"summary\":\"<what you did>\",\"actions_taken\":[...],"
+        "\"tests_run\":[...],\"status\":\"resolved|rejected\"}).\n"
+    )
+    return body + mode_auto
+
+
+def _normalize_developer_report(raw: dict, *, default_status: str = "resolved") -> dict:
     """Ensure the report dict has type='DeveloperReport' and at least
     the required keys. Missing keys get safe defaults so the runtime
-    contract check doesn't reject a near-miss."""
+    contract check doesn't reject a near-miss. `default_status` is
+    "resolved" for rescue_extend (historical behavior) but MUST be
+    "rejected" for auto-fix runs — a report that never stated a status
+    cannot count as a successful autonomous fix."""
     if not isinstance(raw, dict):
         raw = {}
     r = dict(raw)
     r["type"] = "DeveloperReport"
     r.setdefault("report_id", f"rep-{uuid.uuid4().hex[:8]}")
-    r.setdefault("summary", "rescue_extend completed")
+    r.setdefault("summary", "tool-mode run completed")
     r.setdefault("actions_taken", [])
     r.setdefault("tests_run", [])
-    r.setdefault("status", "resolved")
+    r.setdefault("status", default_status)
     return r
 
 
@@ -1721,17 +1854,26 @@ def _openrouter_run_with_tools(operation: str, agent: str, args: dict) -> dict:
     api_key = os.getenv("OPENROUTER_API_KEY", "").strip()
     if not api_key:
         raise _ProviderError("OPENROUTER_API_KEY is not set")
-    extend = args.get("extend") or {}
-    widget_type = (extend.get("widget_type") or "").strip()
-    if not widget_type:
-        raise _ProviderError("rescue_extend missing extend.widget_type")
-    # Belt-and-braces — Pydantic already validated this regex backend-side,
-    # but bin/opencode is a separate process and shouldn't trust args blindly.
-    if not re.fullmatch(r"[a-z][a-z0-9_]{2,31}", widget_type):
-        raise _ProviderError(f"invalid widget_type for rescue_extend: {widget_type!r}")
+    widget_type = ""
+    if operation == "rescue_extend":
+        extend = args.get("extend") or {}
+        widget_type = (extend.get("widget_type") or "").strip()
+        if not widget_type:
+            raise _ProviderError("rescue_extend missing extend.widget_type")
+        # Belt-and-braces — Pydantic already validated this regex
+        # backend-side, but bin/opencode is a separate process and
+        # shouldn't trust args blindly.
+        if not re.fullmatch(r"[a-z][a-z0-9_]{2,31}", widget_type):
+            raise _ProviderError(
+                f"invalid widget_type for rescue_extend: {widget_type!r}"
+            )
+        system_prompt = _build_extend_system_prompt(agent, widget_type, extend)
+    elif operation == "developer_fix":
+        system_prompt = _build_autofix_system_prompt(agent, args)
+    else:  # pragma: no cover - TOOL_USE_OPERATIONS gates this
+        raise _ProviderError(f"no tool-mode prompt for operation {operation!r}")
 
     model = _pick_model(operation)
-    system_prompt = _build_extend_system_prompt(agent, widget_type, extend)
     user_prompt = _build_user_prompt(operation, args)
     messages: list[dict] = [
         {"role": "system", "content": system_prompt},
@@ -1742,11 +1884,14 @@ def _openrouter_run_with_tools(operation: str, agent: str, args: dict) -> dict:
         "Authorization": f"Bearer {api_key}",
         "Content-Type": "application/json",
         "HTTP-Referer": "https://helper-dashboard.local/",
-        "X-Title": "Helper Dashboard (rescue_extend)",
+        "X-Title": f"Helper Dashboard ({operation})",
     }
     timeout = float(os.getenv("OPENCODE_HTTP_TIMEOUT", "120"))
 
-    _dbg(f"tool_loop:start widget_type={widget_type!r} model={model!r}")
+    _dbg(
+        f"tool_loop:start operation={operation!r} "
+        f"widget_type={widget_type!r} model={model!r}"
+    )
 
     for iter_n in range(1, _TOOL_LOOP_MAX_ITERS + 1):
         body = {
@@ -1797,7 +1942,12 @@ def _openrouter_run_with_tools(operation: str, agent: str, args: dict) -> dict:
             parsed = _extract_first_json_object(msg.get("content") or "")
             if parsed is not None and parsed.get("type") == "DeveloperReport":
                 _dbg(f"tool_loop:end iter={iter_n} via content fallback")
-                return _normalize_developer_report(parsed)
+                return _normalize_developer_report(
+                    parsed,
+                    default_status=(
+                        "resolved" if operation == "rescue_extend" else "rejected"
+                    ),
+                )
             raise _ProviderError(
                 f"tool loop iter {iter_n}: no tool_calls and no DeveloperReport "
                 f"in content; aborting"
@@ -1815,15 +1965,20 @@ def _openrouter_run_with_tools(operation: str, agent: str, args: dict) -> dict:
             if name == "done":
                 report = tc_args.get("report") if isinstance(tc_args, dict) else {}
                 _dbg(f"tool_loop:end iter={iter_n} via done()")
-                return _normalize_developer_report(report or {})
+                return _normalize_developer_report(
+                    report or {},
+                    default_status=(
+                        "resolved" if operation == "rescue_extend" else "rejected"
+                    ),
+                )
 
             try:
                 if name == "read_file":
                     result_str = _tool_read_file(tc_args)
                 elif name == "write_file":
-                    result_str = _tool_write_file(tc_args, widget_type)
+                    result_str = _tool_write_file(tc_args, operation, widget_type)
                 elif name == "replace_in_file":
-                    result_str = _tool_replace_in_file(tc_args, widget_type)
+                    result_str = _tool_replace_in_file(tc_args, operation, widget_type)
                 elif name == "run_command":
                     result_str = _tool_run_command(tc_args)
                 else:
@@ -1843,7 +1998,7 @@ def _openrouter_run_with_tools(operation: str, agent: str, args: dict) -> dict:
             })
 
     raise _ProviderError(
-        f"rescue_extend tool loop exceeded {_TOOL_LOOP_MAX_ITERS} iterations "
+        f"{operation} tool loop exceeded {_TOOL_LOOP_MAX_ITERS} iterations "
         f"without calling done()"
     )
 
