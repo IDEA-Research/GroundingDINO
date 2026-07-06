@@ -40,7 +40,7 @@ def promoted_neonatal_rso2_rule(
     evaluator core additionally requires an explicit `promoted=True` from the
     supervisor (defence in depth). This helper exists so the INC3 notifier
     tests can exercise the real paging path; production promotion is still a
-    deliberate, supervisor-gated act.
+    deliberate act requiring the user's explicit approval (LD-6).
     """
     rule = neonatal_rso2_rule(metric=metric, rule_id=rule_id)
     return rule.model_copy(update={"mode": type(rule.mode)("active")})

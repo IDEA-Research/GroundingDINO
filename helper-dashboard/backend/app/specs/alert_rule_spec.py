@@ -142,6 +142,19 @@ class AlertRuleSpec(BaseModel):
     # Declared paging posture; shadow by default.
     mode: RuleMode = RuleMode.shadow
 
+    @field_validator("for_")
+    @classmethod
+    def _check_for_positive(cls, v: str) -> str:
+        # The pattern alone admits "0s"/"0m"/"0h", which would nullify the
+        # locked sustain-window semantics (LD-3: fire only when sustained) —
+        # a zero window fires on the first breaching tick.
+        if int(v[:-1]) <= 0:
+            raise ValueError(
+                "'for' must be a positive duration; a zero sustain window "
+                "would fire on the first breaching tick"
+            )
+        return v
+
     @field_validator("metric")
     @classmethod
     def _check_metric(cls, v: str) -> str:

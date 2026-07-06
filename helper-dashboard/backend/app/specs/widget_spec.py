@@ -155,7 +155,11 @@ class FlowNode(BaseModel):
 class FlowEdge(BaseModel):
     """A directed edge between two nodes, guarded by a branch condition."""
 
-    model_config = ConfigDict(extra="forbid")
+    # populate_by_name lets a stored spec load whether the edge source was
+    # written as `from` (alias, canonical) or `from_` (field name), so a
+    # decision_flow dashboard round-trips through the store. Serialize with
+    # by_alias=True so the frontend always receives `from`.
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
     from_: str = Field(
         ..., alias="from", min_length=1, max_length=64, pattern=r"^[a-zA-Z0-9_\-]+$"

@@ -211,7 +211,7 @@ def test_flapping_breach_pages_once_per_edge(tmp_path):
     class Phased:
         """Two separate sustained breaches with a full recovery between."""
 
-        def observe(self, metric, *, now):
+        def observe(self, metric, *, now, labels=None):
             # Breach window A: [60, 60+FOR+90); recover; breach B: [700, 700+FOR+90)
             if 60.0 <= now < 60.0 + FOR_S + 90.0:
                 return desat.observe(metric, now=now)
@@ -357,6 +357,17 @@ def test_discord_adapter_uses_injected_opener_and_masks_token():
     assert secret not in masked
 
 
+def test_mask_url_drops_the_entire_token_including_tail():
+    """E6(d): masking keeps scheme+host only — not even a 4-char tail survives."""
+    from app.services.anomaly_build_audit import mask_url
+
+    secret = "https://discord.com/api/webhooks/123456789/SUPER_SECRET_TOKEN_abcd"
+    assert mask_url(secret) == "https://discord.com/****"
+    assert mask_url(None) is None
+    assert mask_url("") == ""
+    assert mask_url("not a url") == "****"
+
+
 def test_discord_adapter_retries_then_reports_unacked():
     attempts = {"n": 0}
 
@@ -437,3 +448,184 @@ def test_end_to_end_promoted_local_receiver_one_delivery(tmp_path):
     _run(service, n=20)
     assert len(receiver.messages) == 1
     assert receiver.messages[0]["text"].startswith(TEST_TUNNEL_BANNER)
+
+
+# ---------------------------------------------------------------------------
+# (9) SIGNAL_LOST pages once per loss EPISODE, re-arms on recovery (E14)
+# ---------------------------------------------------------------------------
+def test_signal_lost_pages_once_per_episode_not_every_tick(tmp_path):
+    """A promoted rule with lost signal must page once per episode — not
+    every degraded tick (~5760/day at 15s = alarm fatigue that buries the
+    next real page). Every deduped repeat is still recorded, never silent."""
+    rule = promoted_neonatal_rso2_rule(metric="rso2_left")
+    receiver = FakeReceiver()
+    disp = NotificationDispatcher(receiver)
+    provider = SimDataProvider(
+        scenario=Scenario.unreachable, start_ts=0.0, step_s=STEP_S, n_ticks=N_TICKS
+    )
+    service = _service(rule, provider, tmp_path, disp, promoted=True)
+
+    _run(service, n=N_TICKS)  # ~2/3 of the trace is one long loss episode
+
+    sl = [m for m in receiver.deliveries if m.state == AlertState.signal_lost.value]
+    assert len(sl) == 1, (
+        f"SIGNAL_LOST paged {len(sl)} times for ONE loss episode — "
+        "notification storm (E14)"
+    )
+
+
+def test_signal_lost_rearms_after_recovery(tmp_path):
+    """Signal recovers, then is lost again: the SECOND episode pages again.
+    A quiet recovery emits no events, so the re-arm must be state-driven."""
+    from app.services.anomaly_core import DataStatus
+    from app.services.anomaly_data_provider import Observation
+
+    class FlappingSignalProvider:
+        """Lost for ticks [5,10) and [15,...); healthy otherwise."""
+
+        def observe(self, metric, *, now, labels=None):
+            i = int(now // STEP_S)
+            lost = (5 <= i < 10) or i >= 15
+            status = DataStatus(
+                reachable=not lost,
+                returns_data=not lost,
+                source="prometheus",
+                sample_ts=now,
+                history_coverage_s=24 * 3600.0,
+            )
+            return Observation(
+                value=None if lost else 80.0,
+                baseline=80.0,
+                status=status,
+            )
+
+    rule = promoted_neonatal_rso2_rule(metric="rso2_left")
+    receiver = FakeReceiver()
+    disp = NotificationDispatcher(receiver)
+    service = _service(
+        rule, FlappingSignalProvider(), tmp_path, disp, promoted=True
+    )
+
+    _run(service, n=20)
+
+    sl = [m for m in receiver.deliveries if m.state == AlertState.signal_lost.value]
+    assert len(sl) == 2, (
+        f"expected one page per loss EPISODE (2 episodes), got {len(sl)} — "
+        "either the storm is back (>2) or recovery failed to re-arm (<2)"
+    )
+
+
+def test_signal_lost_reason_change_does_not_mute_future_episodes(tmp_path):
+    """Verifier-found defect: a reason change mid-episode (unreachable ->
+    stale) delivers one page per reason; on recovery EVERY delivered key must
+    re-arm — a leaked earlier-reason key would permanently mute the next
+    loss episode with that reason on a promoted rule."""
+    from app.services.anomaly_core import DataStatus
+    from app.services.anomaly_data_provider import Observation
+
+    class ReasonChangingProvider:
+        """Episode 1: unreachable (ticks 5-9) then stale (10-14);
+        healthy 15-19; episode 2: unreachable again (20+)."""
+
+        def observe(self, metric, *, now, labels=None):
+            i = int(now // STEP_S)
+            if (5 <= i < 10) or i >= 20:
+                # unreachable
+                status = DataStatus(
+                    reachable=False, returns_data=False,
+                    source="prometheus", sample_ts=now,
+                    history_coverage_s=24 * 3600.0,
+                )
+                return Observation(value=None, baseline=80.0, status=status)
+            if 10 <= i < 15:
+                # reachable but stale
+                status = DataStatus(
+                    reachable=True, returns_data=True,
+                    source="prometheus", sample_ts=now - 3600.0,
+                    history_coverage_s=24 * 3600.0,
+                )
+                return Observation(value=80.0, baseline=80.0, status=status)
+            status = DataStatus(
+                reachable=True, returns_data=True,
+                source="prometheus", sample_ts=now,
+                history_coverage_s=24 * 3600.0,
+            )
+            return Observation(value=80.0, baseline=80.0, status=status)
+
+    rule = promoted_neonatal_rso2_rule(metric="rso2_left")
+    receiver = FakeReceiver()
+    disp = NotificationDispatcher(receiver)
+    service = _service(
+        rule, ReasonChangingProvider(), tmp_path, disp, promoted=True
+    )
+
+    _run(service, n=25)
+
+    sl = [m for m in receiver.deliveries if m.state == AlertState.signal_lost.value]
+    reasons = [m.signal_lost_reason for m in sl]
+    assert reasons == ["unreachable", "stale", "unreachable"], (
+        f"expected one page per (episode, reason) — episode 2's unreachable "
+        f"page must NOT be muted by episode 1's leaked key; got {reasons}"
+    )
+
+
+def test_failed_recovery_tick_still_rearms_signal_lost(tmp_path):
+    """Verifier-found residual: if the quiet-recovery tick's persist raises,
+    the end-of-tick re-arm is skipped and every later degraded tick reports
+    signal_lost again — so the next loss episode would be muted forever.
+    The exception path must re-arm too (worst case: a duplicate page)."""
+    from app.services.alert_state_store import AlertStateStore
+    from app.services.anomaly_core import DataStatus
+    from app.services.anomaly_data_provider import Observation
+
+    class LossRecoverLossProvider:
+        """Lost ticks [3,6); healthy [6,9); lost again from 9."""
+
+        def observe(self, metric, *, now, labels=None):
+            i = int(now // STEP_S)
+            lost = (3 <= i < 6) or i >= 9
+            status = DataStatus(
+                reachable=not lost, returns_data=not lost,
+                source="prometheus", sample_ts=now,
+                history_coverage_s=24 * 3600.0,
+            )
+            return Observation(
+                value=None if lost else 80.0, baseline=80.0, status=status
+            )
+
+    class FailingAtRecoveryStore(AlertStateStore):
+        def __init__(self, *a, **kw):
+            super().__init__(*a, **kw)
+            self.failed_once = False
+            self.seen_lost = False
+
+        def record_report(self, report, **kw):
+            if report.state.value == "signal_lost":
+                self.seen_lost = True
+            elif self.seen_lost and not self.failed_once:
+                # First non-lost report AFTER a loss = the recovery tick.
+                self.failed_once = True
+                raise RuntimeError("simulated disk failure at recovery")
+            return super().record_report(report, **kw)
+
+    rule = promoted_neonatal_rso2_rule(metric="rso2_left")
+    receiver = FakeReceiver()
+    disp = NotificationDispatcher(receiver)
+    store = FailingAtRecoveryStore(base_dir=tmp_path / "state")
+    service = AnomalyEvaluatorService(
+        [rule],
+        LossRecoverLossProvider(),
+        store=store,
+        staleness_budget_s=60.0,
+        monotonic=lambda: 0.0,
+        promoted=True,
+        dispatcher=disp,
+    )
+    _run(service, n=14)
+
+    assert store.failed_once, "the simulated recovery-tick failure never triggered"
+    sl = [m for m in receiver.deliveries if m.state == AlertState.signal_lost.value]
+    assert len(sl) == 2, (
+        f"expected both loss episodes to page; got {len(sl)} — a failed "
+        "recovery tick left the loss-episode dedup armed (muted episode 2)"
+    )

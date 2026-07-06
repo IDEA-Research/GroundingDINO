@@ -6,6 +6,11 @@ pipeline through the HTTP surface. This is the **primary reliable
 live verification** — fast, deterministic, and does not depend on
 a running browser or external network.
 
+Chat transport: /api/chat/message is an ENQUEUE endpoint (returns a
+job_id); the ChatResponse payload comes from polling
+GET /api/chat/message/{job_id} until status=done. The `_chat` helper
+below hides that so checks still read the synchronous response shape.
+
 Scope:
 - POST /api/chat/message — create
 - POST /api/chat/message — answer save prompt
@@ -98,17 +103,45 @@ def main() -> int:
         if detail:
             print(f"        {detail}")
 
+    import time as _time
+
+    def _chat(payload: dict, *, timeout_s: float = 120.0) -> tuple[int, dict]:
+        """POST a chat message via the enqueue+poll API.
+
+        Returns (status, result) where result is the completed ChatResponse
+        payload — the shape the pre-queue synchronous endpoint used to return.
+        """
+        r = client.post("/api/chat/message", json=payload)
+        if r.status_code != 200:
+            return r.status_code, {}
+        job_id = r.json().get("job_id")
+        if not job_id:
+            return r.status_code, {}
+        deadline = _time.monotonic() + timeout_s
+        while _time.monotonic() < deadline:
+            s = client.get(f"/api/chat/message/{job_id}")
+            if s.status_code != 200:
+                return s.status_code, {}
+            js = s.json()
+            if js.get("status") == "done":
+                return 200, js.get("result") or {}
+            if js.get("status") == "error":
+                print(f"        job error: {js.get('error')}")
+                return 500, {}
+            _time.sleep(0.2)
+        print(f"        job {job_id} timed out after {timeout_s}s")
+        return 504, {}
+
     # --- 1. health -------------------------------------------------
     r = client.get("/api/health")
     record("GET /api/health -> 200", r.status_code == 200, f"body={r.text[:80]}")
 
     # --- 2. create a dashboard via chat ----------------------------
-    r = client.post("/api/chat/message", json={
+    status, body = _chat({
         "session_id": "t2-a",
         "message": "Show me a CPU and memory dashboard",
     })
-    ok = r.status_code == 200 and r.json().get("intent_type") == "DashboardSpec"
-    body = r.json() if r.status_code == 200 else {}
+    ok = status == 200 and body.get("intent_type") == "DashboardSpec"
     did = (body.get("dashboard") or {}).get("dashboard_id")
     record(
         "POST /api/chat/message (create) -> DashboardSpec",
@@ -126,15 +159,15 @@ def main() -> int:
     )
 
     # --- 4. answer save prompt with a name -------------------------
-    r = client.post("/api/chat/message", json={
+    status, body4 = _chat({
         "session_id": "t2-a",
         "message": "prod cpu mem",
     })
-    ok = r.status_code == 200 and "Saved as" in (r.json().get("user_reply") or "")
+    ok = status == 200 and "Saved as" in (body4.get("user_reply") or "")
     record(
         "save prompt answered with name -> saved",
         ok,
-        f"reply={(r.json() or {}).get('user_reply', '')[:80]}",
+        f"reply={body4.get('user_reply', '')[:80]}",
     )
 
     # --- 5. library has one entry ----------------------------------
@@ -148,14 +181,13 @@ def main() -> int:
 
     # --- 6. patch existing dashboard via chat ----------------------
     if did:
-        r = client.post("/api/chat/message", json={
+        status, body = _chat({
             "session_id": "t2-a",
             "message": "add a gauge widget",
             "current_dashboard_id": did,
         })
-        body = r.json() if r.status_code == 200 else {}
         ok = (
-            r.status_code == 200
+            status == 200
             and body.get("intent_type") == "PatchSpec"
             and body.get("patch")
         )
@@ -170,15 +202,15 @@ def main() -> int:
         record("patch via chat", False, "no dashboard_id to patch")
 
     # --- 7. new session sees the library ---------------------------
-    r = client.post("/api/chat/message", json={
+    status, body7 = _chat({
         "session_id": "t2-b-fresh",
         "message": "hello",
     })
-    # Any 200 response is fine; we don't LLM-parse the reply.
+    # Any completed job is fine; we don't LLM-parse the reply.
     record(
         "new session still serves /api/chat",
-        r.status_code == 200,
-        f"intent_type={r.json().get('intent_type')}",
+        status == 200,
+        f"intent_type={body7.get('intent_type')}",
     )
 
     # --- 8. unsupported widget request -> DeveloperTicket ---------
@@ -186,13 +218,12 @@ def main() -> int:
     # (it just treats topology as a non-match and returns UserResponse),
     # so only run this assertion in opencode mode.
     if mode == "opencode":
-        r = client.post("/api/chat/message", json={
+        status, body = _chat({
             "session_id": "t2-c",
             "message": "Draw me a network topology map and a flame graph",
         })
-        body = r.json() if r.status_code == 200 else {}
         ok = (
-            r.status_code == 200
+            status == 200
             and body.get("intent_type") in
                 {"DeveloperTicket", "ClarificationRequest"}
         )

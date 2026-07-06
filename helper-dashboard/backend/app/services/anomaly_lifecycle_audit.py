@@ -9,11 +9,13 @@ can later reconstruct, end-to-end:
       resolved / signal_lost / insufficient_baseline),
     - DELIVERY of a page to a channel (masked target, acked?), and a
       would-fire that was recorded in shadow but never paged,
+    - a DELIVERY_FAILED page — an attempt was made but the channel failed or
+      never acked (a channel/ops failure, loud but attributable),
     - ACK of a firing alert by a human,
     - SUPPRESSED / WITHHELD events (every dedup/shadow/refusal is logged — no
       silent suppression is ever allowed), and
-    - a MISSED must-fire — the top-severity clinical-safety event: a firing
-      the system should have paged but did not deliver.
+    - a MISSED must-fire — the top-severity clinical-safety event: a paged
+      firing with NO delivery accounting at all (not even a failed attempt).
 
 Fail-closed posture (inviolable): a write failure on a CLINICAL lifecycle
 event (firing / signal_lost / delivered / missed / suppressed-critical) RAISES
@@ -61,6 +63,7 @@ class LifecycleKind(str, Enum):
     rule_shadowed = "rule_shadowed"
     transition = "transition"
     delivered = "delivered"
+    delivery_failed = "delivery_failed"
     would_fire = "would_fire"
     acked = "acked"
     suppressed = "suppressed"
@@ -71,6 +74,7 @@ class LifecycleKind(str, Enum):
 _CLINICAL_KINDS = frozenset(
     {
         LifecycleKind.delivered,
+        LifecycleKind.delivery_failed,
         LifecycleKind.missed,
         LifecycleKind.rule_activated,
         LifecycleKind.rule_promoted,
@@ -114,9 +118,14 @@ def record(
     summary: str,
     reasoning: str,
     payload: dict[str, Any] | None = None,
-    increment: str = "INC5",
+    increment: str = "runtime",
 ) -> None:
     """Append one lifecycle record to the clinical stream AND the build-audit.
+
+    ``increment`` tags WHO produced the record: a build increment ("INC5") only
+    when a build loop is actually running; the default "runtime" (or "demo")
+    for events produced by a live/demo evaluator — runtime records must never
+    masquerade as build-loop activity.
 
     A write failure on a clinical event raises :class:`LifecycleAuditError`.
     A non-clinical event still surfaces its failure (a broken audit sink is a
@@ -177,8 +186,13 @@ def record(
 # ---------------------------------------------------------------------------
 # Convenience recorders for the common lifecycle events.
 # ---------------------------------------------------------------------------
-def record_rule_activated(rule, *, promoted: bool, increment: str = "INC5") -> None:
-    """A rule entering the running set (shadow by default)."""
+def record_rule_activated(rule, *, promoted: bool, increment: str = "runtime") -> None:
+    """A rule entering the running set (shadow by default).
+
+    The reasoning is derived from the ACTUAL mode: a paging activation must
+    never be recorded with shadow reasoning (an audit reader who trusts the
+    record verbatim must not be misled).
+    """
     record(
         kind=LifecycleKind.rule_activated,
         rule_id=rule.id,
@@ -187,8 +201,12 @@ def record_rule_activated(rule, *, promoted: bool, increment: str = "INC5") -> N
             f"{'ACTIVE (paging)' if promoted else 'SHADOW (non-paging)'} mode"
         ),
         reasoning=(
-            "shadow by default; promotion to paging is a separate, "
-            "supervisor-gated act on green goldens"
+            "rule entered the running set ALREADY PROMOTED: pageable events "
+            "WILL page; promotion out of shadow is legitimate only via the "
+            "user's explicit approval on green goldens (LD-6)"
+            if promoted
+            else "shadow by default; promotion to paging is a separate, "
+            "user-approved act on green goldens (LD-6)"
         ),
         payload={
             "metric": rule.metric,
@@ -203,7 +221,7 @@ def record_rule_activated(rule, *, promoted: bool, increment: str = "INC5") -> N
     )
 
 
-def record_transition(event: AlertEvent, *, mode: str, increment: str = "INC5") -> None:
+def record_transition(event: AlertEvent, *, mode: str, increment: str = "runtime") -> None:
     """One evaluator state transition — every one is captured, none silent."""
     record(
         kind=LifecycleKind.transition,
@@ -242,13 +260,14 @@ def record_delivery(
     acked: bool,
     attempts: int,
     error: str | None,
-    increment: str = "INC5",
+    increment: str = "runtime",
 ) -> None:
     """A page delivered (or attempted) to a channel.
 
-    A delivered-but-un-acked page is NOT a success; it is surfaced. A page that
-    was expected but never delivered is a MISSED must-fire (recorded separately
-    via :func:`record_missed`).
+    A delivered-but-un-acked page is NOT a success; it is surfaced. A failed
+    attempt is recorded via :func:`record_delivery_failed`; a paged event with
+    no delivery accounting at all is a MISSED must-fire
+    (:func:`record_missed`).
     """
     record(
         kind=LifecycleKind.delivered,
@@ -275,7 +294,52 @@ def record_delivery(
     )
 
 
-def record_would_fire(event: AlertEvent, *, increment: str = "INC5") -> None:
+def record_delivery_failed(
+    event: AlertEvent,
+    *,
+    channel: str,
+    masked_target: str,
+    delivered: bool,
+    acked: bool,
+    attempts: int,
+    error: str | None,
+    increment: str = "runtime",
+) -> None:
+    """A page whose delivery was ATTEMPTED but failed or never acked.
+
+    Distinct from a MISSED must-fire: here the dispatcher tried and the
+    CHANNEL failed (HTTP error, timeout, no ack), so the failure is
+    attributable to delivery infrastructure, not to the clinical pipeline
+    losing a page. Still clinical (fail-closed write) and still loud — the
+    page did NOT land and an operator must act on it.
+    """
+    record(
+        kind=LifecycleKind.delivery_failed,
+        rule_id=event.rule_id,
+        summary=(
+            f"page delivery FAILED for {event.state.value} via {channel} "
+            f"(delivered={delivered}, acked={acked}, attempts={attempts})"
+        ),
+        reasoning=(
+            "delivery was attempted but the channel failed or never acked; "
+            "recorded as a channel failure, NOT a clinical MISSED must-fire "
+            "— the page did not land and this record is the loud evidence"
+        ),
+        payload={
+            "state": event.state.value,
+            "severity": event.severity,
+            "channel": channel,
+            "masked_target": masked_target,
+            "delivered": delivered,
+            "acked": acked,
+            "attempts": attempts,
+            "error": error,
+        },
+        increment=increment,
+    )
+
+
+def record_would_fire(event: AlertEvent, *, increment: str = "runtime") -> None:
     """A firing/signal_lost that would have paged but is in shadow."""
     record(
         kind=LifecycleKind.would_fire,
@@ -292,7 +356,7 @@ def record_would_fire(event: AlertEvent, *, increment: str = "INC5") -> None:
     )
 
 
-def record_ack(rule_id: str, *, by: str, increment: str = "INC5") -> None:
+def record_ack(rule_id: str, *, by: str, increment: str = "runtime") -> None:
     """A human acknowledged a firing alert (never silences a re-fire)."""
     record(
         kind=LifecycleKind.acked,
@@ -310,7 +374,7 @@ def record_suppressed(
     state: str,
     severity: str,
     reason: str,
-    increment: str = "INC5",
+    increment: str = "runtime",
 ) -> None:
     """A deduped / shadow / withheld page — ALWAYS logged, never silent."""
     record(
@@ -329,13 +393,16 @@ def record_missed(
     state: str,
     severity: str,
     detail: str,
-    increment: str = "INC5",
+    increment: str = "runtime",
 ) -> None:
     """TOP-SEVERITY: a page that should have been delivered was not.
 
-    This is the worst clinical-safety outcome. It always fails closed — if it
-    cannot be recorded, the caller crashes rather than silently swallowing a
-    missed page.
+    Reserved for a paged event with NO delivery accounting at all — the
+    pipeline itself lost track of a page. A failed-but-attempted delivery is
+    :func:`record_delivery_failed` instead, so channel outages never masquerade
+    as this worst-case clinical signal. It always fails closed — if it cannot
+    be recorded, the caller crashes rather than silently swallowing a missed
+    page.
     """
     record(
         kind=LifecycleKind.missed,

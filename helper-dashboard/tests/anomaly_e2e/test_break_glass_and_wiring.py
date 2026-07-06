@@ -13,7 +13,9 @@ wall-clock sleeps — pytest_asyncio is absent):
 
   C. AUDIT COMPLETENESS: rule activation + every state transition
      (pending/firing/resolved/signal_lost) + delivery + ack + suppressed are
-     all captured; a MISSED must-fire (a promoted page that never lands) is
+     all captured; a failed/never-acked delivery attempt is recorded as
+     DELIVERY_FAILED (a channel failure, loud but attributable); a MISSED
+     must-fire (a promoted page with NO delivery accounting at all) is
      recorded as the top-severity clinical event and fails closed.
 
 A missed must-fire is the top-severity failure and blocks the increment.
@@ -331,12 +333,14 @@ def test_audit_captures_activation_transitions_delivery_ack(tmp_path):
     assert "pending" in trans_states
 
 
-def test_missed_must_fire_is_recorded_top_severity(tmp_path):
-    """A promoted page that NEVER lands is a MISSED must-fire (top severity).
+def test_channel_failure_is_delivery_failed_not_missed(tmp_path):
+    """A delivery ATTEMPT that fails/never acks is DELIVERY_FAILED, not MISSED.
 
     We wire a notifier that reports every delivery as un-acked (a channel that
     silently drops). The dispatcher records the attempt; the service must
-    detect that the expected page never landed and record a MISSED event.
+    surface the channel failure loudly — but as a delivery_failed record with
+    the error attached, NEVER as the worst-case clinical MISSED signal (a
+    webhook outage must not masquerade as the pipeline losing a page).
     """
 
     class DroppingNotifier(Notifier):
@@ -367,9 +371,98 @@ def test_missed_must_fire_is_recorded_top_severity(tmp_path):
     _run(service, 15)
 
     recs = lifecycle.read_records()
+    failed = [r for r in recs if r["kind"] == "delivery_failed"]
+    assert failed, (
+        "a promoted firing whose page never acked was NOT recorded as a "
+        "delivery_failed channel failure"
+    )
+    assert failed[0]["payload"]["state"] == "firing"
+    assert failed[0]["payload"]["severity"] == "critical"
+    assert failed[0]["payload"]["acked"] is False
+    assert failed[0]["payload"]["error"] == "channel never acked"
+    # The failure is attributable to the channel — it must NOT be conflated
+    # with the top-severity "pipeline lost a page" signal.
+    assert not [r for r in recs if r["kind"] == "missed"], (
+        "a channel delivery failure was recorded as a clinical MISSED "
+        "must-fire — audit-honesty regression (A_DIAGNOSIS E6b)"
+    )
+
+
+def test_activation_reasoning_reflects_actual_mode(tmp_path):
+    """E6(a): an ACTIVE activation must never carry canned shadow reasoning.
+
+    An audit reader who trusts the record verbatim must not conclude a paging
+    rule is in shadow — the reasoning is derived from the actual mode.
+    """
+    AnomalyEvaluatorService(
+        [neonatal_rso2_rule(metric="rso2_left")],
+        _sim(Scenario.healthy),
+        store=AlertStateStore(base_dir=tmp_path / "s1"),
+        monotonic=lambda: 0.0,
+        promoted=False,
+        increment="INC5",
+    )
+    AnomalyEvaluatorService(
+        [promoted_neonatal_rso2_rule(metric="rso2_left")],
+        _sim(Scenario.healthy),
+        store=AlertStateStore(base_dir=tmp_path / "s2"),
+        monotonic=lambda: 0.0,
+        promoted=True,
+        increment="INC5",
+    )
+
+    activations = [
+        r for r in lifecycle.read_records() if r["kind"] == "rule_activated"
+    ]
+    assert len(activations) == 2
+    shadow_rec = next(r for r in activations if "SHADOW" in r["summary"])
+    active_rec = next(r for r in activations if "ACTIVE" in r["summary"])
+    assert "shadow by default" in shadow_rec["reasoning"]
+    # The paging activation must say what actually happened, not the shadow
+    # boilerplate (A_DIAGNOSIS E6a).
+    assert "shadow by default" not in active_rec["reasoning"]
+    assert "PROMOTED" in active_rec["reasoning"]
+    assert active_rec["payload"]["promoted"] is True
+
+
+def test_unaccounted_page_is_recorded_as_missed_top_severity(tmp_path):
+    """A paged event with NO delivery accounting at all is a MISSED must-fire.
+
+    We wire a notifier whose receipt comes back keyed to the WRONG dedup key,
+    so the reconciliation finds no receipt for the paged firing — the pipeline
+    lost track of a page. That is the top-severity clinical event.
+    """
+
+    class MisaccountingNotifier(Notifier):
+        channel_name = "misaccounting_test"
+
+        def deliver(self, message):
+            return DeliveryReceipt(
+                dedup_key="wrong-key|not-the-event",
+                channel=self.channel_name,
+                delivered=True,
+                acked=True,
+                attempts=1,
+                error=None,
+            )
+
+    rule = promoted_neonatal_rso2_rule(metric="rso2_left")
+    dispatcher = NotificationDispatcher(MisaccountingNotifier(), increment="INC5")
+    service = AnomalyEvaluatorService(
+        [rule],
+        _sim(Scenario.rso2_desat),
+        store=AlertStateStore(base_dir=tmp_path / "state"),
+        dispatcher=dispatcher,
+        monotonic=lambda: 0.0,
+        promoted=True,
+        increment="INC5",
+    )
+    _run(service, 15)
+
+    recs = lifecycle.read_records()
     missed = [r for r in recs if r["kind"] == "missed"]
     assert missed, (
-        "TOP-SEVERITY: a promoted firing whose page never acked was NOT "
+        "TOP-SEVERITY: a promoted firing with no delivery accounting was NOT "
         "recorded as a MISSED must-fire"
     )
     assert missed[0]["payload"]["state"] == "firing"
@@ -382,3 +475,192 @@ def test_default_notifier_falls_back_to_local_file_when_no_webhook(tmp_path):
     assert notifier.channel_name == "local_file"
     # masked_target never leaks a token/url.
     assert "http" not in notifier.masked_target().lower()
+
+
+def test_demo_driver_refuses_to_wipe_real_alert_state_dir(tmp_path, monkeypatch):
+    """The demo's per-scenario wipe must never touch the REAL clinical store.
+
+    An env-var collision (demo dir resolving to ANOMALY_ALERT_STATE_DIR)
+    previously rmtree'd state.json + the append-only history audit on app
+    startup. The driver now refuses outright.
+    """
+    from types import SimpleNamespace
+
+    from app.api.anomaly import DemoDriver
+
+    real_dir = tmp_path / "real_state"
+    real_dir.mkdir(parents=True)
+    (real_dir / "state.json").write_text("{}")
+    (real_dir / "history.jsonl").write_text("")
+    monkeypatch.setenv("ANOMALY_ALERT_STATE_DIR", str(real_dir))
+
+    app = SimpleNamespace(state=SimpleNamespace())
+    with pytest.raises(RuntimeError, match="refuses to wipe"):
+        DemoDriver(app, base_dir=str(real_dir))
+
+    # The real store survived untouched.
+    assert (real_dir / "state.json").exists()
+    assert (real_dir / "history.jsonl").exists()
+
+
+def test_persist_failure_at_firing_edge_does_not_swallow_the_page(tmp_path):
+    """E11: a one-tick store failure at the firing edge must not lose the page.
+
+    evaluate() consumes the firing edge before persist/dispatch run; on a
+    persist failure the service rolls the edge back so the next tick
+    re-emits the firing event and the page is re-attempted (at-least-once:
+    a duplicate page is acceptable, a lost page is not).
+    """
+
+    class FailingOnceStore(AlertStateStore):
+        def __init__(self, *a, **kw):
+            super().__init__(*a, **kw)
+            self.failed_once = False
+
+        def record_report(self, report, **kw):
+            if not self.failed_once and report.state == AlertState.firing:
+                self.failed_once = True
+                raise RuntimeError("simulated disk failure at the firing edge")
+            return super().record_report(report, **kw)
+
+    rule = promoted_neonatal_rso2_rule(metric="rso2_left")
+    receiver = LocalFileReceiver(path=str(tmp_path / "notif" / "out.jsonl"))
+    dispatcher = NotificationDispatcher(receiver, increment="INC5")
+    store = FailingOnceStore(base_dir=tmp_path / "state")
+    service = AnomalyEvaluatorService(
+        [rule],
+        _sim(Scenario.rso2_desat),
+        store=store,
+        dispatcher=dispatcher,
+        monotonic=lambda: 0.0,
+        promoted=True,
+        increment="INC5",
+    )
+    _run(service, 15)
+
+    assert store.failed_once, "the simulated failure never triggered"
+    assert service.heartbeat.error_count == 1, "the failure was not loud"
+    assert len(receiver.messages) == 1, (
+        "SWALLOWED PAGE: the firing edge consumed by the failed tick was "
+        "never re-emitted — the page for this episode is lost (E11)"
+    )
+
+
+def test_break_glass_restart_preserves_signal_lost_hold(tmp_path):
+    """E13(i): cycling the loop must NOT lift a force_signal_lost hold."""
+    rule = neonatal_rso2_rule(metric="rso2_left")
+    provider = _sim(Scenario.healthy)
+    service = AnomalyEvaluatorService(
+        [rule],
+        provider,
+        store=AlertStateStore(base_dir=tmp_path / "state"),
+        monotonic=lambda: 0.0,
+        increment="INC5",
+    )
+    bg = BreakGlassController(service, provider, increment="INC5")
+
+    bg.force_signal_lost(by="charge_nurse")
+    bg.restart(by="charge_nurse")
+    assert bg.status()["force_signal_lost"] is True, (
+        "restart() silently lifted the operator's data-untrustworthy hold"
+    )
+    held = bg.tick(30.0, mono=30.0)
+    assert held.reports[rule.id].state == AlertState.signal_lost
+
+    # Only the EXPLICIT clear lifts the hold.
+    bg.clear_force_signal_lost(by="charge_nurse")
+    freed = bg.tick(60.0, mono=60.0)
+    assert freed.reports[rule.id].state != AlertState.signal_lost
+
+
+def test_clear_force_shadow_restores_pre_hold_posture(tmp_path):
+    """E13(ii): lifting a shadow-hold restores the pre-hold paging posture
+    (an undo, not a promotion), and status reports the EFFECTIVE posture."""
+    rule = promoted_neonatal_rso2_rule(metric="rso2_left")
+    provider = _sim(Scenario.rso2_desat)
+    receiver = LocalFileReceiver(path=str(tmp_path / "notif" / "out.jsonl"))
+    dispatcher = NotificationDispatcher(receiver, increment="INC5")
+    service = AnomalyEvaluatorService(
+        [rule],
+        provider,
+        store=AlertStateStore(base_dir=tmp_path / "state"),
+        dispatcher=dispatcher,
+        monotonic=lambda: 0.0,
+        promoted=True,
+        increment="INC5",
+    )
+    bg = BreakGlassController(service, provider, increment="INC5")
+
+    bg.force_shadow(rule.id, by="safety_officer")
+    assert bg.status()["effective_promoted"][rule.id] is False
+    _run(bg, 15)  # fires in shadow — nothing delivered
+    assert receiver.messages == []
+
+    bg.clear_force_shadow(rule.id, by="safety_officer")
+    assert bg.status()["effective_promoted"][rule.id] is True, (
+        "pre-hold paging posture was not restored — the rule would stay "
+        "silently demoted until process restart (E13)"
+    )
+    assert rule.id not in bg.status()["forced_shadow_rules"]
+
+
+def test_persist_failure_at_resolved_edge_does_not_mute_next_episode(tmp_path):
+    """Verifier-found defect in the first E11 rollback: a blanket rollback at
+    a failed RESOLVED edge restored _fired=True, so a re-breach entered
+    firing with no event — an entire new episode paged nothing. The rollback
+    must apply ONLY to a consumed firing edge."""
+    from app.services.anomaly_core import DataStatus
+    from app.services.anomaly_data_provider import Observation
+
+    class BreachRecoverBreachProvider:
+        """Breach ticks 0-11 (fires ~t=300s), healthy 12-13 (resolved edge),
+        breach again 14+ (second episode fires ~tick 24)."""
+
+        def observe(self, metric, *, now, labels=None):
+            i = int(now // STEP_S)
+            healthy = 12 <= i < 14
+            status = DataStatus(
+                reachable=True, returns_data=True,
+                source="prometheus", sample_ts=now,
+                history_coverage_s=24 * 3600.0,
+            )
+            return Observation(
+                value=80.0 if healthy else 40.0,  # 40 < 0.8*80: breaching
+                baseline=80.0,
+                status=status,
+            )
+
+    class FailingAtResolvedStore(AlertStateStore):
+        def __init__(self, *a, **kw):
+            super().__init__(*a, **kw)
+            self.failed_once = False
+
+        def record_report(self, report, **kw):
+            if not self.failed_once and report.state == AlertState.resolved:
+                self.failed_once = True
+                raise RuntimeError("simulated disk failure at the resolved edge")
+            return super().record_report(report, **kw)
+
+    rule = promoted_neonatal_rso2_rule(metric="rso2_left")
+    receiver = LocalFileReceiver(path=str(tmp_path / "notif" / "out.jsonl"))
+    dispatcher = NotificationDispatcher(receiver, increment="INC5")
+    store = FailingAtResolvedStore(base_dir=tmp_path / "state")
+    service = AnomalyEvaluatorService(
+        [rule],
+        BreachRecoverBreachProvider(),
+        store=store,
+        dispatcher=dispatcher,
+        monotonic=lambda: 0.0,
+        promoted=True,
+        increment="INC5",
+    )
+    _run(service, 30)
+
+    assert store.failed_once, "the simulated resolved-edge failure never triggered"
+    # Both distinct firing episodes must page (at-least-once), and the
+    # resolved-edge failure must be loud.
+    assert len(receiver.messages) == 2, (
+        f"expected 2 pages (one per firing episode); got "
+        f"{len(receiver.messages)} — a failed resolved edge muted an episode"
+    )
+    assert service.heartbeat.error_count == 1

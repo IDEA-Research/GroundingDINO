@@ -23,6 +23,8 @@ Helper is the widget-instance author; Big guy is only pulled in when
 the **widget toolkit itself** needs a new kind of visualization.
 See `docs/SECURITY_BOUNDARIES.md` for the rationale and enforcement.
 
+> **Stale (LD-1, 2026-07-04):** out-of-toolkit widget requests now default to agent code-gen (in-app `rescue_extend`, or a dev-time Claude session) — not DeveloperTicket-and-wait. See `docs/agent-ops/LOCKED_DECISIONS.md` LD-1.
+
 ## Data flow
 
 ```
@@ -65,12 +67,13 @@ helper-dashboard/
   tests/                 # validation, patching, prometheus, browser, security
 ```
 
-## Verification strategy (three tiers)
+## Verification strategy (four tiers, 0-3)
 
-Correctness is verified in three tiers, from deterministic-fast to
-optional-stress. **Tiers 1 and 2 are the authoritative proof. Tier 3
-is an acceptance/stress test and is expected to fail in under-
-resourced or disconnected environments.**
+Correctness is verified in four tiers, from deterministic-fast to
+optional-stress. **Tier 0 (pytest) is the mandatory, authoritative
+proof; Tiers 1 and 2 are supplementary live checks. Tier 3 is an
+acceptance/stress test and is expected to fail in under-resourced or
+disconnected environments.**
 
 ### Tier 0 — unit + integration tests (always run these)
 
@@ -130,6 +133,8 @@ orchestrator pipeline through real HTTP calls:
   200 with correct token, 403 with wrong token).
 - In `opencode` mode: verify unsupported-widget requests produce a
   DeveloperTicket or ClarificationRequest.
+  (Historical behavior — superseded by the LD-1 code-gen default;
+  `rescue_extend` now handles out-of-toolkit requests.)
 
 **This is the primary reliable live verification.** No browser, no
 Playwright, no resource pressure.

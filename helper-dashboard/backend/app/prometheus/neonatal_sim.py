@@ -130,6 +130,32 @@ class NeonatalSim:
         return _BASELINE_CENTER[metric]
 
     # ------------------------------------------------------------------
+    def sample_at(self, metric: str, i: int, *, n: int) -> Sample:
+        """Build sample index `i` of an `n`-length series.
+
+        Identical to ``series(metric, n=n)[i]`` without materializing the
+        other samples — the sim is a pure function of ``(metric, i, n)``. The
+        live publisher calls this once per tick; regenerating the full series
+        there grows O(uptime²) on the Jetson.
+        """
+        if metric not in _BASELINE_CENTER:
+            raise KeyError(f"unknown neonatal metric: {metric!r}")
+        center = _BASELINE_CENTER[metric]
+        t = self.start_ts + i * self.step_s
+        value = _sine_wander(center, t, amp=center * 0.015, period_s=600.0)
+        sample = Sample(
+            ts=t,
+            metric=metric,
+            value=value,
+            intended_ts=t,
+            source="prometheus",
+            reachable=True,
+            has_data=True,
+            labels={"patient": self.patient_id},
+        )
+        self._apply_scenario(sample, metric, i, n, center)
+        return sample
+
     def series(self, metric: str, *, n: int) -> list[Sample]:
         """Generate `n` samples of `metric` from `start_ts`, step `step_s`.
 
@@ -139,25 +165,7 @@ class NeonatalSim:
         """
         if metric not in _BASELINE_CENTER:
             raise KeyError(f"unknown neonatal metric: {metric!r}")
-
-        center = _BASELINE_CENTER[metric]
-        out: list[Sample] = []
-        for i in range(n):
-            t = self.start_ts + i * self.step_s
-            value = _sine_wander(center, t, amp=center * 0.015, period_s=600.0)
-            sample = Sample(
-                ts=t,
-                metric=metric,
-                value=value,
-                intended_ts=t,
-                source="prometheus",
-                reachable=True,
-                has_data=True,
-                labels={"patient": self.patient_id},
-            )
-            self._apply_scenario(sample, metric, i, n, center)
-            out.append(sample)
-        return out
+        return [self.sample_at(metric, i, n=n) for i in range(n)]
 
     # ------------------------------------------------------------------
     def _apply_scenario(

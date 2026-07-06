@@ -6,12 +6,13 @@ import asyncio
 import contextlib
 import os
 import time
+from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from prometheus_fastapi_instrumentator import Instrumentator
 
-from .api import chat, dashboard, evaluate, developer, saved_dashboards
+from .api import anomaly, chat, dashboard, evaluate, developer, saved_dashboards
 
 
 def _anomaly_tick_interval_s() -> float:
@@ -44,15 +45,19 @@ async def _anomaly_loop(app: FastAPI) -> None:
         default_neonatal_rules(),
         provider,
         watchdog_budget_s=max(45.0, interval * 3),
-        promoted=False,  # SHADOW: never pages in INC2.
+        promoted=False,  # SHADOW: never pages here.
+        increment="runtime",  # audit tag: live loop, not a build increment
     )
     app.state.anomaly_service = service
     try:
         while True:
             now = time.time()
-            # tick is synchronous + fast; run it directly. Errors inside a
-            # rule are already caught + audited by the service.
-            service.tick(now)
+            # tick is synchronous (fsync'd audit writes; up to 3x5s webhook
+            # retries per pageable event when a dispatcher is wired) — run it
+            # in a worker thread so the API stays responsive. Awaiting keeps
+            # ticks strictly sequential; errors inside a rule are already
+            # caught + audited by the service.
+            await asyncio.to_thread(service.tick, now)
             await asyncio.sleep(interval)
     except asyncio.CancelledError:  # graceful shutdown
         raise
@@ -112,6 +117,10 @@ def create_app() -> FastAPI:
     )
     # Internal-only, behind a developer gate inside the router.
     app.include_router(developer.router, prefix="/api/developer", tags=["developer"])
+    # Anomaly read surface (alerts the decision_flow widget consumes) + the
+    # ANOMALY_DEMO-only driver. The /alerts endpoint fails loud (store_unavailable)
+    # when no evaluator is wired, so it is always safe to mount.
+    app.include_router(anomaly.router, prefix="/api/anomaly", tags=["anomaly"])
 
     @app.get("/api/health")
     def health() -> dict[str, str]:
@@ -134,6 +143,26 @@ def create_app() -> FastAPI:
                 task.cancel()
                 with contextlib.suppress(asyncio.CancelledError):
                     await task
+
+    # Demo driver — OPT-IN via ANOMALY_DEMO=1. Drives the REAL pipeline with an
+    # accelerated injected clock so the /api/anomaly/demo/* endpoints can walk
+    # the decision_flow widget through healthy -> firing -> signal_lost live,
+    # without a five-minute wall-clock wait. Never enabled in a real deployment.
+    if os.getenv("ANOMALY_DEMO", "0") == "1":
+
+        @app.on_event("startup")
+        async def _start_anomaly_demo() -> None:  # pragma: no cover - demo glue
+            from .api.anomaly import DemoDriver
+
+            # Dedicated demo dir — NEVER ANOMALY_ALERT_STATE_DIR (the REAL
+            # durable store): DemoDriver wipes its dir per scenario, and an
+            # env-var collision would rmtree the real state.json + append-only
+            # history audit. DemoDriver additionally refuses the real dir.
+            demo_dir = os.getenv(
+                "ANOMALY_DEMO_STATE_DIR",
+                str(Path(__file__).resolve().parent / "storage" / "alert_state_demo"),
+            )
+            app.state.anomaly_demo = DemoDriver(app, base_dir=demo_dir)
 
     return app
 

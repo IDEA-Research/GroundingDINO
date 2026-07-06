@@ -41,7 +41,8 @@ This includes, but is not limited to:
 - Moving a widget (changing `position.x` / `position.y`).
 - Renaming a widget or the dashboard itself.
 - Changing a widget's `type` **among supported types**
-  (`line_chart`, `stat_card`, `gauge`, `table`, `alert_list`).
+  (the `WidgetType` enum in `backend/app/specs/widget_spec.py` —
+  currently `line_chart`, `stat_card`, `gauge`, `table`, `alert_list`, `pie_chart`, `bar_chart`, `heatmap`, `decision_flow`).
 - Changing a widget's PromQL query.
 - Changing thresholds, visual encoding, units, legend.
 - Changing per-widget options within the allowed option keys.
@@ -53,6 +54,8 @@ frontend renderer. None of them require a `DeveloperTicket` or Big
 guy.
 
 **2. Widget toolkit source-code extension — Big guy does this.**
+
+> **Stale (LD-1, 2026-07-04):** out-of-toolkit widget requests now default to agent code-gen (in-app `rescue_extend`, or a dev-time Claude session) — not DeveloperTicket-and-wait. See `docs/agent-ops/LOCKED_DECISIONS.md` LD-1.
 
 If the user asks for a visualization that **cannot be represented**
 by the current widget toolkit, Helper does not inject arbitrary
@@ -80,9 +83,11 @@ or `DeveloperTicket` (never raw code).
 
 #### 2. `dashboard-spec-agent`
 Turns a `DashboardIntent` into a full `DashboardSpec` JSON using only
-supported widget types: `line_chart`, `stat_card`, `gauge`, `table`,
-`alert_list`. If the current toolkit cannot satisfy the request it emits a
-`DeveloperTicket` instead of inventing a widget type.
+supported widget types (the 9-member `WidgetType` enum in
+`backend/app/specs/widget_spec.py`): `line_chart`, `stat_card`, `gauge`, `table`, `alert_list`, `pie_chart`, `bar_chart`, `heatmap`, `decision_flow`.
+If the current toolkit cannot satisfy the request it emits a
+`DeveloperTicket` instead of inventing a widget type (stale — see the
+LD-1 marker above).
 
 #### 3. `patch-agent`
 Turns a `PatchIntent` plus an existing `DashboardSpec` into a minimal

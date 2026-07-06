@@ -82,7 +82,9 @@ class NotificationDispatcher:
         self,
         notifier: Notifier,
         *,
-        increment: str = "INC3",
+        # Build increments ("INC5") only from a build loop; live wiring
+        # passes/keeps "runtime" or "demo" so audit tags stay honest.
+        increment: str = "runtime",
     ) -> None:
         self.notifier = notifier
         self.increment = increment
@@ -91,6 +93,13 @@ class NotificationDispatcher:
         # Track the last firing dedup key per rule so a resolve can clear it,
         # re-arming the NEXT genuine firing (hysteresis).
         self._active_firing_key: dict[str, str] = {}
+        # Track ALL delivered signal_lost keys per rule: one loss episode can
+        # page once per REASON (a reason change mid-episode pages again), and
+        # every one of them must re-arm when the signal recovers. A single-slot
+        # tracker would leak earlier reasons' ts-less keys into
+        # _delivered_keys forever, permanently muting a future loss episode
+        # with that reason.
+        self._active_signal_lost_keys: dict[str, set[str]] = {}
 
     # ------------------------------------------------------------------
     def dispatch_report(self, report: AnomalyEvaluationReport) -> DispatchOutcome:
@@ -102,6 +111,13 @@ class NotificationDispatcher:
 
     # ------------------------------------------------------------------
     def _dispatch_event(self, event: AlertEvent, outcome: DispatchOutcome) -> None:
+        # Any non-signal_lost event proves the data-integrity gate passed, so
+        # the loss EPISODE is over: re-arm every signal_lost dedup key this
+        # rule delivered so the NEXT genuine loss pages again.
+        if event.state != AlertState.signal_lost:
+            for sl_key in self._active_signal_lost_keys.pop(event.rule_id, ()):
+                self._delivered_keys.discard(sl_key)
+
         # A resolved event re-arms the rule: clear its firing dedup key so a
         # future genuine firing pages again (this is the hysteresis boundary).
         if event.state == AlertState.resolved:
@@ -153,12 +169,29 @@ class NotificationDispatcher:
         outcome.delivered.append(receipt)
         if event.state == AlertState.firing:
             self._active_firing_key[event.rule_id] = message.dedup_key
+        elif event.state == AlertState.signal_lost:
+            self._active_signal_lost_keys.setdefault(event.rule_id, set()).add(
+                message.dedup_key
+            )
         # Mark delivered even if not acked so a within-process retry is not
         # duplicated; a NON-acked receipt is surfaced in the audit as a
         # failed delivery for the operator to act on (at-least-once means we
         # tried; ack tells us whether it landed).
         self._delivered_keys.add(message.dedup_key)
         self._audit_delivery(event, message, receipt)
+
+    # ------------------------------------------------------------------
+    def rearm_signal_lost(self, rule_id: str) -> None:
+        """End the rule's signal-lost EPISODE so the NEXT loss pages again.
+
+        The evaluator calls this when a tick produced a non-signal_lost
+        verdict. It cannot be event-driven alone: a quiet recovery (healthy
+        steady state) emits no events at all, so without this hook a second
+        loss would dedup against the first episode's page forever. Discards
+        EVERY delivered key for the rule (one per reason seen this episode).
+        """
+        for key in self._active_signal_lost_keys.pop(rule_id, ()):
+            self._delivered_keys.discard(key)
 
     # ------------------------------------------------------------------
     # Public helper: an explicit attempt to suppress a critical alert is

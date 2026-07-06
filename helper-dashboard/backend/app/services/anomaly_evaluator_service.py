@@ -108,7 +108,10 @@ class AnomalyEvaluatorService:
         watchdog_budget_s: float = 45.0,
         promoted: bool = False,
         monotonic: Callable[[], float] | None = None,
-        increment: str = "INC2",
+        # Audit tag for records this service produces. Pass a build increment
+        # ("INC5") only from an actual build loop; live wiring passes
+        # "runtime" / "demo" so runtime records never claim build activity.
+        increment: str = "runtime",
         dispatcher: NotificationDispatcher | None = None,
     ) -> None:
         self.rules = list(rules)
@@ -196,8 +199,21 @@ class AnomalyEvaluatorService:
 
         for rule in self.rules:
             core = self._cores[rule.id]
+            # Snapshot the core's edge state: evaluate() consumes a firing
+            # edge (sets _fired) BEFORE persist/audit/dispatch run. If any of
+            # those fail, the edge must be rolled back so the next tick
+            # re-emits the firing event and the page is re-attempted —
+            # otherwise a one-tick disk hiccup at the firing edge would
+            # silently swallow the page for the whole episode (at-least-once:
+            # a duplicate page on retry is acceptable; a lost page is not).
+            pre_breach = core._breach_started_at  # noqa: SLF001
+            pre_fired = core._fired  # noqa: SLF001
+            pre_last_state = core._last_state  # noqa: SLF001
+            report = None
             try:
-                obs = self.provider.observe(rule.metric, now=now)
+                obs = self.provider.observe(
+                    rule.metric, now=now, labels=rule.labels
+                )
                 report = core.evaluate(
                     now=now,
                     value=obs.value,
@@ -227,14 +243,46 @@ class AnomalyEvaluatorService:
                 if self.dispatcher is not None:
                     outcome = self.dispatcher.dispatch_report(report)
                     result.dispatch[rule.id] = outcome
-                    # INC5: reconcile expected vs actual paging. A MISSED
-                    # must-fire (a pageable event the rule was promoted to
-                    # deliver, but no successful ack landed and it was not a
-                    # legitimate dedup) is the top-severity clinical event.
+                    # Reconcile expected vs actual paging: a failed attempt is
+                    # a DELIVERY_FAILED (channel failure); a paged event with
+                    # no receipt at all is a MISSED must-fire — the
+                    # top-severity clinical event.
                     self._audit_delivery_lifecycle(rule, report, outcome)
+                    # A non-signal_lost verdict ends the loss episode: re-arm
+                    # its dedup so the NEXT genuine loss pages again (a quiet
+                    # recovery emits no events, so this must be state-driven).
+                    if report.state != AlertState.signal_lost:
+                        self.dispatcher.rearm_signal_lost(rule.id)
             except Exception as exc:  # noqa: BLE001
                 # A tick that raises must be VISIBLE (watchdog + audit), not
                 # a silent "no anomaly". Record and keep the loop alive.
+                # Roll the edge back ONLY when this tick consumed a FIRING
+                # edge that never finished persist+dispatch, so the next tick
+                # re-emits and re-pages it. A blanket rollback is itself a
+                # hazard: restoring _fired=True after a failed RESOLVED edge
+                # would swallow the next episode's firing event entirely.
+                if (
+                    report is not None
+                    and report.state == AlertState.firing
+                    and not pre_fired
+                ):
+                    core._breach_started_at = pre_breach  # noqa: SLF001
+                    core._fired = pre_fired  # noqa: SLF001
+                    core._last_state = pre_last_state  # noqa: SLF001
+                # Symmetric duty on the exception path: a verdict that is NOT
+                # signal_lost proves the signal recovered, so the loss-episode
+                # dedup must re-arm even when this tick failed — the normal
+                # re-arm at the end of the try block was skipped, and every
+                # later degraded tick reports signal_lost again, so it would
+                # never run and the NEXT loss episode would stay muted.
+                # Worst case on retry is a duplicate page, which the design
+                # accepts; a muted episode is not.
+                if (
+                    self.dispatcher is not None
+                    and report is not None
+                    and report.state != AlertState.signal_lost
+                ):
+                    self.dispatcher.rearm_signal_lost(rule.id)
                 self.heartbeat.error_count += 1
                 self.heartbeat.last_error = f"{type(exc).__name__}: {exc}"
                 result.errors[rule.id] = self.heartbeat.last_error
@@ -346,12 +394,14 @@ class AnomalyEvaluatorService:
         report: AnomalyEvaluationReport,
         outcome: DispatchOutcome,
     ) -> None:
-        """Record delivery / would-fire / suppression / MISSED per pageable event.
+        """Record delivery / would-fire / suppression / failure per pageable event.
 
         Reconciles the report's pageable events against what the dispatcher
-        actually did. A promoted (paged=True) pageable event that produced
-        neither a successful delivery nor a legitimate dedup is a MISSED
-        must-fire — the top-severity clinical-safety event.
+        actually did. A promoted (paged=True) pageable event whose delivery was
+        attempted but failed/never acked is a DELIVERY_FAILED (channel
+        failure); one with no receipt at all — neither a delivery attempt nor
+        a legitimate dedup — is a MISSED must-fire, the top-severity
+        clinical-safety event.
         """
         delivered_keys = {r.dedup_key for r in outcome.delivered}
         acked_keys = {r.dedup_key for r in outcome.delivered if r.acked}
@@ -404,44 +454,39 @@ class AnomalyEvaluatorService:
                     reason="suppression_refused",
                     increment=self.increment,
                 )
-            else:
-                # Expected a page, none acked, not a dedup -> MISSED (top sev).
-                detail = (
-                    f"delivered={receipt.delivered if receipt else False} "
-                    f"acked=False key={key}"
+            elif receipt is not None:
+                # Delivery was ATTEMPTED but failed / never acked: a channel
+                # failure, recorded distinctly so a webhook outage never
+                # masquerades as the worst-case clinical MISSED signal. Still
+                # loud, still fail-closed, error + attempts captured.
+                lifecycle.record_delivery_failed(
+                    ev,
+                    channel=receipt.channel,
+                    masked_target=self._masked_target(),
+                    delivered=receipt.delivered,
+                    acked=receipt.acked,
+                    attempts=receipt.attempts,
+                    error=receipt.error,
+                    increment=self.increment,
                 )
+            else:
+                # Paged event with NO delivery accounting at all -> the
+                # pipeline lost track of a page: MISSED must-fire (top sev).
                 lifecycle.record_missed(
                     ev.rule_id,
                     state=ev.state.value,
                     severity=ev.severity,
-                    detail=detail,
+                    detail=f"no delivery receipt for paged event key={key}",
                     increment=self.increment,
                 )
-                if receipt is not None:
-                    # Also record the un-acked delivery attempt so the operator
-                    # sees we tried but it never landed.
-                    lifecycle.record_delivery(
-                        ev,
-                        channel=receipt.channel,
-                        masked_target=self._masked_target(),
-                        delivered=receipt.delivered,
-                        acked=receipt.acked,
-                        attempts=receipt.attempts,
-                        error=receipt.error,
-                        increment=self.increment,
-                    )
 
     @staticmethod
     def _dedup_key(event: AlertEvent) -> str:
-        slr = (
-            event.signal_lost_reason.value
-            if event.signal_lost_reason is not None
-            else None
-        )
-        parts = [event.rule_id, event.state.value, event.ts]
-        if slr:
-            parts.append(slr)
-        return "|".join(parts)
+        # MUST match the dispatcher's key exactly, or delivery reconciliation
+        # would misclassify delivered pages as MISSED — one shared derivation.
+        from .anomaly_notifier import event_dedup_key
+
+        return event_dedup_key(event)
 
     def _masked_target(self) -> str:
         if self.dispatcher is not None and self.dispatcher.notifier is not None:

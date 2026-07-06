@@ -25,12 +25,16 @@ widgets, variables, refresh interval. Fully validated by the backend.
 Rendered by a fixed widget toolkit — **never** interpreted as code.
 
 ### WidgetSpec
-One widget inside a dashboard. Constrained to a fixed set of types:
-`line_chart`, `stat_card`, `gauge`, `table`, `alert_list`. Adding a new
-**type** is a Big guy job. Adding or modifying widget **instances** of
+One widget inside a dashboard. Constrained to a fixed set of types
+(authoritative list: the `WidgetType` enum in
+`backend/app/specs/widget_spec.py`, 9 types):
+`line_chart`, `stat_card`, `gauge`, `table`, `alert_list`, `pie_chart`, `bar_chart`, `heatmap`, `decision_flow`. Adding a new
+**type** is an agent code-gen job (LD-1). Adding or modifying widget **instances** of
 existing types is a Helper job.
 
 ### Two kinds of widget operations
+
+> **Stale (LD-1, 2026-07-04):** out-of-toolkit widget requests now default to agent code-gen (in-app `rescue_extend`, or a dev-time Claude session) — not DeveloperTicket-and-wait. See `docs/agent-ops/LOCKED_DECISIONS.md` LD-1.
 
 This is the rule that keeps the product useful and the system safe.
 

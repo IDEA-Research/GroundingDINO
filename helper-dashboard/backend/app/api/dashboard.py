@@ -27,7 +27,9 @@ def get_dashboard(dashboard_id: str) -> dict:
     spec = _store.load_dashboard(dashboard_id)
     if spec is None:
         raise HTTPException(status_code=404, detail="dashboard not found")
-    return {"spec": spec.model_dump(mode="json")}
+    # by_alias=True so decision_flow edges serialize their `from` key (aliased
+    # from the `from_` field), which the frontend FlowEdge type expects.
+    return {"spec": spec.model_dump(mode="json", by_alias=True)}
 
 
 @router.post("/validate")
@@ -41,4 +43,7 @@ def validate_dashboard(payload: dict) -> dict:
         spec = _validator.validate_dashboard(payload)
     except SpecValidationError as exc:
         return {"ok": False, "errors": exc.errors}
-    return {"ok": True, "spec": spec.model_dump(mode="json")}
+    # by_alias=True: decision_flow edges must echo back as `from` (canonical),
+    # matching get_dashboard above — a client re-rendering the echoed spec
+    # would otherwise silently lose every branch edge.
+    return {"ok": True, "spec": spec.model_dump(mode="json", by_alias=True)}

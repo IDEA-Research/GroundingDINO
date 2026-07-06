@@ -87,7 +87,7 @@ def test_lifecycle_normal_breach_firing_resolved(tmp_path):
         def __init__(self, t0, t1):
             self.t0, self.t1 = t0, t1
 
-        def observe(self, metric, *, now):
+        def observe(self, metric, *, now, labels=None):
             if self.t0 <= now < self.t1:
                 return desat.observe(metric, now=now)
             return healthy.observe(metric, now=now)
@@ -282,7 +282,7 @@ def test_throwing_provider_is_fail_loud(tmp_path):
     rule = neonatal_rso2_rule(metric="rso2_left")
 
     class Boom:
-        def observe(self, metric, *, now):
+        def observe(self, metric, *, now, labels=None):
             raise RuntimeError("provider exploded")
 
     service = AnomalyEvaluatorService(

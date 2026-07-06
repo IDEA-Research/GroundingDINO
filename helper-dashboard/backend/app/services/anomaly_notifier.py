@@ -64,6 +64,37 @@ def _now_iso() -> str:
     return datetime.now(tz=timezone.utc).isoformat()
 
 
+def event_dedup_key(event: AlertEvent) -> str:
+    """The ONE dedup-key derivation, shared by the dispatcher and the
+    evaluator's delivery reconciliation (they MUST agree or reconciliation
+    would misclassify deliveries as MISSED).
+
+    - firing/resolved key on rule|state|transition-ts: the core emits these on
+      the EDGE only, so a re-render of the same edge is idempotent and a
+      genuinely new edge (new ts) is a new notification.
+    - signal_lost keys on rule|state|reason WITHOUT ts: the core emits a
+      fresh-ts signal_lost event every degraded tick, and a per-ts key would
+      page a promoted rule every tick (~5760/day at 15s) — alarm-fatigue that
+      buries the next real page. One page per loss EPISODE per reason; the
+      dispatcher re-arms the key when the signal recovers, and every deduped
+      repeat is still logged (never silent).
+    """
+    slr = (
+        event.signal_lost_reason.value
+        if event.signal_lost_reason is not None
+        else None
+    )
+    parts = [event.rule_id, event.state.value]
+    if event.state.value == "signal_lost":
+        if slr:
+            parts.append(slr)
+    else:
+        parts.append(event.ts)
+        if slr:
+            parts.append(slr)
+    return "|".join(parts)
+
+
 # ---------------------------------------------------------------------------
 # Message + receipt value objects
 # ---------------------------------------------------------------------------
@@ -103,13 +134,9 @@ class NotificationMessage:
             if event.signal_lost_reason is not None
             else None
         )
-        # dedup_key keys on rule + state + the transition ts so a re-render of
-        # the SAME firing edge is idempotent, but a genuinely new edge (new ts)
-        # is a new notification. SIGNAL_LOST keys additionally on the reason.
-        parts = [event.rule_id, event.state.value, event.ts]
-        if slr:
-            parts.append(slr)
-        dedup_key = "|".join(parts)
+        # Dedup semantics live in event_dedup_key (shared with the evaluator's
+        # delivery reconciliation — the two must never diverge).
+        dedup_key = event_dedup_key(event)
         title = f"{event.severity.upper()} · {event.rule_id} · {event.state.value}"
         return cls(
             dedup_key=dedup_key,
@@ -281,7 +308,17 @@ class DiscordWebhookNotifier(Notifier):
                 self._url,
                 data=data,
                 method="POST",
-                headers={"Content-Type": "application/json"},
+                headers={
+                    "Content-Type": "application/json",
+                    # Discord (behind Cloudflare) 403s the default
+                    # `Python-urllib/x.y` User-Agent, so a delivery silently
+                    # never lands. A descriptive UA is also what Discord's API
+                    # guidelines ask for. NON-clinical test tunnel only.
+                    "User-Agent": (
+                        "anomaly-test-tunnel/1.0 "
+                        "(+neonatal-rSO2 decision-support; NON-DIAGNOSTIC)"
+                    ),
+                },
             )
             try:
                 resp = self._opener(req, timeout=self.timeout_s)
@@ -346,7 +383,7 @@ def build_default_notifier(
         masked = notifier.masked_target()
 
     audit.append(
-        increment="INC3",
+        increment="runtime",
         stage="code",
         action="run",
         target="build_default_notifier",

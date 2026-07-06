@@ -8,12 +8,16 @@ loop, never a routine-maintenance dependency.
 It controls a single evaluator + its synthetic data source and exposes exactly
 the operations the charter requires:
 
-    start()             (re)enable the evaluator loop and the data source,
+    start()             (re)enable the evaluator loop; an active
+                        force_signal_lost hold is PRESERVED (never lifted as
+                        a side effect — clear it explicitly),
     stop()              disable the loop (ticks are refused, not silently
                         producing "no anomaly"),
-    restart()           stop then start (rehydrates durable state),
+    restart()           stop then start (rehydrates durable state; holds
+                        preserved),
     force_shadow(rule)  kill paging on a rule (drop to non-paging), loudly,
-    clear_force_shadow(rule)  lift a manual shadow-hold,
+    clear_force_shadow(rule)  lift a manual shadow-hold, restoring the
+                        rule's PRE-hold posture (an undo, not a promotion),
     force_signal_lost() force every rule to SIGNAL_LOST on the next tick
                         (a manual "the data is not trustworthy" override),
     clear_force_signal_lost()  lift the manual signal-lost override,
@@ -27,8 +31,8 @@ Safety posture (inviolable):
     force-signal-lost makes the degraded state CONSPICUOUS.
   - **Break-glass can only make things SAFER.** It can force a rule into
     shadow (kill paging) or force SIGNAL_LOST; it can NOT promote a rule to
-    paging (promotion is a supervisor-gated act elsewhere) and it can NOT
-    silence a page without recording it.
+    paging (promotion requires the user's explicit approval — LD-6) and it
+    can NOT silence a page without recording it.
   - **Every action is audited** (build-audit + lifecycle-audit), fail-closed,
     with the operator identity, before AND after the state change.
   - **recover() restores last-known-good** so a botched manual action is
@@ -74,6 +78,10 @@ class BreakGlassState:
     enabled: bool = True
     force_signal_lost: bool = False
     forced_shadow_rules: set[str] = field(default_factory=set)
+    # Each rule's core.promoted value at the moment force_shadow was applied,
+    # so lifting the hold can restore the PRE-HOLD posture (an undo, not a
+    # promotion — the original promotion authority is unchanged, LD-6).
+    pre_hold_promoted: dict[str, bool] = field(default_factory=dict)
     last_action: str | None = None
     last_operator: str | None = None
     last_action_ts: str | None = None
@@ -90,7 +98,13 @@ class ForcedSignalLostProvider:
     def __init__(self, inner: DataProvider) -> None:
         self.inner = inner
 
-    def observe(self, metric: str, *, now: float) -> Observation:
+    def observe(
+        self,
+        metric: str,
+        *,
+        now: float,
+        labels: dict[str, str] | None = None,
+    ) -> Observation:
         status = DataStatus(
             reachable=False,
             returns_data=False,
@@ -109,7 +123,7 @@ class BreakGlassController:
         service: AnomalyEvaluatorService,
         provider: DataProvider,
         *,
-        increment: str = "INC5",
+        increment: str = "runtime",
     ) -> None:
         self.service = service
         # The "live" provider the service currently uses. force_signal_lost
@@ -136,16 +150,30 @@ class BreakGlassController:
     # Lifecycle
     # ------------------------------------------------------------------
     def start(self, *, by: str = "operator") -> None:
-        """(Re)enable the loop and restore the real data source."""
+        """(Re)enable the loop.
+
+        PRESERVES an active force_signal_lost hold: an operator's "this data
+        is not trustworthy" override must never be lifted as a side effect of
+        cycling the loop — only an explicit :meth:`clear_force_signal_lost`
+        (or an explicit :meth:`recover`) lifts it.
+        """
         self.state.enabled = True
-        self.state.force_signal_lost = False
-        self.service.provider = self._real_provider
+        if not self.state.force_signal_lost:
+            self.service.provider = self._real_provider
         self._mark(action="start", by=by)
+        hold_note = (
+            " (force_signal_lost hold PRESERVED — clear it explicitly)"
+            if self.state.force_signal_lost
+            else ""
+        )
         self._audit(
             "start",
             by=by,
-            summary="break-glass START: evaluator + data source enabled",
-            reasoning="manual re-enable of the automatic loop",
+            summary=f"break-glass START: evaluator enabled{hold_note}",
+            reasoning=(
+                "manual re-enable of the automatic loop; an active "
+                "data-untrustworthy hold is never lifted as a side effect"
+            ),
             evidence=self.status(),
             outcome="started",
         )
@@ -164,7 +192,8 @@ class BreakGlassController:
         )
 
     def restart(self, *, by: str = "operator") -> None:
-        """Stop then start; durable state rehydrates via the service/store."""
+        """Stop then start. In-memory cores persist (no re-rehydration);
+        manual holds are preserved — see :meth:`start`."""
         self.stop(by=by)
         self.start(by=by)
         self._mark(action="restart", by=by)
@@ -182,9 +211,13 @@ class BreakGlassController:
     # ------------------------------------------------------------------
     def force_shadow(self, rule_id: str, *, by: str = "operator") -> None:
         """Manually hold a rule in shadow (kill paging) — loudly, recorded."""
-        self.state.forced_shadow_rules.add(rule_id)
-        # Also flip the core's promoted flag off so the verdict itself is shadow.
+        # Also flip the core's promoted flag off so the verdict itself is
+        # shadow, remembering the pre-hold posture so clear_force_shadow can
+        # RESTORE it (undo of the hold, not a promotion — LD-6 unchanged).
         core = self.service._cores.get(rule_id)  # noqa: SLF001
+        if core is not None and rule_id not in self.state.forced_shadow_rules:
+            self.state.pre_hold_promoted[rule_id] = bool(core.promoted)
+        self.state.forced_shadow_rules.add(rule_id)
         if core is not None:
             core.promoted = False
         self._mark(action=f"force_shadow:{rule_id}", by=by)
@@ -206,15 +239,32 @@ class BreakGlassController:
         )
 
     def clear_force_shadow(self, rule_id: str, *, by: str = "operator") -> None:
-        """Lift a manual shadow-hold. Does NOT itself promote to paging."""
+        """Lift a manual shadow-hold, RESTORING the pre-hold paging posture.
+
+        Restoring is an undo of the hold, NOT a promotion decision: a rule
+        returns to paging here only if it was already user-promoted before
+        the hold (LD-6 authority unchanged). Previously the core stayed
+        silently demoted forever while status reported promoted=True.
+        """
         self.state.forced_shadow_rules.discard(rule_id)
+        restored = self.state.pre_hold_promoted.pop(rule_id, None)
+        core = self.service._cores.get(rule_id)  # noqa: SLF001
+        if core is not None and restored is not None:
+            core.promoted = restored
         self._mark(action=f"clear_force_shadow:{rule_id}", by=by)
         self._audit(
             "clear_force_shadow",
             by=by,
-            summary=f"break-glass cleared force-shadow on {rule_id!r}",
-            reasoning="lifts manual hold only; promotion remains supervisor-gated",
-            evidence={"rule_id": rule_id},
+            summary=(
+                f"break-glass cleared force-shadow on {rule_id!r} "
+                f"(pre-hold posture restored: promoted={restored})"
+            ),
+            reasoning=(
+                "lifts the manual hold and restores the PRE-HOLD posture — "
+                "an undo, not a promotion; promotion still requires the "
+                "user's explicit approval (LD-6)"
+            ),
+            evidence={"rule_id": rule_id, "restored_promoted": restored},
             outcome="cleared_force_shadow",
         )
 
@@ -286,19 +336,49 @@ class BreakGlassController:
             self.service._rehydrate(  # noqa: SLF001
                 self.service._cores[rule.id], rule  # noqa: SLF001
             )
-        # Clear manual overrides and re-enable (a recovery returns to automatic).
+        # Clear manual overrides and re-enable. Unlike start()/restart(),
+        # lifting holds HERE is the operator's stated intent — RECOVER means
+        # "return to automatic". Each held rule's pre-hold posture is
+        # restored (undo, not promotion), and every lifted hold is named in
+        # the audit summary so nothing is lifted silently.
+        lifted_shadow = sorted(self.state.forced_shadow_rules)
+        for rid in lifted_shadow:
+            core = self.service._cores.get(rid)  # noqa: SLF001
+            pre_hold = self.state.pre_hold_promoted.pop(rid, None)
+            if core is not None and pre_hold is not None:
+                core.promoted = pre_hold
         self.state.forced_shadow_rules.clear()
+        lifted_signal_hold = self.state.force_signal_lost
         self.state.force_signal_lost = False
         self.state.enabled = True
         self.service.provider = self._real_provider
         self._mark(action="recover", by=by)
+        lifted_bits = []
+        if lifted_signal_hold:
+            lifted_bits.append("force_signal_lost")
+        if lifted_shadow:
+            lifted_bits.append(f"force_shadow on {lifted_shadow}")
+        lifted_note = (
+            f" (lifted manual holds: {', '.join(lifted_bits)})"
+            if lifted_bits
+            else ""
+        )
         self._audit(
             "recover",
             by=by,
-            summary="break-glass RECOVER: restored last-known-good state",
-            reasoning="reversible recovery hatch; loop re-enabled to automatic",
+            summary=(
+                "break-glass RECOVER: restored last-known-good state"
+                f"{lifted_note}"
+            ),
+            reasoning=(
+                "reversible recovery hatch; loop re-enabled to automatic — "
+                "an explicit recover lifts manual holds by stated intent, "
+                "restoring each rule's pre-hold posture (never promoting)"
+            ),
             evidence={
                 "restored_rules": list((restored.get("rules") or {}).keys()),
+                "lifted_force_signal_lost": lifted_signal_hold,
+                "lifted_forced_shadow": lifted_shadow,
                 "status": self.status(),
             },
             outcome="recovered",
@@ -331,6 +411,14 @@ class BreakGlassController:
             "enabled": self.state.enabled,
             "force_signal_lost": self.state.force_signal_lost,
             "forced_shadow_rules": sorted(self.state.forced_shadow_rules),
+            # The cores' ACTUAL paging posture — the service-level `promoted`
+            # flag alone would misrepresent a rule held in shadow.
+            "effective_promoted": {
+                rid: core.promoted
+                for rid, core in sorted(
+                    self.service._cores.items()  # noqa: SLF001
+                )
+            },
             "last_action": self.state.last_action,
             "last_operator": self.state.last_operator,
             "last_action_ts": self.state.last_action_ts,

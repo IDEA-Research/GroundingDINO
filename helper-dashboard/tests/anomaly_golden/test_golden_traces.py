@@ -177,6 +177,18 @@ def test_rule_rejects_mock_source_at_validation():
     assert "mock" in str(exc.value).lower() or "prometheus" in str(exc.value).lower()
 
 
+def test_rule_rejects_zero_sustain_window():
+    # "0s"/"0m"/"0h" match the duration pattern but nullify the locked
+    # sustain semantics (LD-3): a zero for-window fires on the first
+    # breaching tick. Validation must refuse it.
+    for zero in ("0s", "0m", "0h", "000s"):
+        with pytest.raises(Exception) as exc:
+            AlertRuleSpec.model_validate(
+                {"id": "bad-rule", "metric": "rso2_left", "for": zero}
+            )
+        assert "positive" in str(exc.value).lower()
+
+
 def test_rule_rejects_extra_fields():
     with pytest.raises(Exception):
         AlertRuleSpec.model_validate(

@@ -34,15 +34,15 @@ def _audit_dir() -> Path:
 
 
 def mask_url(url: str | None) -> str | None:
-    """Mask a webhook URL so the token is never logged in full."""
+    """Mask a webhook URL so no part of the token is ever logged."""
     if not url:
         return url
-    # Keep scheme + host + a short tail hint; drop the secret path/token.
+    # Keep scheme + host only; the entire secret path/token is dropped —
+    # even a short tail narrows a brute-force search, so nothing survives.
     try:
         scheme, rest = url.split("://", 1)
         host = rest.split("/", 1)[0]
-        tail = url[-4:] if len(url) > 4 else "****"
-        return f"{scheme}://{host}/****{tail}"
+        return f"{scheme}://{host}/****"
     except Exception:
         return "****"
 

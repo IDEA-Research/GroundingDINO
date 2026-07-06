@@ -75,6 +75,10 @@ class DataStatus:
     # How many seconds of contiguous history back the baseline. Used to
     # decide INSUFFICIENT_BASELINE vs a usable 24h window.
     history_coverage_s: float = 0.0
+    # True when the metric selector matched MORE than one series: the value
+    # would be an arbitrary pick (possibly the wrong patient). The gate fails
+    # closed on it. Defaults False so single-series providers are unaffected.
+    ambiguous: bool = False
 
 
 class AnomalyEvaluatorCore:
@@ -155,6 +159,10 @@ class AnomalyEvaluatorCore:
         if status.source != "prometheus":
             # FAIL CLOSED on mock/fake data — the silent fallback hazard.
             return SignalLostReason.mock_source
+        if status.ambiguous:
+            # FAIL CLOSED when the selector matched multiple series — an
+            # arbitrary pick could evaluate the wrong patient.
+            return SignalLostReason.ambiguous_series
         if (now - status.sample_ts) > self.staleness_budget_s:
             return SignalLostReason.stale
         return None
@@ -196,7 +204,10 @@ class AnomalyEvaluatorCore:
             severity=self.rule.severity.value,
             would_page=False,  # not a clinical fire
             paged=False,
-            message="INSUFFICIENT_BASELINE — <24h history; refusing to fire",
+            message=(
+                f"INSUFFICIENT_BASELINE — <{self.rule.baseline.window} "
+                "history; refusing to fire"
+            ),
         )
         return self._report(
             now, AlertState.insufficient_baseline, value, baseline, None, [event]
@@ -279,8 +290,11 @@ class AnomalyEvaluatorCore:
                     would_page=True,
                     paged=paged,
                     suppressed_reason=None if paged else "shadow_mode",
+                    # The stated criterion interpolates the rule's ACTUAL
+                    # ratio — hardcoded text would lie for a non-default rule.
                     message=f"FIRING — value {value:.2f} < threshold "
-                    f"{threshold:.2f} (0.80x baseline) sustained {elapsed:.0f}s",
+                    f"{threshold:.2f} ({self.rule.ratio:.2f}x baseline) "
+                    f"sustained {elapsed:.0f}s",
                 )
             )
         self._fired = True

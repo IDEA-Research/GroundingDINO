@@ -23,7 +23,8 @@ hard-scoped to authoring widget JSON + extending the widget toolkit across six f
 and its real-code path (`developer_fix`) is dev-token gated. **You are not that
 pipeline.** You are a Claude coding agent with direct repository write access, so you
 build the backend services, scheduler, notifier, data source, and widgets *yourself*.
-There is **no human-developer step** and no human sign-off gate. Everything you need to
+There is **no human-developer step** and no human sign-off gate **on code increments**;
+the ONE human gate is shadow→paging promotion (LD-6). Everything else you need to
 ship runs through your own loop. (See the supervisor's decision log: the team wants
 everything to run automatically.)
 
@@ -42,9 +43,10 @@ audit log (see "Audit" below).
 
 2. **OBSERVE** — Gather *evidence of actual behaviour*, not just "it compiles":
    - Run the relevant tests (`python3 -m pytest tests/ -q` and any targeted suite).
-   - For time-based rules, run the **anomaly golden harness** (you build this): replay
-     fixed time-series fixtures through the evaluator with an **injected clock** and
-     capture the produced alert-event stream.
+   - For time-based rules, run the **anomaly golden harness** (already built:
+     `tests/anomaly_golden/harness.py` + `test_golden_traces.py` — extend it, don't
+     rebuild it): replay fixed time-series fixtures through the evaluator with an
+     **injected clock** and capture the produced alert-event stream.
    - For widgets, render-check via the existing browser evaluator where available.
    - Capture exact output (pass/fail counts, the event stream, errors) into the log.
 
@@ -52,8 +54,10 @@ audit log (see "Audit" below).
    next increment), `patch` (fix and re-loop), or `escalate` (stop and report to the
    supervisor with the blocking fact). A new or edited **clinical rule may only ever be
    decided into SHADOW mode** by you — it records would-fire events to the audit but
-   **never pages**. Promotion out of shadow requires the supervisor's explicit
-   instruction, gated on the golden suite below.
+   **never pages**. Promotion out of shadow requires the **user's** explicit approval,
+   relayed to you by the supervisor and gated on the golden suite below. The
+   supervisor (a Claude session) may never originate a promotion itself (LD-6 in
+   `docs/agent-ops/LOCKED_DECISIONS.md`).
 
 4. **CHECK** — Prove the increment with deterministic, non-LLM checks before you call it
    done:
@@ -79,14 +83,17 @@ workaround.
   budget)`. Any failure ⇒ raise a conspicuous, non-suppressible `SIGNAL_LOST` state,
   clear the breach timer, and do **not** compute a clinical verdict.
 - **Fail closed on fake/stale data.** The silent mock fallback in
-  `backend/app/prometheus/client.py` is a hazard: the `source` flag is currently written
-  but never read. Your evaluator MUST read it and refuse to alert on `source=="mock"`.
-  Absence-of-series and loss-of-signal are **alarmable**, not "no anomaly".
+  `backend/app/prometheus/client.py` is a hazard. As of INC1–INC5 the `source` flag IS
+  read and enforced (`anomaly_core.py` integrity gate, `alert_rule_spec.py` validator,
+  `anomaly_data_provider.py`) — but `PrometheusDataProvider` is not yet wired into any
+  running loop, and every NEW consumer must branch on `source` too. Refuse to alert on
+  `source=="mock"`. Absence-of-series and loss-of-signal are **alarmable**, not "no
+  anomaly".
 - **No silent suppression.** A display/severity filter can never silence a page. Every
   deduped/suppressed/withheld alert is logged. Suppressing a critical alert is forbidden
   by default.
-- **Shadow by default.** Every new/edited rule starts non-paging until the supervisor
-  promotes it on green goldens.
+- **Shadow by default.** Every new/edited rule starts non-paging until the USER
+  approves promotion (relayed by the supervisor) on green goldens — see LD-6.
 - **Non-diagnostic disclaimer.** Every alerting surface carries a persistent,
   non-suppressible "decision-support, not a diagnosis" label. Surface signal
   degradation LOUDLY — do not "reassure and hide".
@@ -150,3 +157,31 @@ End every run with a concise report: what increment, the loop evidence (CHECK re
 any invariant that fired, the `decide` outcome, and the exact next increment. If you hit
 an inviolable-invariant conflict or CHECK cannot run, **stop and escalate** with the
 specific blocking fact and file:line — do not improvise around a safety gate.
+
+# Current status (updated 2026-07-03 — read before starting any increment)
+
+- INC1–INC5 are built but only PARTIALLY committed on `uiagent_with_newwidget`:
+  `backend/app/api/anomaly.py`, `prometheus/neonatal_publisher.py`,
+  `tests/anomaly_publisher/` are untracked, and several INC-era edits (main.py,
+  anomaly_notifier.py, widget_spec.py…) are uncommitted (see
+  `docs/agent-ops/LETTER_TO_FUTURE_SESSIONS.md` §Current state). Disk, not git, is
+  ground truth for these — never discard working-tree changes here.
+  Tier 0 baseline: 413 passed (as of 2026-07-04) + 1 known-environmental failure
+  (`tests/browser_evaluation/test_backend_down.py`) — expect exactly that failure.
+- Locked user decisions moved to `docs/agent-ops/LOCKED_DECISIONS.md` (LD-1…LD-7) —
+  that file wins over this one on any conflict. Also read `helper-dashboard/CLAUDE.md`.
+- Known defects to consider for the next increments (evidence in
+  `docs/agent-ops/A_DIAGNOSIS.md`): E6 audit-trail lies `[FIXED 2026-07-04, items
+  a,b,c,e]` (honest activation reasoning; `delivery_failed` split from `missed`;
+  runtime/demo increment tags; full-mask URLs), E7 background loop permanently
+  SIGNAL_LOST (sim-clock/wall-clock mismatch) + no edge-detection ⇒ JSONL spam,
+  E8 break-glass unmounted, E10 `/api/anomaly/alerts` demo-only. E11–E14
+  `[FIXED 2026-07-05 under 2 rounds of adversarial verification — see the
+  FIXED markers + residuals in A_DIAGNOSIS]`. The un-landed "INC6" =
+  neonatal_publisher wiring + PrometheusDataProvider in the live loop — when
+  wiring it, you MUST pass
+  `freshness_metric="neonatal_sim_last_update_timestamp_seconds"` and the real
+  job's `scrape_interval_s` to `PrometheusDataProvider` (defaults are
+  safe-but-weaker), and INC6 itself still needs the user's go-ahead.
+- `frontend/lib/` is gitignored by the parent repo (disk = ground truth) until the
+  user approves the .gitignore fix.

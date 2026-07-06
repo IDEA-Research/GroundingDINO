@@ -27,6 +27,7 @@ only report provenance + freshness honestly.
 
 from __future__ import annotations
 
+import math
 from typing import Any, Protocol
 
 from ..prometheus.client import PrometheusClient
@@ -52,9 +53,21 @@ class Observation:
 
 
 class DataProvider(Protocol):
-    """Fetch one observation for a metric at an injected clock time `now`."""
+    """Fetch one observation for a metric at an injected clock time `now`.
 
-    def observe(self, metric: str, *, now: float) -> Observation: ...
+    `labels` is the rule's validated label set (e.g. {"patient": "neo-001"});
+    a live provider MUST use it to select exactly one series — evaluating an
+    arbitrary series of a multi-patient metric is a wrong-patient hazard.
+    Single-series providers may ignore it.
+    """
+
+    def observe(
+        self,
+        metric: str,
+        *,
+        now: float,
+        labels: dict[str, str] | None = None,
+    ) -> Observation: ...
 
 
 # ---------------------------------------------------------------------------
@@ -105,7 +118,16 @@ class SimDataProvider:
         idx = int(round((now - self.start_ts) / self.step_s))
         return max(0, min(idx, self.n_ticks - 1))
 
-    def observe(self, metric: str, *, now: float) -> Observation:
+    def observe(
+        self,
+        metric: str,
+        *,
+        now: float,
+        labels: dict[str, str] | None = None,
+    ) -> Observation:
+        # `labels` is accepted for protocol compatibility; the sim generates
+        # exactly one series per metric (one synthetic patient), so there is
+        # no ambiguity to resolve.
         series = self._series(metric)
         idx = self._index_for(now)
         s = series[idx]
@@ -128,73 +150,163 @@ class SimDataProvider:
 class PrometheusDataProvider:
     """Provider backed by the real `PrometheusClient`.
 
-    Reads BOTH the instant value and the 24h avg_over_time baseline, and — the
-    load-bearing safety step — reads the `source` flag on each response so the
-    core can fail closed on the silent mock fallback.
+    Load-bearing safety steps (each fails CLOSED when unavailable):
+
+    - Reads the `source` flag on every response so the core refuses the
+      silent mock fallback.
+    - Selects the rule's exact series via its validated `labels` and reports
+      a multi-series answer as `ambiguous` (an arbitrary first-pick could
+      evaluate the WRONG PATIENT) — the core gates it to SIGNAL_LOST.
+    - Queries `timestamp(<sel>)` for the sample's OWN scrape time (the
+      instant-vector pair carries the query-EVALUATION time, ~now, which
+      would make the staleness gate structurally unable to trip). This
+      detects a STOPPED scrape — it can NOT detect a frozen value behind a
+      still-live /metrics endpoint, because Prometheus re-stamps the frozen
+      value on every successful scrape.
+    - For the frozen-publisher case, pass `freshness_metric`: a gauge whose
+      VALUE is the measurement's own wall-clock time (the neonatal publisher
+      exports `neonatal_sim_last_update_timestamp_seconds` exactly for
+      this). The effective sample_ts is then the OLDER of scrape time and
+      measurement time, so either failure mode trips the gate. Live wiring
+      MUST set this; without it, staleness only covers scrape stoppage.
+    - MEASURES baseline coverage (`count_over_time` x the scrape interval)
+      instead of asserting a constant, so INSUFFICIENT_BASELINE stays
+      load-bearing on live data; unmeasurable -> 0.0 coverage.
+
+    Unconfirmable freshness fails to sample_ts = -inf — infinitely stale in
+    ANY consumer's budget (a finite sentinel could pass a core configured
+    with a larger staleness budget than the provider assumed).
     """
+
+    # Rules lock the baseline window to 24h (BaselineSpec Literal["24h"]).
+    _WINDOW = "24h"
+    _WINDOW_S = 24 * 3600.0
 
     def __init__(
         self,
         client: PrometheusClient | None = None,
         *,
         staleness_budget_s: float = 60.0,
-        history_coverage_s: float = 24 * 3600.0,
+        scrape_interval_s: float = 15.0,
+        freshness_metric: str | None = None,
     ) -> None:
         self.client = client or PrometheusClient()
         self.staleness_budget_s = float(staleness_budget_s)
-        self.history_coverage_s = float(history_coverage_s)
+        # Converts a sample COUNT into covered seconds. Pass the actual
+        # scrape interval of the job feeding these metrics; an over-estimate
+        # inflates coverage, an under-estimate fails closed.
+        self.scrape_interval_s = float(scrape_interval_s)
+        # Measurement-time heartbeat gauge (see class docstring). REQUIRED
+        # for live wiring to catch frozen-publisher freshness failures.
+        self.freshness_metric = freshness_metric
 
     @staticmethod
-    def _label_selector(metric: str) -> str:
-        # Metric names are already validated by AlertRuleSpec (PromQL token
-        # denylist + identifier shape), so composing the query is safe.
-        return metric
+    def _label_selector(metric: str, labels: dict[str, str] | None = None) -> str:
+        # Metric names and label keys/values are already validated by
+        # AlertRuleSpec (identifier shape + PromQL token denylist); values are
+        # still quote-escaped here as defence in depth.
+        if not labels:
+            return metric
+        pairs = ",".join(
+            f'{k}="{_escape_label_value(v)}"' for k, v in sorted(labels.items())
+        )
+        return f"{metric}{{{pairs}}}"
 
-    def observe(self, metric: str, *, now: float) -> Observation:
-        sel = self._label_selector(metric)
+    def observe(
+        self,
+        metric: str,
+        *,
+        now: float,
+        labels: dict[str, str] | None = None,
+    ) -> Observation:
+        sel = self._label_selector(metric, labels)
         instant = self.client.query(sel)
-        baseline_resp = self.client.query(f"avg_over_time({sel}[24h])")
+        baseline_resp = self.client.query(f"avg_over_time({sel}[{self._WINDOW}])")
 
-        # READ the source flag — this is the whole point. A mock fallback is
-        # reported honestly as source=="mock"; the core refuses to alert on it.
+        # READ the source flag — a mock fallback is reported honestly as
+        # source=="mock"; the core refuses to alert on it. A half-mock
+        # observation (real value, mock baseline) is not trustworthy either.
         src = str(instant.get("source", "mock"))
+        base_src = str(baseline_resp.get("source", "mock"))
+        if src == "prometheus" and base_src != "prometheus":
+            src = base_src
         reachable = src == "prometheus"
 
-        value, sample_ts = _first_scalar(instant)
-        baseline, _ = _first_scalar(baseline_resp)
-        base_src = str(baseline_resp.get("source", "mock"))
-        # If either the value or the baseline came from mock, treat provenance
-        # as mock — a half-mock observation is not trustworthy.
-        if base_src != "prometheus":
-            src = base_src if base_src != "prometheus" else src
-            if base_src == "mock":
-                src = "mock"
-
+        value, n_series = _instant_scalar(instant)
+        baseline, n_base = _instant_scalar(baseline_resp)
+        # More than one series for this selector means the rule's labels
+        # under-select; report it so the gate fails closed (never first-pick).
+        ambiguous = n_series > 1 or n_base > 1
         returns_data = value is not None
-        # If we never saw a sample ts, treat the sample as maximally stale so
-        # the freshness gate trips rather than silently passing `now`.
-        if sample_ts is None:
-            sample_ts = now - (self.staleness_budget_s + 1.0)
+
+        # Sample freshness: default to -inf (infinitely stale in ANY
+        # consumer's budget) unless positively confirmed. Effective
+        # freshness is the OLDER of scrape time (catches stopped scrapes)
+        # and, when configured, measurement time (catches a frozen publisher
+        # behind a live /metrics endpoint, which Prometheus re-stamps fresh
+        # on every scrape).
+        sample_ts = float("-inf")
+        if reachable and returns_data and not ambiguous:
+            ts_resp = self.client.query(f"timestamp({sel})")
+            if str(ts_resp.get("source", "mock")) == "prometheus":
+                ts_val, ts_n = _instant_scalar(ts_resp)
+                if ts_val is not None and ts_n == 1:
+                    sample_ts = float(ts_val)
+            if self.freshness_metric and sample_ts != float("-inf"):
+                hb_sel = self._label_selector(self.freshness_metric, labels)
+                hb_resp = self.client.query(hb_sel)
+                hb_ts = float("-inf")
+                if str(hb_resp.get("source", "mock")) == "prometheus":
+                    hb_val, hb_n = _instant_scalar(hb_resp)
+                    # isfinite: a NaN heartbeat would poison min() into
+                    # silently degrading to scrape-only freshness.
+                    if (
+                        hb_val is not None
+                        and hb_n == 1
+                        and math.isfinite(hb_val)
+                    ):
+                        hb_ts = float(hb_val)
+                # Configured but unconfirmable heartbeat fails CLOSED too.
+                sample_ts = min(sample_ts, hb_ts)
+
+        # Coverage is MEASURED, never asserted; unmeasurable -> 0.0 so the
+        # core reports INSUFFICIENT_BASELINE rather than trusting a constant.
+        coverage_s = 0.0
+        if reachable and not ambiguous:
+            cnt_resp = self.client.query(
+                f"count_over_time({sel}[{self._WINDOW}])"
+            )
+            if str(cnt_resp.get("source", "mock")) == "prometheus":
+                cnt, cnt_n = _instant_scalar(cnt_resp)
+                if cnt is not None and cnt_n == 1:
+                    coverage_s = min(
+                        float(cnt) * self.scrape_interval_s, self._WINDOW_S
+                    )
 
         status = DataStatus(
             reachable=reachable,
             returns_data=returns_data,
             source=src,
             sample_ts=float(sample_ts),
-            history_coverage_s=self.history_coverage_s,
+            history_coverage_s=coverage_s,
+            ambiguous=ambiguous,
         )
         return Observation(value=value, baseline=baseline, status=status)
 
 
-def _first_scalar(resp: dict[str, Any]) -> tuple[float | None, float | None]:
-    """Pull (value, sample_ts) from a Prometheus instant-vector response."""
+def _escape_label_value(v: str) -> str:
+    return v.replace("\\", "\\\\").replace('"', '\\"')
+
+
+def _instant_scalar(resp: dict[str, Any]) -> tuple[float | None, int]:
+    """Pull (first value, series count) from an instant-vector response."""
     try:
         results = resp.get("data", {}).get("result", [])
         if not results:
-            return None, None
-        pair = results[0].get("value")  # [ts, "value"]
+            return None, 0
+        pair = results[0].get("value")  # [eval_ts, "value"]
         if not pair or len(pair) < 2:
-            return None, None
-        return float(pair[1]), float(pair[0])
+            return None, len(results)
+        return float(pair[1]), len(results)
     except Exception:
-        return None, None
+        return None, 0

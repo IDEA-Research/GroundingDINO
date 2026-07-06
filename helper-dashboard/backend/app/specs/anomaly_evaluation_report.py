@@ -45,6 +45,9 @@ class SignalLostReason(str, Enum):
     unreachable = "unreachable"
     no_data = "no_data"
     mock_source = "mock_source"
+    # The label selector matched MORE than one series: an arbitrary pick
+    # could evaluate the wrong patient/probe, so the gate fails closed.
+    ambiguous_series = "ambiguous_series"
     stale = "stale"
 
 
