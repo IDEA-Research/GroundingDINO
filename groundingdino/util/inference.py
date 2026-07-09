@@ -33,6 +33,7 @@ def load_model(model_config_path: str, model_checkpoint_path: str, device: str =
     checkpoint = torch.load(model_checkpoint_path, map_location="cpu")
     model.load_state_dict(clean_state_dict(checkpoint["model"]), strict=False)
     model.eval()
+    model = model.to(device)
     return model
 
 
