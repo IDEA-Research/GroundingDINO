@@ -172,7 +172,9 @@ class Model:
         import supervision as sv
 
         box_annotator = sv.BoxAnnotator()
-        annotated_image = box_annotator.annotate(scene=image, detections=detections, labels=labels)
+        label_annotator = sv.LabelAnnotator()
+        annotated_image = box_annotator.annotate(scene=image, detections=detections)
+        annotated_image = label_annotator.annotate(scene=annotated_image, detections=detections, labels=labels)
         """
         processed_image = Model.preprocess_image(image_bgr=image).to(self.device)
         boxes, logits, phrases = predict(
