@@ -535,6 +535,7 @@
     <div style="display: flex; gap: 20px; align-items: center; margin-bottom: 15px; padding-bottom: 15px; border-bottom: 1px solid #eee; flex-wrap: wrap;">
         <div style="font-weight: 600; color: #333;">🤖 選擇檢視模型：</div>
         <select id="globalModelSelect" onchange="changeViewModel()" style="padding: 8px 12px; border-radius: 6px; border: 1px solid #ccc; font-size: 1em; min-width: 200px;">
+            <option value="google/gemini-3.1-flash-lite">Gemini 3.1 Flash Lite</option>
             <option value="openai/gpt-5.4">GPT-5.4</option>
             <option value="openai/gpt-4o">GPT-4o</option>
         </select>
@@ -661,6 +662,7 @@
 
     const LOCAL_MODELS = ['qwen3-vl-235b-a22b-instruct-1m_moe', 'glm-4.6v'];
     const OPENROUTER_MODELS = [
+        'google/gemini-3.1-flash-lite',
         'openai/gpt-5.4',
         'openai/gpt-4o',
         'google/gemini-3.1-flash-lite-preview',
@@ -670,7 +672,7 @@
         'meta-llama/llama-3.2-90b-vision-instruct'
     ];
     let availableModels = [...OPENROUTER_MODELS, ...LOCAL_MODELS];
-    let currentModel = 'openai/gpt-5.4';
+    let currentModel = 'google/gemini-3.1-flash-lite';
     let histogramWindowSize = 60;
     let histogramWindowStart = 0;
     let currentHoverValueType = null;

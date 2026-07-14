@@ -14,6 +14,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // 定義各廠商的模型清單 (與 upload.html 保持一致)
     const modelsByProvider = {
         'openrouter': [
+            { value: 'google/gemini-3.1-flash-lite', label: 'Gemini 3.1 Flash Lite' },
             { value: 'openai/gpt-5.4', label: 'GPT-5.4' },
             { value: 'openai/gpt-4o', label: 'GPT-4o' },
             { value: 'google/gemini-3.1-flash-lite-preview', label: 'Gemini 3.1 Flash Lite Preview' },
