@@ -369,6 +369,10 @@ security:
                         "screen_number": idx,
                         "original_screen_number": screen_analysis['screen_number'],
                         "screen_image_path": screen_analysis['screen_path'],
+                        "screen_image_path_for_vlm": (
+                            screen_analysis.get('screen_path_for_vlm')
+                            or screen_analysis['screen_path']
+                        ),
                         "detected_model": detected_model,
                         "medical_values": medical_values,
                         "raw_analysis": raw_analysis,
@@ -534,6 +538,7 @@ security:
                 "analyzed_at": "$screens.analyzed_at",
                 "original_image_path": "$frames.original_image_path",
                 "screen_image_path": "$screens.screen_image_path",
+                "screen_image_path_for_vlm": "$screens.screen_image_path_for_vlm",
                 "llm_model": "$screens.llm_model"
             }}
         )
@@ -723,6 +728,7 @@ security:
                 "screen_number": screen_number,
                 "original_screen_number": original_screen_number,
                 "screen_image_path": screen_image_path,
+                "screen_image_path_for_vlm": screen_image_path,
                 "detected_model": detected_model,
                 "medical_values": medical_values,
                 "raw_analysis": raw_analysis,

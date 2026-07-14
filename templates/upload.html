@@ -335,6 +335,13 @@
                     <button type="button" id="deleteApiKeyBtn" class="btn-delete-custom">🗑️ 刪除</button>
                 </div>
             </div>
+            
+            <div class="form-group" style="display: flex; align-items: center; gap: 10px;">
+                <input type="checkbox" id="removeScreenContent" name="remove_screen_content" style="width: 18px; height: 18px;">
+                <label for="removeScreenContent" style="margin: 0; font-weight: 600;">
+                    分析前移除螢幕內容（DALL-E，失敗時自動改為黑屏）
+                </label>
+            </div>
 
             <button type="submit" class="btn" id="uploadBtn">
                 🚀 開始處理
@@ -621,6 +628,7 @@
         const provider = document.getElementById('providerSelect').value;
         const model = document.getElementById('modelSelect').value;
         const apiKey = document.getElementById('apiKeyInput').value;
+        const removeScreenContent = document.getElementById('removeScreenContent').checked;
         
         if (!videoFile) {
             showMessage('請選擇影片檔案', 'error');
@@ -637,6 +645,7 @@
         formData.append('frame_interval', frameInterval);
         formData.append('provider', provider);
         formData.append('model', model);
+        formData.append('remove_screen_content', removeScreenContent ? '1' : '0');
         if (apiKey) {
             formData.append('api_key', apiKey);
         }

@@ -863,6 +863,8 @@
                     frame_image_url: item.original_image_url || '',
                     screen_image_url: item.screen_image_url || '',
                     screen_image_path: item.screen_image_path || '',
+                    screen_image_url_for_vlm: item.screen_image_url_for_vlm || '',
+                    screen_image_path_for_vlm: item.screen_image_path_for_vlm || '',
                     model: item.model,
                     corrected_model: item.corrected_model,
                     analyzed_at: item.analyzed_at, // 保存主機時間
@@ -1147,6 +1149,13 @@
             
             const screenImageHtml = item.screen_image_url ?
                 `<img src="${item.screen_image_url}" alt="螢幕圖片">` : '';
+            const hasDistinctVlmPreview = item.screen_image_url_for_vlm && item.screen_image_url_for_vlm !== item.screen_image_url;
+            const vlmScreenImageHtml = hasDistinctVlmPreview
+                ? `<div style="margin-top: 8px;">
+                    <div style="font-size: 0.8em; color: #555; margin-bottom: 4px;">🧠 VLM 輸入圖</div>
+                    <img src="${item.screen_image_url_for_vlm}" alt="VLM 輸入螢幕圖片">
+                </div>`
+                : '';
             
             const timeSeconds = item.time_seconds || 0;
             const minutes = Math.floor(timeSeconds / 60);
@@ -1209,6 +1218,7 @@
                     </button>
                 </div>
                 ${screenImageHtml}
+                ${vlmScreenImageHtml}
                 <div class="values">${valuesHtml}</div>
                 <div class="model model-selector" 
                      onclick="promptModelCorrection('${item.id}', '${item.model}', event)" 
@@ -1453,6 +1463,9 @@
             // 為了讓後端能找到正確的檔案，我們需要傳遞原始的 screen_image_path
             // 如果前端的 URL 是 ./analysis/xxx，我們需要轉回原本的路徑
             let imagePath = item.screen_image_path;
+            if (!imagePath && item.screen_image_path_for_vlm) {
+                imagePath = item.screen_image_path_for_vlm;
+            }
             if (!imagePath && imageUrl) {
                 imagePath = imageUrl;
             }
@@ -1915,6 +1928,10 @@
             <img src="${item.frame_image_url}" alt="原始畫面">
             <h3>檢測到的螢幕：</h3>
             <img src="${item.screen_image_url}" alt="螢幕畫面">
+            ${item.screen_image_url_for_vlm && item.screen_image_url_for_vlm !== item.screen_image_url ? `
+                <h3>VLM 實際輸入圖：</h3>
+                <img src="${item.screen_image_url_for_vlm}" alt="VLM 輸入螢幕畫面">
+            ` : ''}
             <h3>醫療數值：</h3>
             ${valuesHtml}
             <p><strong>設備型號:</strong> ${item.model}</p>

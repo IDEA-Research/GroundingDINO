@@ -15,6 +15,7 @@ import math
 import argparse
 import json
 import base64
+import io
 from datetime import datetime
 from pathlib import Path
 import time
@@ -26,6 +27,8 @@ import traceback
 import uuid
 import threading
 import concurrent.futures
+import tempfile
+import urllib.request
 from dotenv import load_dotenv
 
 # 載入 .env 檔案
@@ -89,7 +92,8 @@ class VideoScreenDigitExtractor:
                  model: str = None, cpu_only: bool = False, target_data: str = "all",
                  frame_interval_seconds: int = 10,
                  rtsp_url: str = None,
-                 camera_name: str = None):
+                 camera_name: str = None,
+                 remove_screen_content: bool = False):
         """
         初始化抓取器
         
@@ -117,6 +121,7 @@ class VideoScreenDigitExtractor:
         self.frame_interval_seconds = frame_interval_seconds # GPT 分析的幀間隔 (影片模式)
         self.rtsp_url = rtsp_url
         self.camera_name = camera_name
+        self.remove_screen_content = remove_screen_content
 
         self._stop_event = threading.Event() # 用於停止串流捕獲的事件
         self._is_running = False # 標誌位，指示串流捕獲是否正在運行
@@ -126,6 +131,121 @@ class VideoScreenDigitExtractor:
         self._analysis_executor = None # 用於背景非同步分析的執行緒池
         
         self.init_client()
+
+    def _remove_screen_content_fallback(self, screen_path: str, output_path: str):
+        """當 DALL-E 不可用或失敗時，使用固定黑屏處理內容區域。"""
+        img = Image.open(screen_path).convert("RGB")
+        w, h = img.size
+        x_margin = max(2, int(w * 0.1))
+        y_margin = max(2, int(h * 0.1))
+        content_box = (x_margin, y_margin, max(x_margin + 1, w - x_margin), max(y_margin + 1, h - y_margin))
+
+        arr = np.array(img)
+        arr[content_box[1]:content_box[3], content_box[0]:content_box[2]] = (0, 0, 0)
+        Image.fromarray(arr).save(output_path, quality=95, optimize=False)
+
+    def _remove_screen_content_with_dalle(self, screen_path: str, output_path: str):
+        """
+        用 DALL-E（gpt-image-1）移除螢幕內容，只保留螢幕外觀。
+        金鑰優先順序：
+        1) OPENAI_API_KEY（直連 OpenAI）
+        2) 目前 LLM provider 為 openrouter 時，沿用 OpenRouter API Key
+        未提供時會拋錯由上層 fallback。
+        """
+        openai_api_key = (os.getenv("OPENAI_API_KEY") or "").strip()
+        image_edit_client = None
+        image_edit_model = "gpt-image-1"
+
+        if openai_api_key:
+            image_edit_client = OpenAI(api_key=openai_api_key)
+        elif self.provider == "openrouter" and self.api_key:
+            # OpenRouter 相容 OpenAI SDK；若 OpenRouter 不支援 image edit，
+            # 會在 API 回應時拋錯並由上層 fallback。
+            image_edit_client = OpenAI(
+                base_url="https://openrouter.ai/api/v1",
+                api_key=self.api_key,
+            )
+            image_edit_model = "openai/gpt-image-1"
+        else:
+            raise ValueError(
+                "未設定可用的影像編輯金鑰：請設定 OPENAI_API_KEY，"
+                "或在 provider=openrouter 時提供 OpenRouter API Key"
+            )
+
+        image = Image.open(screen_path).convert("RGBA")
+        w, h = image.size
+        x_margin = max(2, int(w * 0.1))
+        y_margin = max(2, int(h * 0.1))
+
+        # mask：透明區域會被重繪；保留外框，只重繪中央顯示內容。
+        mask = Image.new("RGBA", (w, h), (255, 255, 255, 255))
+        mask_arr = np.array(mask)
+        mask_arr[y_margin:h - y_margin, x_margin:w - x_margin, 3] = 0
+        mask = Image.fromarray(mask_arr, mode="RGBA")
+
+        with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as image_tmp, \
+             tempfile.NamedTemporaryFile(suffix=".png", delete=False) as mask_tmp:
+            image.save(image_tmp.name, format="PNG")
+            mask.save(mask_tmp.name, format="PNG")
+            image_tmp_path = image_tmp.name
+            mask_tmp_path = mask_tmp.name
+
+        try:
+            with open(image_tmp_path, "rb") as image_file, open(mask_tmp_path, "rb") as mask_file:
+                response = image_edit_client.images.edit(
+                    model=image_edit_model,
+                    image=image_file,
+                    mask=mask_file,
+                    prompt=(
+                        "Turn the display content off for this medical monitor screen. "
+                        "Remove all digits, waveforms, UI text, and indicators inside the display area, "
+                        "while preserving monitor bezel, frame shape, viewing angle, lighting, and reflections. "
+                        "Result must look like the same monitor with a blank powered-off black screen."
+                    )
+                )
+
+            image_item = response.data[0]
+            if getattr(image_item, "b64_json", None):
+                data = base64.b64decode(image_item.b64_json)
+                edited = Image.open(io.BytesIO(data)).convert("RGB")
+                edited.save(output_path, quality=95, optimize=False)
+                return
+
+            if getattr(image_item, "url", None):
+                urllib.request.urlretrieve(image_item.url, output_path)
+                return
+
+            raise ValueError("DALL-E 回傳格式不支援（缺少 b64_json/url）")
+        finally:
+            for p in (image_tmp_path, mask_tmp_path):
+                try:
+                    os.remove(p)
+                except OSError:
+                    pass
+
+    def prepare_screen_for_vlm(self, screen_path: str, analysis_dir: str):
+        """
+        在送進 VLM 前處理螢幕圖（移除內容）。
+        回傳：實際供 VLM 分析的圖片路徑。
+        """
+        if not self.remove_screen_content:
+            return screen_path
+
+        sanitized_dir = os.path.join(analysis_dir, "sanitized_screens")
+        os.makedirs(sanitized_dir, exist_ok=True)
+        output_path = os.path.join(
+            sanitized_dir,
+            f"{Path(screen_path).stem}_content_removed.jpg"
+        )
+
+        try:
+            self._remove_screen_content_with_dalle(screen_path, output_path)
+            print(f"    ✅ 已使用 DALL-E 移除螢幕內容: {os.path.basename(output_path)}")
+        except Exception as e:
+            print(f"    ⚠️ DALL-E 失敗，改用黑屏 fallback: {e}")
+            self._remove_screen_content_fallback(screen_path, output_path)
+
+        return output_path
 
     def init_client(self):
         """初始化 API 客戶端"""
@@ -546,6 +666,7 @@ class VideoScreenDigitExtractor:
     def get_expected_medical_values(self, device_model):
         """根據設備類型返回期望的醫療數值欄位"""
         device_expectations = {
+            'black ASUS computer': ['heart_rate', 'blood_pressure', 'spo2', 'respiration_rate'],
             'Philips MP20': ['heart_rate', 'blood_pressure', 'spo2', 'respiration_rate'],
             'Philips intellivue mp20 patient monitor': ['heart_rate', 'blood_pressure', 'spo2', 'respiration_rate'],
             'Dräger C500': ['PIP', 'PEEP', 'MAP', 'FiO2', 'VT', 'RR', 'MV'],
@@ -648,7 +769,8 @@ class VideoScreenDigitExtractor:
                 # print(f"    [並行] 開始分析螢幕 {idx}: {os.path.basename(path)}")
                 t_start = time.time()
                 try:
-                    analysis_result = self.extract_digits_from_screen(path)
+                    path_for_vlm = self.prepare_screen_for_vlm(path, analysis_dir)
+                    analysis_result = self.extract_digits_from_screen(path_for_vlm)
                     cost = time.time() - t_start
                     print(f"[效能分析] LLM 分析螢幕 {idx} 耗時: {cost:.2f} 秒")
                     
@@ -662,6 +784,7 @@ class VideoScreenDigitExtractor:
                     return {
                         "screen_number": idx,
                         "screen_path": path,
+                        "screen_path_for_vlm": path_for_vlm,
                         "analysis": analysis_result
                     }
                 except Exception as e:
@@ -669,6 +792,7 @@ class VideoScreenDigitExtractor:
                     return {
                         "screen_number": idx,
                         "screen_path": path,
+                        "screen_path_for_vlm": path,
                         "analysis": {"success": False, "error": str(e)}
                     }
 
@@ -836,6 +960,8 @@ class VideoScreenDigitExtractor:
 """+device_prompts+"""
 
 請特別注意：
+- 如果圖像中的螢幕遭到遮擋，請不要猜測被遮擋的數值，被遮擋的數值請寫null
+- 如果圖像中的螢幕有反光遮蔽到數值，請不要猜測被反光遮蔽的數值，被反光遮擋的數值請寫null
 - digits: 單獨的數字字符 (0-9)
 - numbers: 完整的數字（如 123, 45.67 等）
 - medical_values: 醫療相關數值（如心率、血壓、溫度等）"""

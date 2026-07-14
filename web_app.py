@@ -175,7 +175,7 @@ def resolve_llm_credentials(provider, model, api_key):
 class WebVideoProcessor:
     """Web 介面的影片處理器"""
     
-    def __init__(self, api_key, config_file, checkpoint_path, provider="openrouter", base_url=None, model=None, cpu_only=True, frame_interval_seconds=60, rtsp_url=None, camera_name=None):
+    def __init__(self, api_key, config_file, checkpoint_path, provider="openrouter", base_url=None, model=None, cpu_only=True, frame_interval_seconds=60, rtsp_url=None, camera_name=None, remove_screen_content=False):
         self.extractor = VideoScreenDigitExtractor(
             api_key=api_key,
             config_file=config_file,
@@ -187,7 +187,8 @@ class WebVideoProcessor:
             target_data="medical_values",
             frame_interval_seconds=frame_interval_seconds,
             rtsp_url=rtsp_url, # 新增
-            camera_name=camera_name # 新增
+            camera_name=camera_name, # 新增
+            remove_screen_content=remove_screen_content
         )
         self.session_id = None
         self.frame_interval_seconds = frame_interval_seconds
@@ -269,6 +270,9 @@ class WebVideoProcessor:
                         # 轉換為相對路徑
                         rel_path = os.path.relpath(screen_analysis['screen_path'], "video_screen_analysis")
                         screen_analysis['screen_image_url'] = f"./analysis/{rel_path}"
+                    if screen_analysis.get('screen_path_for_vlm'):
+                        rel_path_for_vlm = os.path.relpath(screen_analysis['screen_path_for_vlm'], "video_screen_analysis")
+                        screen_analysis['screen_image_url_for_vlm'] = f"./analysis/{rel_path_for_vlm}"
                 
                 results.append(frame_result)
                 processing_status['results'] = results
@@ -365,6 +369,7 @@ def upload_video():
     provider = request.form.get('provider')
     model = request.form.get('model')
     user_api_key = request.form.get('api_key')
+    remove_screen_content = str(request.form.get('remove_screen_content', '0')).lower() in ('1', 'true', 'yes', 'on')
 
     provider, api_key, base_url, cred_error = resolve_llm_credentials(
         provider, model, user_api_key
@@ -397,7 +402,8 @@ def upload_video():
             cpu_only=False,
             frame_interval_seconds=frame_interval,
             rtsp_url=None,
-            camera_name=None
+            camera_name=None,
+            remove_screen_content=remove_screen_content
         )
         
         # 在背景執行緒中開始處理
@@ -787,6 +793,11 @@ def get_mongodb_medical_values(session_id):
                 if path.startswith('video_screen_analysis/'):
                     path = path.replace('video_screen_analysis/', '', 1)
                 item['screen_image_url'] = f"./analysis/{path}"
+            if item.get('screen_image_path_for_vlm'):
+                path_for_vlm = item['screen_image_path_for_vlm']
+                if path_for_vlm.startswith('video_screen_analysis/'):
+                    path_for_vlm = path_for_vlm.replace('video_screen_analysis/', '', 1)
+                item['screen_image_url_for_vlm'] = f"./analysis/{path_for_vlm}"
             
             # 轉換 analyzed_at 時間格式
             if 'analyzed_at' in item and item['analyzed_at']:
