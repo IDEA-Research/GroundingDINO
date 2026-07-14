@@ -42,6 +42,8 @@ new_ld_path = f"{torch_lib_path}:{conda_lib_path}:{current_ld_path}" if current_
 os.environ['LD_LIBRARY_PATH'] = new_ld_path
 
 import json
+import csv
+import io
 import time
 import threading
 from datetime import datetime
@@ -825,6 +827,111 @@ def get_mongodb_medical_values(session_id):
             'camera_name': camera_name,
             'task_name': task_name
         })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/mongodb/export/medical_values/<session_id>')
+def export_mongodb_medical_values(session_id):
+    """匯出單一 Session 的醫療數值 (CSV)"""
+    if not mongo_manager:
+        return jsonify({'error': 'MongoDB 未啟用'}), 503
+
+    try:
+        model = request.args.get('model')
+        mode = (request.args.get('mode') or 'raw').lower()
+        if mode not in {'raw', 'corrected', 'both'}:
+            return jsonify({'error': '無效的匯出模式，僅支援 raw/corrected/both'}), 400
+
+        # corrected 模式要優先確保人工訂正能被帶出，不受目前下拉模型限制
+        query_model = model if mode in {'raw', 'both'} else None
+        medical_values = mongo_manager.get_medical_values_by_session(session_id, query_model)
+
+        # 依時間與螢幕排序，確保匯出內容可讀
+        medical_values = sorted(
+            medical_values,
+            key=lambda item: (
+                item.get('minute', 0),
+                item.get('screen_number', 0),
+                item.get('original_screen_number', 0)
+            )
+        )
+
+        medical_keys = sorted({
+            key
+            for item in medical_values
+            for key in (item.get('medical_values') or {}).keys()
+        })
+        corrected_keys = sorted({
+            key
+            for item in medical_values
+            for key in (item.get('corrected_medical_values') or {}).keys()
+        })
+        final_keys = sorted(set(medical_keys) | set(corrected_keys))
+
+        output = io.StringIO()
+        writer = csv.writer(output)
+
+        header = [
+            'session_id',
+            'time_seconds',
+            'analyzed_at',
+            'screen_number',
+            'original_screen_number',
+            'model',
+            'corrected_model',
+            'llm_model',
+            'has_glare',
+            'has_occlusion',
+        ]
+        if mode == 'raw':
+            header.extend([f'medical_{key}' for key in medical_keys])
+        elif mode == 'corrected':
+            header.extend([f'final_{key}' for key in final_keys])
+        else:
+            header.extend([f'medical_{key}' for key in medical_keys])
+            header.extend([f'corrected_{key}' for key in corrected_keys])
+        writer.writerow(header)
+
+        for item in medical_values:
+            analyzed_at = item.get('analyzed_at')
+            row = [
+                session_id,
+                item.get('minute', ''),
+                analyzed_at.isoformat() if analyzed_at else '',
+                item.get('screen_number', ''),
+                item.get('original_screen_number', ''),
+                item.get('model', ''),
+                item.get('corrected_model', ''),
+                item.get('llm_model', ''),
+                item.get('has_glare', False),
+                item.get('has_occlusion', False),
+            ]
+
+            item_medical_values = item.get('medical_values') or {}
+            item_corrected_values = item.get('corrected_medical_values') or {}
+
+            if mode == 'raw':
+                row.extend([item_medical_values.get(key, '') for key in medical_keys])
+            elif mode == 'corrected':
+                row.extend([
+                    item_corrected_values.get(key)
+                    if item_corrected_values.get(key) not in (None, '')
+                    else item_medical_values.get(key, '')
+                    for key in final_keys
+                ])
+            else:
+                row.extend([item_medical_values.get(key, '') for key in medical_keys])
+                row.extend([item_corrected_values.get(key, '') for key in corrected_keys])
+            writer.writerow(row)
+
+        model_label = (query_model or 'all_models').replace('/', '_')
+        filename = f'medical_values_{session_id}_{model_label}_{mode}.csv'
+
+        return Response(
+            output.getvalue().encode('utf-8-sig'),
+            mimetype='text/csv; charset=utf-8',
+            headers={'Content-Disposition': f'attachment; filename="{filename}"'}
+        )
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 

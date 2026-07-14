@@ -286,6 +286,36 @@
         height: 400px;
     }
 
+    .histogram-timeline-controls {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        flex-wrap: wrap;
+        margin-bottom: 16px;
+        padding: 12px;
+        background: #f8fbff;
+        border: 1px solid #dbeafe;
+        border-radius: 8px;
+    }
+
+    .histogram-timeline-controls label {
+        font-size: 0.9em;
+        font-weight: 600;
+        color: #334155;
+    }
+
+    .histogram-timeline-controls input[type="range"] {
+        min-width: 260px;
+        flex: 1;
+    }
+
+    .timeline-range-label {
+        font-size: 0.9em;
+        color: #1e3a8a;
+        font-weight: 600;
+        min-width: 170px;
+    }
+
     .loading-state {
         text-align: center;
         padding: 60px 20px;
@@ -361,6 +391,15 @@
 
         .histogram-grid {
             grid-template-columns: 1fr;
+        }
+
+        .histogram-timeline-controls {
+            flex-direction: column;
+            align-items: stretch;
+        }
+
+        .timeline-range-label {
+            min-width: auto;
         }
     }
 
@@ -511,6 +550,15 @@
         <button id="btnAnalyzeMissing" onclick="analyzeMissingFrames()" class="btn-resend" style="display: none; background: #e3f2fd; border-color: #90caf9; color: #1976d2; padding: 8px 15px;">
             ▶️ 使用此模型分析所有未分析的畫面
         </button>
+        <div style="display: inline-flex; align-items: center; gap: 8px; flex-wrap: nowrap;">
+            <select id="exportModeSelect" style="padding: 8px 12px; border-radius: 6px; border: 1px solid #ccc; font-size: 0.95em;">
+                <option value="raw">匯出原始數據</option>
+                <option value="corrected">匯出訂正後數據</option>
+            </select>
+            <button type="button" onclick="exportCurrentSessionMedicalValues()" class="btn-resend" style="background: #fff8e1; border-color: #ffe082; color: #ef6c00; padding: 8px 15px; margin: 0;">
+                ⬇️ 匯出此筆醫療數據 CSV
+            </button>
+        </div>
     </div>
 
     <div id="detailsAlertBanner" class="hidden" role="alert"></div>
@@ -551,6 +599,18 @@
     <div id="hoverChartContainer" style="position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 92%; max-width: 1400px; height: 500px; background: white; box-shadow: 0 15px 50px rgba(0,0,0,0.4); border-radius: 12px; padding: 25px; border: 1px solid #ddd;">
         <span class="close" id="hoverChartCloseBtn" style="position: absolute; top: 15px; right: 20px; cursor: pointer;">&times;</span>
         <h3 id="hoverChartTitle" style="margin-top: 0; font-size: 1.4em; color: #333; border-bottom: 2px solid #f0f0f0; padding-bottom: 10px;"></h3>
+        <div id="histogramTimelineControls" class="histogram-timeline-controls" style="display: none; margin-bottom: 10px;">
+            <label for="histogramWindowSizeSelect">顯示點數</label>
+            <select id="histogramWindowSizeSelect" onchange="onHistogramWindowSizeChange()" style="padding: 6px 10px; border-radius: 6px; border: 1px solid #cbd5e1;">
+                <option value="30">30</option>
+                <option value="60" selected>60</option>
+                <option value="120">120</option>
+                <option value="300">300</option>
+            </select>
+            <label for="histogramTimelineSlider">時間軸</label>
+            <input id="histogramTimelineSlider" type="range" min="0" max="0" value="0" step="1" oninput="onHistogramTimelineChange()">
+            <span id="histogramTimelineRangeLabel" class="timeline-range-label">顯示區間：-</span>
+        </div>
         <div style="height: 380px; width: 100%;">
             <canvas id="hoverChartCanvas"></canvas>
         </div>
@@ -611,6 +671,9 @@
     ];
     let availableModels = [...OPENROUTER_MODELS, ...LOCAL_MODELS];
     let currentModel = 'openai/gpt-5.4';
+    let histogramWindowSize = 60;
+    let histogramWindowStart = 0;
+    let currentHoverValueType = null;
 
     function providerForModel(model) {
         return LOCAL_MODELS.includes(model) ? 'local' : 'openrouter';
@@ -831,6 +894,18 @@
         await loadMedicalValues(sessionId, currentModel);
     }
 
+    function exportCurrentSessionMedicalValues() {
+        if (!sessionId) {
+            alert('缺少 Session ID，無法匯出');
+            return;
+        }
+
+        const model = document.getElementById('globalModelSelect').value || '';
+        const mode = document.getElementById('exportModeSelect').value || 'raw';
+        const exportUrl = `./api/mongodb/export/medical_values/${encodeURIComponent(sessionId)}?model=${encodeURIComponent(model)}&mode=${encodeURIComponent(mode)}`;
+        window.location.href = exportUrl;
+    }
+
     // 載入醫療數值
     async function loadMedicalValues(sessionId, model) {
         try {
@@ -892,6 +967,9 @@
                 displayMedicalValues(medicalValuesData);
                 updateCorrectionStats(medicalValuesData);
                 loadDeviceErrorRateStats(sessionId); // 新增：載入設備錯誤率統計
+                if (document.getElementById('showHistogram').checked) {
+                    generateHistograms(true);
+                }
                 
                 // 隱藏載入狀態,顯示內容
                 document.getElementById('contentArea').style.display = 'none';
@@ -927,6 +1005,7 @@
                 document.getElementById('contentArea').style.display = 'block';
                 document.getElementById('medicalValuesContainer').style.display = 'none';
                 document.getElementById('btnAnalyzeMissing').style.display = 'inline-block';
+                document.getElementById('histogramTimelineControls').style.display = 'none';
                 updateCorrectionStats([]);
             }
         } catch (error) {
@@ -1523,6 +1602,93 @@
         }
     }
 
+    function getHistogramValueTypes() {
+        const valueTypes = new Set();
+        medicalValuesData.forEach(item => {
+            Object.keys(item.medical_values || {}).forEach(key => valueTypes.add(key));
+        });
+        return [...valueTypes];
+    }
+
+    function getSortedTimelineBuckets() {
+        const timeGroups = new Map();
+        medicalValuesData.forEach(item => {
+            const key = item.time_seconds;
+            if (!timeGroups.has(key)) {
+                timeGroups.set(key, []);
+            }
+            timeGroups.get(key).push(item);
+        });
+
+        return [...timeGroups.entries()].sort(
+            (a, b) => getChartSortTime(a[1]) - getChartSortTime(b[1])
+        );
+    }
+
+    function updateHistogramTimelineControls(resetStart = false) {
+        const controls = document.getElementById('histogramTimelineControls');
+        const slider = document.getElementById('histogramTimelineSlider');
+        const rangeLabel = document.getElementById('histogramTimelineRangeLabel');
+        const windowSizeSelect = document.getElementById('histogramWindowSizeSelect');
+        const totalPoints = getSortedTimelineBuckets().length;
+
+        if (totalPoints === 0) {
+            controls.style.display = 'none';
+            return;
+        }
+
+        controls.style.display = 'flex';
+        histogramWindowSize = parseInt(windowSizeSelect.value, 10) || 60;
+        histogramWindowSize = Math.min(histogramWindowSize, totalPoints);
+
+        if (resetStart) {
+            histogramWindowStart = 0;
+        }
+
+        const maxStart = Math.max(totalPoints - histogramWindowSize, 0);
+        histogramWindowStart = Math.min(histogramWindowStart, maxStart);
+
+        slider.max = String(maxStart);
+        slider.value = String(histogramWindowStart);
+        slider.disabled = maxStart === 0;
+
+        const startIndex = histogramWindowStart + 1;
+        const endIndex = Math.min(histogramWindowStart + histogramWindowSize, totalPoints);
+        rangeLabel.textContent = `顯示區間：${startIndex}-${endIndex} / ${totalPoints}`;
+    }
+
+    function getVisibleDataPoints(dataPoints) {
+        if (!Array.isArray(dataPoints) || dataPoints.length === 0) {
+            return [];
+        }
+
+        if (dataPoints.length <= histogramWindowSize) {
+            return dataPoints;
+        }
+
+        const maxStart = Math.max(dataPoints.length - histogramWindowSize, 0);
+        const safeStart = Math.min(histogramWindowStart, maxStart);
+        return dataPoints.slice(safeStart, safeStart + histogramWindowSize);
+    }
+
+    function onHistogramTimelineChange() {
+        const slider = document.getElementById('histogramTimelineSlider');
+        histogramWindowStart = parseInt(slider.value, 10) || 0;
+        updateHistogramTimelineControls(false);
+        generateHistograms(false);
+        if (currentHoverValueType) {
+            showHoverChart(currentHoverValueType);
+        }
+    }
+
+    function onHistogramWindowSizeChange() {
+        updateHistogramTimelineControls(false);
+        generateHistograms(false);
+        if (currentHoverValueType) {
+            showHoverChart(currentHoverValueType);
+        }
+    }
+
     // 切換 histogram 顯示
     function toggleHistograms() {
         const checkbox = document.getElementById('showHistogram');
@@ -1531,7 +1697,7 @@
         if (checkbox.checked) {
             // 只在第一次或圖表被清除後才生成
             if (Object.keys(chartInstances).length === 0) {
-                generateHistograms();
+                generateHistograms(true);
             }
             section.classList.add('visible');
         } else {
@@ -1567,8 +1733,9 @@
     }
 
     // 生成 histograms
-    function generateHistograms() {
+    function generateHistograms(resetTimeline = false) {
         const grid = document.getElementById('histogramGrid');
+        updateHistogramTimelineControls(resetTimeline);
         
         // 清除舊的圖表實例
         Object.values(chartInstances).forEach(chart => {
@@ -1580,11 +1747,7 @@
         
         grid.innerHTML = '';
         
-        // 收集所有不同的醫療數值類型
-        const valueTypes = new Set();
-        medicalValuesData.forEach(item => {
-            Object.keys(item.medical_values).forEach(key => valueTypes.add(key));
-        });
+        const valueTypes = getHistogramValueTypes();
         
         // 為每種數值類型生成 histogram
         valueTypes.forEach((valueType, index) => {
@@ -1625,11 +1788,18 @@
         const overlay = document.getElementById('hoverChartOverlay');
         const canvas = document.getElementById('hoverChartCanvas');
         const title = document.getElementById('hoverChartTitle');
+        currentHoverValueType = valueType;
         
         overlay.style.display = 'block';
-        title.innerHTML = `🔍 詳細趨勢：<strong>${valueType}</strong>`;
+        const totalPoints = getSortedTimelineBuckets().length;
+        const startIndex = histogramWindowStart + 1;
+        const endIndex = Math.min(histogramWindowStart + histogramWindowSize, totalPoints);
+        title.innerHTML = `🔍 詳細趨勢：<strong>${valueType}</strong> <span style="font-size:0.8em;color:#64748b;">(${startIndex}-${endIndex} / ${totalPoints})</span>`;
         
-        const dataPoints = prepareChartData(valueType);
+        const dataPoints = getVisibleDataPoints(prepareChartData(valueType));
+        if (dataPoints.length === 0) {
+            return;
+        }
         
         if (hoverChartInstance) {
             hoverChartInstance.destroy();
@@ -1696,6 +1866,7 @@
 
     function hideHoverChart() {
         document.getElementById('hoverChartOverlay').style.display = 'none';
+        currentHoverValueType = null;
         if (hoverChartInstance) {
             hoverChartInstance.destroy();
             hoverChartInstance = null;
@@ -1733,20 +1904,7 @@
     // 準備圖表資料
     function prepareChartData(valueType) {
         const dataPoints = [];
-        
-        // 1. 依時間點分組（有 analyzed_at 時以真實時間排序）
-        const timeGroups = new Map();
-        medicalValuesData.forEach(item => {
-            const key = item.time_seconds;
-            if (!timeGroups.has(key)) {
-                timeGroups.set(key, []);
-            }
-            timeGroups.get(key).push(item);
-        });
-
-        const sortedTimeBuckets = [...timeGroups.entries()].sort(
-            (a, b) => getChartSortTime(a[1]) - getChartSortTime(b[1])
-        );
+        const sortedTimeBuckets = getSortedTimelineBuckets();
         
         sortedTimeBuckets.forEach(([t, itemsAtTime]) => {
             const refItem = itemsAtTime.find(item => item.analyzed_at) || itemsAtTime[0];
@@ -1796,6 +1954,8 @@
             console.error('Canvas element not found:', canvasId);
             return;
         }
+
+        const visiblePoints = getVisibleDataPoints(dataPoints);
         
         // 檢查是否已經存在圖表實例，如果存在則先銷毀
         if (chartInstances[canvasId]) {
@@ -1804,17 +1964,17 @@
         }
         
         // 設定顏色：AI 辨識錯誤 (有訂正過) 的顯示紅色，正常的顯示藍色
-        const backgroundColors = dataPoints.map(d => d.isCorrected ? 'rgba(211, 47, 47, 0.7)' : 'rgba(79, 172, 254, 0.6)');
-        const borderColors = dataPoints.map(d => d.isCorrected ? 'rgba(211, 47, 47, 1)' : 'rgba(79, 172, 254, 1)');
+        const backgroundColors = visiblePoints.map(d => d.isCorrected ? 'rgba(211, 47, 47, 0.7)' : 'rgba(79, 172, 254, 0.6)');
+        const borderColors = visiblePoints.map(d => d.isCorrected ? 'rgba(211, 47, 47, 1)' : 'rgba(79, 172, 254, 1)');
         
         // 儲存圖表實例以便後續管理
         chartInstances[canvasId] = new Chart(ctx, {
             type: 'bar',
             data: {
-                labels: dataPoints.map(d => d.time),
+                labels: visiblePoints.map(d => d.time),
                 datasets: [{
                     label: valueType,
-                    data: dataPoints.map(d => d.value),
+                    data: visiblePoints.map(d => d.value),
                     backgroundColor: backgroundColors,
                     borderColor: borderColors,
                     borderWidth: 1,
@@ -1845,7 +2005,7 @@
                         },
                         callbacks: {
                             label: function(context) {
-                                const dataItem = dataPoints[context.dataIndex];
+                                const dataItem = visiblePoints[context.dataIndex];
                                 let labels = [`AI 辨識值: ${context.parsed.y}`];
                                 if (dataItem.isCorrected) {
                                     labels.push(`❌ 此值錯誤，正確值應為: ${dataItem.correctedValue}`);
