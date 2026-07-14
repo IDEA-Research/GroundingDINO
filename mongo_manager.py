@@ -887,6 +887,110 @@ security:
             print(f"❌ 更新名稱失敗: {e}")
             return False
 
+    def _normalize_analysis_file_path(self, path_value):
+        """正規化並限制只允許刪除 video_screen_analysis 目錄內檔案"""
+        if not isinstance(path_value, str) or not path_value.strip():
+            return None
+
+        analysis_root = Path("video_screen_analysis").resolve()
+        candidate = Path(path_value.strip())
+        if not candidate.is_absolute():
+            candidate = (Path(".") / candidate).resolve()
+        else:
+            candidate = candidate.resolve()
+
+        try:
+            candidate.relative_to(analysis_root)
+        except ValueError:
+            return None
+        return candidate
+
+    def _remove_empty_analysis_dirs(self, start_dir):
+        """從葉節點往上刪除空資料夾，最多到 video_screen_analysis"""
+        analysis_root = Path("video_screen_analysis").resolve()
+        current = start_dir
+
+        while True:
+            try:
+                current.relative_to(analysis_root)
+            except ValueError:
+                break
+
+            if current == analysis_root:
+                break
+
+            try:
+                current.rmdir()
+            except OSError:
+                break
+            current = current.parent
+
+    def _delete_analysis_files(self, file_paths):
+        """刪除分析圖像檔，忽略不存在檔案並清理空資料夾"""
+        deleted_files = 0
+        skipped_paths = 0
+        failed_files = 0
+        touched_dirs = set()
+
+        for raw_path in file_paths:
+            normalized = self._normalize_analysis_file_path(raw_path)
+            if normalized is None:
+                skipped_paths += 1
+                continue
+
+            touched_dirs.add(normalized.parent)
+            if not normalized.exists():
+                continue
+            if not normalized.is_file():
+                skipped_paths += 1
+                continue
+
+            try:
+                normalized.unlink()
+                deleted_files += 1
+            except Exception as e:
+                failed_files += 1
+                print(f"⚠️ 刪除圖像檔失敗: {normalized} ({e})")
+
+        for folder in sorted(touched_dirs, key=lambda p: len(p.parts), reverse=True):
+            self._remove_empty_analysis_dirs(folder)
+
+        return {
+            "deleted_files": deleted_files,
+            "skipped_paths": skipped_paths,
+            "failed_files": failed_files
+        }
+
+    def _delete_stream_analysis_dir(self, session_id):
+        """刪除指定 session 的串流分析目錄，清除可能殘留的孤兒檔"""
+        if not isinstance(session_id, str) or len(session_id) < 8:
+            return {"removed": False, "reason": "invalid_session_id"}
+
+        analysis_root = Path("video_screen_analysis").resolve()
+        stream_dir_name = f"stream_{session_id[:8]}"
+        target_dir = (analysis_root / stream_dir_name).resolve()
+
+        # 僅允許刪除 video_screen_analysis 下、且名稱符合 stream_<id8> 的目錄
+        try:
+            target_dir.relative_to(analysis_root)
+        except ValueError:
+            return {"removed": False, "reason": "out_of_scope"}
+
+        if target_dir.name != stream_dir_name:
+            return {"removed": False, "reason": "name_mismatch"}
+
+        if not target_dir.exists():
+            return {"removed": False, "reason": "not_found"}
+        if not target_dir.is_dir():
+            return {"removed": False, "reason": "not_a_directory"}
+
+        try:
+            shutil.rmtree(target_dir)
+            return {"removed": True, "reason": "removed"}
+        except Exception as e:
+            print(f"⚠️ 刪除串流分析目錄失敗: {target_dir} ({e})")
+            return {"removed": False, "reason": "failed"}
+
     def delete_video_record(self, session_id):
         """刪除影片記錄及其相關資料"""
         if self.db is None:
@@ -898,13 +1002,35 @@ security:
                 return False
             
             video_id = video["_id"]
+            is_stream_source = (
+                video.get("source") == "stream" or
+                str(video.get("video_path", "")).startswith(("RTSP:", "Camera:"))
+            )
             
             # 2. 找到所有相關的 frame_results
             frames = list(self.db.frame_results.find({"video_analysis_id": video_id}))
             frame_ids = [f["_id"] for f in frames]
+
+            # 2.1 收集待刪除圖像路徑（在刪 DB 前先收集）
+            file_paths = set()
+            for frame in frames:
+                frame_path = frame.get("original_image_path")
+                if frame_path:
+                    file_paths.add(frame_path)
             
             # 3. 刪除相關的 screen_analysis (如果有)
             if frame_ids:
+                screens = list(self.db.screen_analysis.find(
+                    {"frame_result_id": {"$in": frame_ids}},
+                    {"screen_image_path": 1, "screen_image_path_for_vlm": 1}
+                ))
+                for screen in screens:
+                    screen_path = screen.get("screen_image_path")
+                    screen_path_for_vlm = screen.get("screen_image_path_for_vlm")
+                    if screen_path:
+                        file_paths.add(screen_path)
+                    if screen_path_for_vlm:
+                        file_paths.add(screen_path_for_vlm)
                 self.db.screen_analysis.delete_many({"frame_result_id": {"$in": frame_ids}})
             
             # 4. 刪除 frame_results
@@ -912,8 +1038,21 @@ security:
             
             # 5. 刪除 video_analysis 主記錄
             self.db.video_analysis.delete_one({"_id": video_id})
+
+            # 6. 刪除檔案系統中的相關圖像檔
+            file_cleanup = self._delete_analysis_files(file_paths)
+
+            # 7. 若為串流來源，額外刪除 stream_<session前8碼> 目錄以清理孤兒檔
+            stream_dir_cleanup = {"removed": False, "reason": "not_stream_source"}
+            if is_stream_source:
+                stream_dir_cleanup = self._delete_stream_analysis_dir(session_id)
             
-            print(f"🗑️ 已刪除 Session ID: {session_id} 的所有相關資料")
+            print(
+                f"🗑️ 已刪除 Session ID: {session_id} 的所有相關資料 "
+                f"(圖像檔刪除 {file_cleanup['deleted_files']}、"
+                f"跳過 {file_cleanup['skipped_paths']}、失敗 {file_cleanup['failed_files']}；"
+                f"串流目錄清理: {stream_dir_cleanup['reason']})"
+            )
             return True
         except Exception as e:
             print(f"❌ 刪除資料失敗: {e}")
