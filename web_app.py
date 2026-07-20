@@ -46,8 +46,10 @@ import csv
 import io
 import time
 import threading
+import re
 from datetime import datetime
 from pathlib import Path
+from urllib.parse import quote
 from flask import Flask, render_template, request, jsonify, send_file, Response, send_from_directory
 from werkzeug.utils import secure_filename
 import uuid
@@ -117,6 +119,16 @@ processing_status = {
     'llm_last_error': None,
     'session_id': None
 }
+
+
+def sanitize_export_filename_component(name, fallback='unknown'):
+    """清理可作為檔名片段的字串，避免非法字元造成下載失敗。"""
+    text = str(name or '').strip()
+    if not text:
+        text = fallback
+    text = re.sub(r'[\\/:*?"<>|]+', '_', text)
+    text = re.sub(r'\s+', ' ', text).strip(' .')
+    return text or fallback
 
 
 def summarize_results_llm_stats(results):
@@ -924,13 +936,40 @@ def export_mongodb_medical_values(session_id):
                 row.extend([item_corrected_values.get(key, '') for key in corrected_keys])
             writer.writerow(row)
 
-        model_label = (query_model or 'all_models').replace('/', '_')
-        filename = f'medical_values_{session_id}_{model_label}_{mode}.csv'
+        # 檔名優先使用任務名稱；若無任務名稱，回退使用 session_id
+        task_name = None
+        if mongo_manager and mongo_manager.db is not None:
+            try:
+                video_analysis = mongo_manager.db.video_analysis.find_one(
+                    {"session_id": session_id},
+                    {"task_name": 1, "_id": 0}
+                )
+                if video_analysis:
+                    task_name = video_analysis.get('task_name')
+            except Exception as e:
+                print(f"⚠️ 取得匯出檔名 task_name 失敗，改用 session_id: {e}")
+
+        session_label = sanitize_export_filename_component(session_id, fallback='session')
+        if task_name and str(task_name).strip():
+            task_label = sanitize_export_filename_component(task_name, fallback=session_label)
+            base_name = f'{task_label}_{session_label}'
+        else:
+            base_name = session_label
+        model_label = sanitize_export_filename_component(
+            (query_model or 'all_models').replace('/', '_'),
+            fallback='all_models'
+        )
+        utf8_filename = f'{base_name}_{model_label}_{mode}.csv'
+        ascii_filename = secure_filename(utf8_filename) or f'{session_id}_{mode}.csv'
+        content_disposition = (
+            f'attachment; filename="{ascii_filename}"; '
+            f"filename*=UTF-8''{quote(utf8_filename)}"
+        )
 
         return Response(
             output.getvalue().encode('utf-8-sig'),
             mimetype='text/csv; charset=utf-8',
-            headers={'Content-Disposition': f'attachment; filename="{filename}"'}
+            headers={'Content-Disposition': content_disposition}
         )
     except Exception as e:
         return jsonify({'error': str(e)}), 500
