@@ -121,6 +121,17 @@ processing_status = {
 }
 
 
+def parse_env_bool(name, default=False):
+    """解析環境變數布林值。"""
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    return str(raw).strip().lower() in ('1', 'true', 'yes', 'on')
+
+
+AUTO_DELETE_UPLOADED_VIDEO = parse_env_bool('AUTO_DELETE_UPLOADED_VIDEO', default=True)
+
+
 def sanitize_export_filename_component(name, fallback='unknown'):
     """清理可作為檔名片段的字串，避免非法字元造成下載失敗。"""
     text = str(name or '').strip()
@@ -146,6 +157,30 @@ def summarize_results_llm_stats(results):
                 if analysis.get('error'):
                     last_error = analysis['error']
     return failed, success, last_error
+
+
+def safe_delete_uploaded_video(video_path):
+    """只允許刪除 uploads 目錄下的原始影片，避免誤刪。"""
+    if not video_path:
+        return {'deleted': False, 'reason': 'empty_path'}
+
+    uploads_root = Path(app.config['UPLOAD_FOLDER']).resolve()
+    target = Path(video_path).resolve()
+
+    if uploads_root not in target.parents:
+        return {'deleted': False, 'reason': 'outside_uploads'}
+
+    if not target.exists():
+        return {'deleted': True, 'reason': 'already_missing'}
+
+    if not target.is_file():
+        return {'deleted': False, 'reason': 'not_a_file'}
+
+    try:
+        target.unlink()
+        return {'deleted': True, 'reason': 'deleted'}
+    except Exception as e:
+        return {'deleted': False, 'reason': f'failed: {e}'}
 
 # 儲存處理結果
 video_results = {}
@@ -221,6 +256,7 @@ class WebVideoProcessor:
         processing_status['llm_success_count'] = 0
         processing_status['llm_last_error'] = None
         processing_status['results'] = []
+        stopped_by_user = False
         
         try:
             # 載入模型
@@ -250,6 +286,7 @@ class WebVideoProcessor:
             
             for interval in range(total_intervals):
                 if not processing_status['is_processing']:
+                    stopped_by_user = True
                     break
                     
                 time_seconds = interval * self.frame_interval_seconds
@@ -309,6 +346,14 @@ class WebVideoProcessor:
                     print(f"📊 結果已同步到 MongoDB: {video_analysis_id}")
                 except Exception as e:
                     print(f"⚠️  MongoDB 儲存失敗: {e}")
+
+            # 分析完成後可自動刪除 uploads 原始影片（僅手動上傳來源）
+            if AUTO_DELETE_UPLOADED_VIDEO and not stopped_by_user:
+                cleanup_result = safe_delete_uploaded_video(video_path)
+                if cleanup_result['deleted']:
+                    print(f"🗑️ 已自動清理上傳原始影片: {video_path} ({cleanup_result['reason']})")
+                else:
+                    print(f"⚠️ 自動清理上傳原始影片失敗/跳過: {video_path} ({cleanup_result['reason']})")
             
             video_results[session_id] = {
                 'video_name': video_name,
@@ -462,20 +507,37 @@ def start_stream_monitor():
     if not mongo_manager:
         return jsonify({'error': 'MongoDB 未啟用，無法啟動串流監測'}), 503
 
-    data = request.get_json()
+    data = request.get_json() or {}
     rtsp_url = data.get('rtsp_url')
     camera_name = data.get('camera_name')
     api_key = data.get('api_key')
     provider = data.get('provider')
     model = data.get('model')
     task_name = data.get('task_name')
+    
+    # 僅接受 1~60 分鐘的整數間隔（後端強制驗證，避免前端被繞過）
+    raw_interval_minutes = data.get('capture_interval_minutes')
+    raw_interval_seconds = data.get('interval') or data.get('capture_interval_seconds')
+    capture_interval_minutes = None
 
-    # 讀取擷取間隔，預設為 60 秒
-    capture_interval = data.get('interval') or data.get('capture_interval_seconds') or 60
-    try:
-        capture_interval = int(capture_interval)
-    except (ValueError, TypeError):
-        capture_interval = 60
+    if raw_interval_minutes is not None:
+        try:
+            capture_interval_minutes = int(raw_interval_minutes)
+        except (ValueError, TypeError):
+            return jsonify({'error': '分析間隔格式錯誤，請輸入 1~60 的整數分鐘'}), 400
+    else:
+        try:
+            capture_interval_seconds = int(raw_interval_seconds) if raw_interval_seconds is not None else 60
+        except (ValueError, TypeError):
+            return jsonify({'error': '分析間隔格式錯誤，請輸入 1~60 的整數分鐘'}), 400
+        if capture_interval_seconds <= 0 or capture_interval_seconds % 60 != 0:
+            return jsonify({'error': '分析間隔必須是整數分鐘（1~60）'}), 400
+        capture_interval_minutes = capture_interval_seconds // 60
+
+    if capture_interval_minutes < 1 or capture_interval_minutes > 60:
+        return jsonify({'error': '分析間隔必須介於 1 到 60 分鐘'}), 400
+
+    capture_interval = capture_interval_minutes * 60
 
     provider, api_key, base_url, cred_error = resolve_llm_credentials(
         provider, model, api_key
@@ -512,7 +574,15 @@ def start_stream_monitor():
             )
             
             # 儲存串流會話到 MongoDB
-            mongo_manager.save_stream_session(session_id, camera_name, rtsp_url, llm_model=model, task_name=task_name)
+            mongo_manager.save_stream_session(
+                session_id,
+                camera_name,
+                rtsp_url,
+                llm_model=model,
+                task_name=task_name,
+                capture_interval_seconds=capture_interval,
+                capture_interval_minutes=capture_interval_minutes
+            )
             mongo_manager.update_stream_session_status(session_id, "active")
 
             # 啟動背景串流捕獲線程
@@ -668,16 +738,23 @@ def save_stream_template():
     if not mongo_manager:
         return jsonify({'error': 'MongoDB 未啟用'}), 503
     try:
-        data = request.get_json()
+        data = request.get_json() or {}
         template_id = data.get('template_id')
         camera_name = data.get('camera_name')
         rtsp_url = data.get('rtsp_url')
         provider = data.get('provider')
         model = data.get('model')
         api_key = data.get('api_key')
+        capture_interval_minutes = data.get('capture_interval_minutes', 1)
 
         if not template_id or not camera_name or not rtsp_url:
             return jsonify({'error': '缺少必要欄位 (範本名稱、攝影機名稱或 RTSP URL)'}), 400
+        try:
+            capture_interval_minutes = int(capture_interval_minutes)
+        except (ValueError, TypeError):
+            return jsonify({'error': '分析間隔格式錯誤，請輸入 1~60 的整數分鐘'}), 400
+        if capture_interval_minutes < 1 or capture_interval_minutes > 60:
+            return jsonify({'error': '分析間隔必須介於 1 到 60 分鐘'}), 400
 
         success = mongo_manager.save_camera_template(
             template_id=template_id,
@@ -685,7 +762,8 @@ def save_stream_template():
             rtsp_url=rtsp_url,
             provider=provider,
             model=model,
-            api_key=api_key
+            api_key=api_key,
+            capture_interval_minutes=capture_interval_minutes
         )
         if success:
             return jsonify({'success': True, 'message': '範本儲存成功'}), 200
