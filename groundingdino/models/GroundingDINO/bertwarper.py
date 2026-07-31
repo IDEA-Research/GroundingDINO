@@ -26,7 +26,13 @@ class BertModelWarper(nn.Module):
 
         self.get_extended_attention_mask = bert_model.get_extended_attention_mask
         self.invert_attention_mask = bert_model.invert_attention_mask
-        self.get_head_mask = bert_model.get_head_mask
+        # Check if the attribute exists; if not, set it to a dummy function or None
+        if hasattr(bert_model, "get_head_mask"):
+           self.get_head_mask = bert_model.get_head_mask
+        else:
+           # Newer transformers versions might not have this, 
+           # but GroundingDINO's forward pass might call it.
+           self.get_head_mask = lambda x, y: None
 
     def forward(
         self,
@@ -106,8 +112,11 @@ class BertModelWarper(nn.Module):
 
         # We can provide a self-attention mask of dimensions [batch_size, from_seq_length, to_seq_length]
         # ourselves in which case we just need to make it broadcastable to all heads.
+        # Pass the dtype of the model weights instead of the device object
+        model_dtype = next(self.parameters()).dtype
+        
         extended_attention_mask: torch.Tensor = self.get_extended_attention_mask(
-            attention_mask, input_shape, device
+            attention_mask, input_shape, model_dtype
         )
 
         # If a 2D or 3D attention mask is provided for the cross-attention
