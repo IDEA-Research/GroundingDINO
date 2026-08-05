@@ -1,0 +1,35 @@
+# Python
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+
+# Node / Next.js
+node_modules/
+frontend/.next/
+frontend/out/
+
+# Secrets — NEVER commit
+.env
+.env.local
+.env.*.local
+!.env.example
+
+# Storage — runtime artifacts, not source
+backend/app/storage/dashboards/*.json
+backend/app/storage/tickets/*.json
+backend/app/storage/evaluation_reports/*.json
+backend/app/storage/evaluation_reports/screenshots/
+backend/app/storage/saved_dashboards/*.json
+backend/app/storage/retry_logs/*.json
+
+# Keep the directories themselves
+!backend/app/storage/dashboards/.gitkeep
+!backend/app/storage/tickets/.gitkeep
+!backend/app/storage/evaluation_reports/.gitkeep
+!backend/app/storage/saved_dashboards/.gitkeep
+!backend/app/storage/retry_logs/.gitkeep
+
+# OS / editor
+.DS_Store
+*.swp

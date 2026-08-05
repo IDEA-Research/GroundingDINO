@@ -1,0 +1,717 @@
+{% extends "base.html" %}
+
+{% block title %}即時串流監測 - 影片螢幕數字抓取系統{% endblock %}
+
+{% block extra_styles %}
+<style>
+    :root {
+        --primary-color: #007bff;
+        --secondary-color: #6c757d;
+        --success-color: #28a745;
+        --danger-color: #dc3545;
+        --light-bg: #f8f9fa;
+        --card-shadow: 0 4px 12px rgba(0,0,0,0.08);
+        --card-radius: 12px;
+    }
+
+    .stream-container {
+        background: #f0f2f5;
+        border-radius: var(--card-radius);
+        padding: 30px;
+        min-height: 100vh;
+    }
+
+    .stream-toolbar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 16px;
+    }
+
+    .page-title {
+        font-weight: 700;
+        color: #1a1a1a;
+        margin: 0;
+        border-left: 5px solid var(--primary-color);
+        padding-left: 15px;
+    }
+
+    .stream-card {
+        background: white;
+        margin-bottom: 25px;
+        border: none;
+        border-radius: var(--card-radius);
+        padding: 25px;
+        box-shadow: var(--card-shadow);
+        transition: transform 0.2s ease, box-shadow 0.2s ease;
+        display: flex;
+        flex-direction: column;
+    }
+
+    .card-header-custom {
+        font-weight: 700;
+        font-size: 1.1rem;
+        color: #333;
+        border-bottom: 1px solid #eee;
+        padding-bottom: 15px;
+        margin-bottom: 20px;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        flex-shrink: 0;
+    }
+
+    .form-group {
+        margin-bottom: 25px;
+        position: relative;
+    }
+
+    .form-group label {
+        font-weight: 600;
+        color: #4a5568;
+        margin-bottom: 8px;
+        font-size: 0.85rem;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+
+    .form-control {
+        border-radius: 10px;
+        border: 1.5px solid #e2e8f0;
+        padding: 12px 15px;
+        font-size: 0.95rem;
+        transition: all 0.2s ease;
+        background-color: #fff;
+        width: 100%;
+    }
+
+    .form-control:hover {
+        border-color: #cbd5e0;
+    }
+
+    .form-control:focus {
+        border-color: var(--primary-color);
+        box-shadow: 0 0 0 4px rgba(0,123,255,0.1);
+        background-color: #fff;
+        outline: none;
+    }
+
+    /* 修正驗證訊息導致的排版混亂 */
+    .invalid-feedback {
+        position: absolute;
+        bottom: -20px;
+        left: 5px;
+        font-size: 0.75rem;
+        font-weight: 500;
+        color: var(--danger-color);
+        margin-top: 0;
+        display: none;
+    }
+
+    .form-control.is-invalid {
+        border-color: var(--danger-color);
+        background-image: none;
+    }
+
+    .form-control.is-invalid ~ .invalid-feedback {
+        display: block;
+    }
+
+    .btn-primary-custom {
+        background: linear-gradient(135deg, #007bff 0%, #0056b3 100%);
+        color: white;
+        border: none;
+        padding: 14px 25px;
+        border-radius: 10px;
+        font-weight: 700;
+        width: 100%;
+        transition: all 0.3s ease;
+        margin-top: 10px;
+        box-shadow: 0 4px 12px rgba(0,123,255,0.25);
+        letter-spacing: 1px;
+    }
+
+    .btn-primary-custom:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 6px 16px rgba(0,123,255,0.35);
+        opacity: 1;
+        color: white;
+    }
+
+    .btn-primary-custom:active {
+        transform: translateY(0);
+    }
+
+    .btn-save-custom {
+        background: linear-gradient(135deg, #28a745 0%, #218838 100%);
+        color: white;
+        border: none;
+        padding: 12px 20px;
+        border-radius: 10px;
+        font-weight: 700;
+        transition: all 0.3s ease;
+        box-shadow: 0 4px 12px rgba(40,167,69,0.25);
+        cursor: pointer;
+        white-space: nowrap;
+    }
+
+    .btn-save-custom:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 6px 16px rgba(40,167,69,0.35);
+        color: white;
+    }
+
+    .btn-save-custom:active {
+        transform: translateY(0);
+    }
+
+    .btn-delete-custom {
+        background: linear-gradient(135deg, #dc3545 0%, #c82333 100%);
+        color: white;
+        border: none;
+        padding: 12px 20px;
+        border-radius: 10px;
+        font-weight: 700;
+        transition: all 0.3s ease;
+        box-shadow: 0 4px 12px rgba(220,53,69,0.25);
+        cursor: pointer;
+        white-space: nowrap;
+    }
+
+    .btn-delete-custom:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 6px 16px rgba(220,53,69,0.35);
+        color: white;
+    }
+
+    .btn-delete-custom:active {
+        transform: translateY(0);
+    }
+
+    /* 最新分析結果面板（緊湊版） */
+    #latest-analysis-panel {
+        min-height: unset !important;
+        padding: 16px 20px !important;
+    }
+
+    #latest-analysis-content {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(380px, 1fr));
+        gap: 14px;
+        align-items: start;
+    }
+
+    .camera-analysis-group {
+        border: 1px solid #e2e8f0;
+        border-radius: 10px;
+        padding: 12px 14px;
+        background: #fafbfc;
+    }
+
+    .camera-analysis-group + .camera-analysis-group {
+        border-top: none; /* 由 grid gap 分隔，不用大邊框 */
+    }
+
+    .camera-analysis-title {
+        font-size: 0.9rem;
+        font-weight: 700;
+        color: var(--primary-color);
+        margin: 0 0 10px 0;
+        padding-bottom: 8px;
+        border-bottom: 1px solid #edf2f7;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+
+    .analysis-entry-compact {
+        padding: 10px 0;
+    }
+
+    .analysis-entry-compact + .analysis-entry-compact {
+        border-top: 1px dashed #e2e8f0;
+        margin-top: 8px;
+        padding-top: 10px;
+    }
+
+    .analysis-entry-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 8px;
+        margin-bottom: 8px;
+        flex-wrap: wrap;
+    }
+
+    .analysis-entry-header .badge-custom {
+        font-size: 0.7rem;
+        padding: 4px 8px;
+    }
+
+    .analysis-entry-time {
+        font-size: 0.68rem;
+        color: #718096;
+        white-space: nowrap;
+    }
+
+    .analysis-entry-body {
+        display: flex;
+        gap: 12px;
+        align-items: flex-start;
+    }
+
+    .analysis-entry-metrics {
+        flex: 1;
+        min-width: 0;
+    }
+
+    .analysis-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+        gap: 15px;
+        margin-top: 20px;
+    }
+
+    .analysis-grid-compact {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(72px, 1fr));
+        gap: 6px;
+        margin: 0;
+    }
+
+    .analysis-item {
+        background: #f8f9fa;
+        padding: 12px;
+        border-radius: 8px;
+        border: 1px solid #edf2f7;
+        text-align: center;
+    }
+
+    .analysis-grid-compact .analysis-item {
+        padding: 6px 4px;
+        border-radius: 6px;
+    }
+
+    .analysis-label {
+        font-size: 0.75rem;
+        color: #718096;
+        text-transform: uppercase;
+        letter-spacing: 0.025em;
+        margin-bottom: 4px;
+        display: block;
+    }
+
+    .analysis-grid-compact .analysis-label {
+        font-size: 0.6rem;
+        margin-bottom: 2px;
+        line-height: 1.2;
+        word-break: break-all;
+    }
+
+    .analysis-value {
+        font-size: 1.1rem;
+        font-weight: 700;
+        color: var(--primary-color);
+    }
+
+    .analysis-grid-compact .analysis-value {
+        font-size: 0.95rem;
+    }
+
+    .analysis-value.null {
+        color: #cbd5e0;
+        font-weight: 400;
+    }
+
+    .analysis-entry-thumb {
+        flex-shrink: 0;
+        width: 200px;
+        max-width: 38%;
+        text-align: center;
+    }
+
+    .latest-analysis-image {
+        max-width: 800px;
+        height: auto;
+        border-radius: 10px;
+        margin: 20px auto;
+        display: block;
+        border: 1px solid #e2e8f0;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+    }
+
+    .analysis-entry-thumb .latest-analysis-image {
+        max-width: 100%;
+        max-height: 140px;
+        width: auto;
+        height: auto;
+        margin: 0 auto;
+        object-fit: contain;
+        border-radius: 6px;
+        box-shadow: 0 2px 6px rgba(0,0,0,0.08);
+        cursor: zoom-in;
+    }
+
+    .analysis-thumb-link {
+        display: inline-block;
+        font-size: 0.65rem;
+        color: var(--primary-color);
+        margin-top: 4px;
+        text-decoration: none;
+    }
+
+    .analysis-thumb-link:hover {
+        text-decoration: underline;
+    }
+
+    .analysis-no-image-compact {
+        width: 100%;
+        height: 80px;
+        border: 1px dashed #cbd5e0;
+        border-radius: 6px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 0.7rem;
+        color: #a0aec0;
+        background: #fff;
+    }
+
+    @media (max-width: 576px) {
+        #latest-analysis-content {
+            grid-template-columns: 1fr;
+        }
+
+        .analysis-entry-body {
+            flex-direction: column;
+        }
+
+        .analysis-entry-thumb {
+            width: 100%;
+            max-width: 100%;
+        }
+
+        .analysis-entry-thumb .latest-analysis-image {
+            max-height: 160px;
+        }
+    }
+
+    .badge-custom {
+        padding: 6px 12px;
+        border-radius: 20px;
+        font-weight: 600;
+        font-size: 0.8rem;
+    }
+
+    .stream-info-item {
+        margin-bottom: 10px;
+        font-size: 0.9rem;
+    }
+
+    .stream-info-label {
+        color: #718096;
+        font-weight: 600;
+        width: 100px;
+        display: inline-block;
+    }
+
+    .stream-info-value {
+        color: #2d3748;
+        font-family: 'Monaco', 'Consolas', monospace;
+        background: #edf2f7;
+        padding: 2px 6px;
+        border-radius: 4px;
+    }
+
+    /* 響應式佈局 */
+    .row {
+        display: flex;
+        flex-wrap: wrap;
+        margin: 0 -15px;
+    }
+
+    .col-md-6 {
+        flex: 0 0 50%;
+        max-width: 50%;
+        padding: 0 15px;
+    }
+
+    .col-lg-4 {
+        flex: 0 0 33.333%;
+        max-width: 33.333%;
+        padding: 0 15px;
+    }
+
+    @media (max-width: 992px) {
+        .col-md-6 {
+            flex: 0 0 100%;
+            max-width: 100%;
+        }
+    }
+
+    .section-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin: 40px 0 20px 0;
+    }
+
+    .section-title {
+        font-weight: 700;
+        color: #333;
+        margin: 0;
+    }
+
+    .no-data-placeholder {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        height: 300px;
+        color: #a0aec0;
+    }
+
+    .no-data-icon {
+        font-size: 3rem;
+        margin-bottom: 15px;
+    }
+
+    .spinner {
+        border: 3px solid #f3f3f3;
+        border-top: 3px solid var(--primary-color);
+        border-radius: 50%;
+        width: 30px;
+        height: 30px;
+        animation: spin 1s linear infinite;
+        margin: 0 auto 15px;
+    }
+
+    @keyframes spin {
+        0% { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
+    }
+
+    .loading-placeholder-entry {
+        animation: pulse 2s infinite ease-in-out;
+    }
+
+    @keyframes pulse {
+        0% { opacity: 0.6; }
+        50% { opacity: 1; }
+        100% { opacity: 0.6; }
+    }
+
+    .global-settings-trigger {
+        width: 44px;
+        height: 44px;
+        border: 1px solid #dbe2ea;
+        border-radius: 10px;
+        background: #fff;
+        color: #334155;
+        font-size: 1.25rem;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+        cursor: pointer;
+        transition: all 0.2s ease;
+        z-index: 5;
+    }
+
+    .global-settings-trigger:hover {
+        transform: translateY(-1px);
+        border-color: #b9c7d6;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.12);
+    }
+
+    .global-settings-modal {
+        position: fixed;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.35);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 1100;
+        padding: 16px;
+    }
+
+    .global-settings-modal.d-none {
+        display: none !important;
+    }
+
+    .global-settings-card {
+        width: 100%;
+        max-width: 560px;
+        background: #fff;
+        border-radius: 12px;
+        box-shadow: 0 12px 28px rgba(0,0,0,0.2);
+        border: 1px solid #e2e8f0;
+        padding: 18px 18px 14px 18px;
+    }
+
+    .global-settings-title {
+        margin: 0 0 12px 0;
+        font-size: 1.05rem;
+        font-weight: 700;
+        color: #1f2937;
+    }
+
+    .global-settings-actions {
+        margin-top: 12px;
+        display: flex;
+        justify-content: flex-end;
+        gap: 8px;
+    }
+
+    .global-settings-actions .btn {
+        min-width: 90px;
+        border-radius: 8px;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="stream-container">
+    <div class="stream-toolbar">
+        <h2 class="page-title">即時串流監測與管理</h2>
+        <button type="button" id="global-interval-settings-btn" class="global-settings-trigger" title="全域分析間隔設定">⚙️</button>
+    </div>
+
+    <div id="global-interval-modal" class="global-settings-modal d-none" aria-hidden="true">
+        <div class="global-settings-card" role="dialog" aria-modal="true" aria-labelledby="global-settings-title">
+            <h3 id="global-settings-title" class="global-settings-title">⚙️ 全域分析間隔設定</h3>
+            <div class="form-group" style="margin-bottom: 0;">
+                <label for="capture-interval-minutes">全域分析間隔（分鐘）</label>
+                <input
+                    type="number"
+                    class="form-control"
+                    id="capture-interval-minutes"
+                    min="1"
+                    max="60"
+                    step="1"
+                    value="1"
+                    placeholder="最小 1 分鐘"
+                    required
+                >
+                <small id="interval-hint" class="form-text text-muted">首次分析會在下一個整分鐘開始，之後每 N 分鐘執行一次。</small>
+                <div class="invalid-feedback">請輸入 1~60 的整數分鐘</div>
+            </div>
+            <div class="global-settings-actions">
+                <button type="button" class="btn btn-outline-secondary" id="close-global-interval-modal-btn">取消</button>
+                <button type="button" class="btn btn-primary" id="save-global-interval-btn">儲存</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="row">
+        <!-- 左側：攝影機配置表單 -->
+        <div class="col-md-6">
+            <div class="stream-card" style="min-height: 480px;">
+                <div class="card-header-custom">
+                    <span>➕</span> 新增監測任務
+                </div>
+                <form id="add-stream-form" novalidate>
+                    <div class="form-group">
+                        <label>📁 選擇攝影機範本</label>
+                        <div id="templates-list" class="d-flex flex-wrap gap-2 align-items-center" style="min-height: 45px; padding: 8px; border: 1px dashed #ced4da; border-radius: 8px; background-color: #f8f9fa;">
+                            <span class="text-muted" style="font-size: 0.85rem; padding-left: 5px;">載入中...</span>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="task-name">📋 任務名稱</label>
+                        <input type="text" class="form-control" id="task-name" placeholder="例如: ID4567" required>
+                        <small class="form-text text-muted">提示：匯出檔名會使用任務名稱，系統會自動過濾非法字元（如 \ / : * ? " &lt; &gt; |）。</small>
+                        <div class="invalid-feedback">請輸入任務名稱</div>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="camera-name">🏷️ 攝影機名稱</label>
+                        <input type="text" class="form-control" id="camera-name" placeholder="例如: ICU-床位1" required>
+                        <div class="invalid-feedback">請輸入攝影機名稱</div>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="rtsp-url">🔗 RTSP URL</label>
+                        <input type="url" class="form-control" id="rtsp-url" placeholder="rtsp://user:password@ip:port/stream" required>
+                        <div class="invalid-feedback">請輸入有效的 RTSP URL</div>
+                    </div>
+
+                    <div class="row" style="margin: 0 -8px;">
+                        <div class="col-md-6" style="padding: 0 8px;">
+                            <div class="form-group">
+                                <label for="provider-select">🏢 模型廠商</label>
+                                <select id="provider-select" class="form-control" onchange="updateModelOptions()">
+                                    <option value="openrouter" selected>OpenRouter</option>
+                                    <option value="local">Local</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="col-md-6" style="padding: 0 8px;">
+                            <div class="form-group">
+                                <label for="model-select">🤖 選擇模型</label>
+                                <select id="model-select" class="form-control" required>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="api-key">🔑 OpenRouter API Key（地端模型可留空）</label>
+                        <div style="display: flex; gap: 10px; align-items: center;">
+                            <input type="password" class="form-control" id="api-key" placeholder="sk-or-v1-...">
+                            <button type="button" id="save-template-btn" class="btn-save-custom">💾 儲存範本</button>
+                            <button type="button" id="delete-template-btn" class="btn-delete-custom" style="display: none;">🗑️ 刪除範本</button>
+                        </div>
+                    </div>
+                    
+                    <div style="margin-top: 10px;">
+                        <button type="submit" class="btn btn-primary-custom">🚀 啟動監測任務</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <!-- 右側：活躍串流列表 -->
+        <div class="col-md-6">
+            <div class="stream-card" style="min-height: 480px; overflow-y: auto;">
+                <div class="card-header-custom">
+                    <span>🎥</span> 當前監測中
+                    <div id="stream-count-badge" class="badge-custom bg-primary text-white d-none" style="margin-left: auto; font-size: 0.7rem;">0 個活躍</div>
+                </div>
+                <div id="active-streams-container" class="row" style="margin: 0;">
+                    <div class="col-12 text-center text-muted py-5" id="no-streams-message">
+                        <div style="font-size: 2.5rem; opacity: 0.3; margin-bottom: 10px;">🎥</div>
+                        <p style="font-size: 0.9rem;">目前沒有正在監測中的串流</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 下方：最新分析結果 -->
+    <div class="section-header">
+        <h3 class="section-title">📊 最新分析結果 (LLM 回傳)</h3>
+    </div>
+    
+    <div class="stream-card" id="latest-analysis-panel">
+        <div id="latest-analysis-content">
+            <div class="no-data-placeholder">
+                <div class="no-data-icon">📡</div>
+                <p>目前尚無分析數據</p>
+                <p style="font-size: 0.85rem;">啟動監測後，系統將自動擷取畫面並進行分析</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- 錯誤提示 -->
+    <div class="alert alert-danger mt-4 d-none" id="error-alert" role="alert" style="border-radius: 10px; box-shadow: var(--card-shadow);">
+        <span id="error-message"></span>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/js/stream_monitor.js"></script>
+{% endblock %}

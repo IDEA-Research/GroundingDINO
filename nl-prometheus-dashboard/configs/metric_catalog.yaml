@@ -1,0 +1,57 @@
+patient_heart_rate_bpm:
+  display_name: Heart Rate
+  unit: bpm
+  type: gauge
+  labels:
+    - patient_id
+    - bed_id
+  normal_range:
+    min: 60
+    max: 100
+  recommended_widgets:
+    - line_chart
+    - stat_card
+    - threshold_card
+
+patient_spo2_percent:
+  display_name: SpO2
+  unit: "%"
+  type: gauge
+  labels:
+    - patient_id
+    - bed_id
+  normal_range:
+    min: 92
+    max: 100
+  recommended_widgets:
+    - line_chart
+    - stat_card
+    - threshold_card
+
+patient_systolic_bp_mmhg:
+  display_name: Systolic Blood Pressure
+  unit: mmHg
+  type: gauge
+  labels:
+    - patient_id
+    - bed_id
+  normal_range:
+    min: 90
+    max: 120
+  recommended_widgets:
+    - line_chart
+    - stat_card
+
+patient_diastolic_bp_mmhg:
+  display_name: Diastolic Blood Pressure
+  unit: mmHg
+  type: gauge
+  labels:
+    - patient_id
+    - bed_id
+  normal_range:
+    min: 60
+    max: 80
+  recommended_widgets:
+    - line_chart
+    - stat_card

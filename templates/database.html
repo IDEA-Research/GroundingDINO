@@ -1,0 +1,585 @@
+{% extends "base.html" %}
+
+{% block title %}資料庫檢視 - 影片螢幕數字抓取系統{% endblock %}
+
+{% block extra_styles %}
+<style>
+    .database-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 30px;
+        flex-wrap: wrap;
+        gap: 20px;
+        background: white;
+        padding: 20px;
+        border-radius: 12px;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+    }
+
+    .database-header h2 {
+        color: #333;
+        font-size: 1.6em;
+        margin: 0;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+    }
+
+    .database-controls {
+        display: flex;
+        gap: 15px;
+        align-items: center;
+        flex-wrap: wrap;
+    }
+
+    .search-box {
+        position: relative;
+        min-width: 280px;
+    }
+
+    .search-box input {
+        width: 100%;
+        padding: 10px 15px 10px 40px;
+        border-radius: 25px;
+        border: 2px solid #eee;
+        font-size: 0.95em;
+        transition: all 0.3s ease;
+        outline: none;
+    }
+
+    .search-box input:focus {
+        border-color: #4facfe;
+        box-shadow: 0 0 0 3px rgba(79, 172, 254, 0.1);
+    }
+
+    .search-icon {
+        position: absolute;
+        left: 15px;
+        top: 50%;
+        transform: translateY(-50%);
+        font-size: 1.1em;
+        color: #aaa;
+        pointer-events: none;
+    }
+
+    .status-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 6px 14px;
+        border-radius: 20px;
+        font-size: 0.85em;
+        font-weight: 600;
+    }
+
+    .status-connected {
+        background: #d4edda;
+        color: #155724;
+    }
+
+    .status-disconnected {
+        background: #f8d7da;
+        color: #721c24;
+    }
+
+    .video-grid {
+        display: grid;
+        gap: 20px;
+    }
+
+    .video-card {
+        background: white;
+        border: 2px solid #e9ecef;
+        border-radius: 10px;
+        padding: 25px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        transition: all 0.3s ease;
+    }
+
+    .video-card:hover {
+        transform: translateY(-3px);
+        box-shadow: 0 5px 15px rgba(0,0,0,0.15);
+        border-color: #4facfe;
+    }
+
+    .video-card-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: start;
+        margin-bottom: 20px;
+    }
+
+    .video-card-title {
+        flex: 1;
+    }
+
+    .video-card-title h3 {
+        color: #333;
+        margin: 0 0 10px 0;
+        font-size: 1.3em;
+    }
+
+    .video-card-title .session-id {
+        color: #666;
+        font-size: 0.85em;
+        font-family: monospace;
+        background: #f0f0f0;
+        padding: 3px 8px;
+        border-radius: 4px;
+        display: inline-block;
+    }
+
+    .status-pill {
+        padding: 6px 15px;
+        border-radius: 20px;
+        font-size: 0.85em;
+        font-weight: 600;
+        white-space: nowrap;
+    }
+
+    .status-completed {
+        background: #28a745;
+        color: white;
+    }
+
+    .status-processing {
+        background: #ffc107;
+        color: #333;
+    }
+
+    .video-card-details {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 15px;
+        margin-bottom: 20px;
+    }
+
+    .detail-item {
+        background: #f8f9fa;
+        padding: 12px;
+        border-radius: 6px;
+    }
+
+    .detail-label {
+        color: #666;
+        font-size: 0.85em;
+        margin-bottom: 5px;
+        display: flex;
+        align-items: center;
+        gap: 5px;
+    }
+
+    .detail-value {
+        color: #333;
+        font-size: 0.95em;
+        word-break: break-all;
+    }
+
+    .video-card-actions {
+        display: flex;
+        gap: 10px;
+        margin-top: 15px;
+    }
+
+    .btn-view-details {
+        flex: 1;
+        background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+        color: white;
+        border: none;
+        padding: 10px 20px;
+        border-radius: 6px;
+        cursor: pointer;
+        font-size: 0.95em;
+        font-weight: 600;
+        transition: all 0.3s ease;
+    }
+
+    .btn-view-details:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 5px 15px rgba(79, 172, 254, 0.3);
+    }
+
+    .empty-state {
+        text-align: center;
+        padding: 60px 20px;
+        color: #666;
+    }
+
+    .empty-state-icon {
+        font-size: 4em;
+        margin-bottom: 20px;
+        opacity: 0.5;
+    }
+
+    .loading-state {
+        text-align: center;
+        padding: 60px 20px;
+        color: #666;
+    }
+
+    .spinner {
+        border: 4px solid #f3f3f3;
+        border-top: 4px solid #4facfe;
+        border-radius: 50%;
+        width: 50px;
+        height: 50px;
+        animation: spin 1s linear infinite;
+        margin: 0 auto 20px;
+    }
+
+    @keyframes spin {
+        0% { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
+    }
+
+    .btn-reload {
+        background: #f8f9fa;
+        border: 2px solid #eee;
+        color: #666;
+        padding: 8px 16px;
+        border-radius: 8px;
+        cursor: pointer;
+        font-weight: 600;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        transition: all 0.2s;
+    }
+
+    .btn-reload:hover {
+        background: #eee;
+        color: #333;
+    }
+
+    @media (max-width: 992px) {
+        .database-header {
+            flex-direction: column;
+            align-items: stretch;
+        }
+        
+        .database-controls {
+            justify-content: flex-start;
+        }
+        
+        .search-box {
+            min-width: 100%;
+        }
+    }
+
+    .btn-group .btn {
+        border-radius: 0;
+    }
+    .btn-group .btn:first-child {
+        border-top-left-radius: 6px;
+        border-bottom-left-radius: 6px;
+    }
+    .btn-group .btn:last-child {
+        border-top-right-radius: 6px;
+        border-bottom-right-radius: 6px;
+    }
+    .btn-outline-primary {
+        background: transparent;
+        border: 2px solid #4facfe;
+        color: #4facfe;
+    }
+    .btn-outline-primary:hover {
+        background: #4facfe;
+        color: white;
+    }
+    .btn-primary {
+        background: #4facfe;
+        border: 2px solid #4facfe;
+        color: white;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="database-header">
+    <h2>🗄️ MongoDB 資料庫內容</h2>
+    <div class="database-controls">
+        <!-- 搜尋框 -->
+        <div class="search-box">
+            <span class="search-icon">🔍</span>
+            <input type="text" id="searchInput" placeholder="搜尋名稱、路徑或 ID...">
+        </div>
+        
+        <!-- 分頁切換 -->
+        <div class="btn-group">
+            <button onclick="switchTab('manual')" id="btn-manual" class="btn btn-primary">手動上傳</button>
+            <button onclick="switchTab('stream')" id="btn-stream" class="btn btn-outline-primary">串流監控</button>
+        </div>
+
+        <!-- 連接狀態 -->
+        <span id="connectionStatus" class="status-badge status-disconnected">未連接</span>
+
+        <!-- 重新載入按鈕 -->
+        <button onclick="loadDatabaseContent()" class="btn-reload">
+            <span>🔄</span> 重新載入
+        </button>
+    </div>
+</div>
+
+<div id="databaseContent">
+    <div class="loading-state">
+        <div class="spinner"></div>
+        <p>正在載入資料庫內容...</p>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    // 當前分頁
+    let currentTab = 'manual';
+    let searchTimeout = null;
+
+    // 頁面載入時自動載入資料
+    document.addEventListener('DOMContentLoaded', function() {
+        const params = new URLSearchParams(window.location.search);
+        const tab = params.get('tab');
+        const search = params.get('search');
+        
+        if (search) {
+            document.getElementById('searchInput').value = search;
+        }
+        
+        if (tab === 'stream' || tab === 'manual') {
+            switchTab(tab);
+        } else {
+            loadDatabaseContent();
+        }
+        
+        // 綁定搜尋框輸入事件
+        document.getElementById('searchInput').addEventListener('input', function(e) {
+            clearTimeout(searchTimeout);
+            // 延遲 500ms 執行，避免使用者每打一個字就發送一次請求
+            searchTimeout = setTimeout(() => {
+                loadDatabaseContent();
+            }, 500);
+        });
+    });
+
+    // 切換分頁
+    function switchTab(tab) {
+        currentTab = tab;
+        
+        // 更新按鈕樣式
+        document.getElementById('btn-manual').className = tab === 'manual' ? 'btn btn-primary' : 'btn btn-outline-primary';
+        document.getElementById('btn-stream').className = tab === 'stream' ? 'btn btn-primary' : 'btn btn-outline-primary';
+        
+        // 重新載入資料
+        loadDatabaseContent();
+    }
+
+    // 載入資料庫內容
+    async function loadDatabaseContent() {
+        const contentDiv = document.getElementById('databaseContent');
+        const statusBadge = document.getElementById('connectionStatus');
+        const searchQuery = document.getElementById('searchInput').value;
+        
+        try {
+            // 顯示載入狀態
+            contentDiv.innerHTML = `
+                <div class="loading-state">
+                    <div class="spinner"></div>
+                    <p>正在讀取 ${currentTab === 'manual' ? '手動上傳' : '串流監控'} 資料...</p>
+                </div>
+            `;
+            
+            // 檢查 MongoDB 連接狀態
+            const statusResponse = await fetch('./api/mongodb/status');
+            const statusData = await statusResponse.json();
+            
+            if (!statusData.mongodb_connected) {
+                statusBadge.className = 'status-badge status-disconnected';
+                statusBadge.textContent = '❌ 未連接';
+                contentDiv.innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-state-icon">❌</div>
+                        <h3>MongoDB 未連接</h3>
+                        <p>請確認 MongoDB 服務正在運行</p>
+                    </div>
+                `;
+                return;
+            }
+            
+            statusBadge.className = 'status-badge status-connected';
+            statusBadge.textContent = `✅ 已連接 (${statusData.database})`;
+            
+            // 載入影片記錄 (帶上 type 和 search 參數)
+            const videosResponse = await fetch(`./api/mongodb/videos?type=${currentTab}&search=${encodeURIComponent(searchQuery)}`);
+            const videosData = await videosResponse.json();
+            
+            if (!videosData.success) {
+                throw new Error(videosData.error);
+            }
+            
+            displayVideos(videosData.data);
+            
+        } catch (error) {
+            statusBadge.className = 'status-badge status-disconnected';
+            statusBadge.textContent = '❌ 錯誤';
+            contentDiv.innerHTML = `
+                <div class="empty-state">
+                    <div class="empty-state-icon">⚠️</div>
+                    <h3>載入失敗</h3>
+                    <p>${error.message}</p>
+                </div>
+            `;
+        }
+    }
+
+    // 顯示影片記錄
+    function displayVideos(videos) {
+        const contentDiv = document.getElementById('databaseContent');
+        
+        if (videos.length === 0) {
+            contentDiv.innerHTML = `
+                <div class="empty-state">
+                    <div class="empty-state-icon">📭</div>
+                    <h3>${currentTab === 'manual' ? '沒有手動上傳記錄' : '沒有串流監控記錄'}</h3>
+                    <p>${currentTab === 'manual' ? '目前還沒有任何手動上傳的影片分析記錄' : '目前還沒有任何自動監控的串流分析記錄'}</p>
+                    ${currentTab === 'manual' ? `
+                    <p style="margin-top: 15px;">
+                        <a href="/" class="btn">前往上傳影片</a>
+                    </p>` : ''}
+                </div>
+            `;
+            return;
+        }
+        
+        let html = '<div class="video-grid">';
+        
+        videos.forEach(video => {
+            const timestamp = video.timestamp ? new Date(video.timestamp).toLocaleString('zh-TW', {
+                year: 'numeric',
+                month: '2-digit',
+                day: '2-digit',
+                hour: '2-digit',
+                minute: '2-digit',
+                second: '2-digit'
+            }) : '未知';
+            
+            const statusClass = video.status === 'completed' ? 'status-completed' : 'status-processing';
+            const statusText = video.status === 'completed' ? '✅ 已完成' : '⏳ 處理中';
+            
+            // 針對串流資料顯示 RTSP 來源，優先顯示攝影機名稱
+            const displayTitle = currentTab === 'stream' ? (video.camera_name || video.video_path || 'RTSP Stream') : (video.video_name || '未命名影片');
+            
+            html += `
+                <div class="video-card">
+                    <div class="video-card-header">
+                        <div class="video-card-title">
+                            <h3 style="display: flex; align-items: center; gap: 10px;">
+                                <span>${currentTab === 'stream' ? '📡 ' : '📹 '}${displayTitle}</span>
+                                <button onclick="renameData('${video.session_id}', '${displayTitle}')" style="background: none; border: none; cursor: pointer; font-size: 0.8em; padding: 5px; border-radius: 50%; transition: background-color 0.2s;" title="編輯名稱" onmouseover="this.style.backgroundColor='#f0f0f0'" onmouseout="this.style.backgroundColor='transparent'">
+                                    ✏️
+                                </button>
+                            </h3>
+                            <span class="session-id">ID: ${video.session_id}</span>
+                        </div>
+                        <div class="status-pill ${statusClass}">${statusText}</div>
+                    </div>
+                    
+                    <div class="video-card-details">
+                        ${video.task_name ? `
+                        <div class="detail-item">
+                            <div class="detail-label">📋 任務名稱</div>
+                            <div class="detail-value" style="color: #28a745; font-weight: bold;">${video.task_name}</div>
+                        </div>
+                        ` : ''}
+                        <div class="detail-item">
+                            <div class="detail-label">📂 來源路徑</div>
+                            <div class="detail-value" title="${video.video_path || '-'}">${video.video_path || '-'}</div>
+                        </div>
+                        <div class="detail-item">
+                            <div class="detail-label">🤖 辨識模型</div>
+                            <div class="detail-value" style="color: #e83e8c; font-weight: bold;">${video.llm_model || '未記錄'}</div>
+                        </div>
+                        <div class="detail-item">
+                            <div class="detail-label">⏰ 記錄時間</div>
+                            <div class="detail-value">${timestamp}</div>
+                        </div>
+                        <div class="detail-item">
+                            <div class="detail-label">🎞️ 總幀數</div>
+                            <div class="detail-value" style="font-weight: bold; font-size: 1.2em; color: #4facfe;">${video.total_frames || 0}</div>
+                        </div>
+                    </div>
+                    
+                    <div class="video-card-actions">
+                        <button onclick="window.location.href='./details?session_id=${video.session_id}&tab=${currentTab}'" class="btn-view-details">
+                            📊 查看醫療數值詳情
+                        </button>
+                        <button onclick="deleteData('${video.session_id}')" style="background: #dc3545; color: white; border: none; padding: 10px 15px; border-radius: 6px; cursor: pointer; font-size: 0.95em; font-weight: 600; transition: all 0.3s ease;">
+                            🗑️ 刪除
+                        </button>
+                    </div>
+                </div>
+            `;
+        });
+        
+        html += '</div>';
+        contentDiv.innerHTML = html;
+    }
+
+    // 重新命名資料
+    async function renameData(sessionId, currentName) {
+        const newName = prompt('請輸入新的資料名稱：', currentName);
+        
+        if (newName === null || newName.trim() === '') {
+            return; // 使用者取消或輸入為空
+        }
+        
+        if (newName === currentName) {
+            return; // 名稱沒有改變
+        }
+        
+        try {
+            const response = await fetch(`./api/mongodb/videos/${sessionId}/rename`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ new_name: newName.trim() })
+            });
+            
+            const data = await response.json();
+            
+            if (data.success) {
+                // 重新載入畫面以顯示新名稱
+                loadDatabaseContent(); 
+            } else {
+                alert('更新失敗：' + data.error);
+            }
+        } catch (error) {
+            alert('發生錯誤：' + error.message);
+        }
+    }
+
+    // 刪除資料
+    async function deleteData(sessionId) {
+        if (!confirm('⚠️ 確定要刪除這筆資料嗎？\n\n此操作無法復原，且會一併刪除相關分析結果與圖像檔案。')) {
+            return;
+        }
+        
+        try {
+            const response = await fetch(`./api/mongodb/videos/${sessionId}`, {
+                method: 'DELETE'
+            });
+            
+            const data = await response.json();
+            
+            if (data.success) {
+                // 重新載入畫面
+                loadDatabaseContent(); 
+            } else {
+                alert('刪除失敗：' + data.error);
+            }
+        } catch (error) {
+            alert('發生錯誤：' + error.message);
+        }
+    }
+</script>
+{% endblock %}

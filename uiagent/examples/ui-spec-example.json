@@ -1,0 +1,241 @@
+{
+  "version": "1.0",
+  "metadata": {
+    "title": "系統監控儀表板",
+    "description": "展示 CPU、記憶體和網路使用率的完整監控儀表板",
+    "created_at": "2026-01-05T15:00:00Z",
+    "intent": "show_current_status",
+    "tags": ["monitoring", "system", "overview"],
+    "auto_refresh": {
+      "enabled": true,
+      "interval": 60
+    }
+  },
+  "layout": {
+    "type": "grid",
+    "columns": 12,
+    "gap": "md"
+  },
+  "widgets": [
+    {
+      "id": "cpu-card",
+      "type": "metric_card",
+      "position": {
+        "row": 1,
+        "col": 1,
+        "colspan": 3,
+        "rowspan": 2
+      },
+      "config": {
+        "title": "CPU 使用率",
+        "metric_type": "avg",
+        "unit": "percent",
+        "threshold": {
+          "warning": 70,
+          "critical": 90
+        },
+        "trend_enabled": true
+      },
+      "data_source": {
+        "type": "prometheus",
+        "query": "100 - (avg(irate(node_cpu_seconds_total{mode=\"idle\"}[5m])) * 100)",
+        "time_range": {
+          "start": "now-5m",
+          "end": "now"
+        }
+      }
+    },
+    {
+      "id": "memory-gauge",
+      "type": "gauge",
+      "position": {
+        "row": 1,
+        "col": 4,
+        "colspan": 3,
+        "rowspan": 2
+      },
+      "config": {
+        "title": "記憶體使用率",
+        "min": 0,
+        "max": 100,
+        "unit": "percent",
+        "threshold": {
+          "warning": 80,
+          "critical": 90
+        }
+      },
+      "data_source": {
+        "type": "prometheus",
+        "query": "(1 - node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes) * 100",
+        "time_range": {
+          "start": "now-5m",
+          "end": "now"
+        }
+      }
+    },
+    {
+      "id": "disk-card",
+      "type": "metric_card",
+      "position": {
+        "row": 1,
+        "col": 7,
+        "colspan": 3,
+        "rowspan": 2
+      },
+      "config": {
+        "title": "磁碟使用率",
+        "metric_type": "max",
+        "unit": "percent",
+        "threshold": {
+          "warning": 80,
+          "critical": 95
+        }
+      },
+      "data_source": {
+        "type": "prometheus",
+        "query": "max((1 - node_filesystem_avail_bytes{fstype!~\"tmpfs|fuse.*\"} / node_filesystem_size_bytes{fstype!~\"tmpfs|fuse.*\"}) * 100)",
+        "time_range": {
+          "start": "now-5m",
+          "end": "now"
+        }
+      }
+    },
+    {
+      "id": "network-card",
+      "type": "metric_card",
+      "position": {
+        "row": 1,
+        "col": 10,
+        "colspan": 3,
+        "rowspan": 2
+      },
+      "config": {
+        "title": "網路流量",
+        "metric_type": "sum",
+        "unit": "bytes",
+        "custom_unit": "MB/s"
+      },
+      "data_source": {
+        "type": "prometheus",
+        "query": "sum(rate(node_network_receive_bytes_total[5m]) + rate(node_network_transmit_bytes_total[5m]))",
+        "time_range": {
+          "start": "now-5m",
+          "end": "now"
+        }
+      }
+    },
+    {
+      "id": "cpu-trend",
+      "type": "time_series_chart",
+      "position": {
+        "row": 3,
+        "col": 1,
+        "colspan": 6,
+        "rowspan": 4
+      },
+      "config": {
+        "title": "CPU 使用率趨勢",
+        "chart_type": "area",
+        "y_axis_unit": "percent",
+        "legend_position": "bottom",
+        "show_grid": true,
+        "smooth_curve": true,
+        "color_scheme": ["#3b82f6", "#8b5cf6", "#ec4899"]
+      },
+      "data_source": {
+        "type": "prometheus",
+        "query": "100 - (avg by (instance) (irate(node_cpu_seconds_total{mode=\"idle\"}[5m])) * 100)",
+        "time_range": {
+          "start": "now-1h",
+          "end": "now",
+          "step": "30s"
+        }
+      }
+    },
+    {
+      "id": "memory-trend",
+      "type": "time_series_chart",
+      "position": {
+        "row": 3,
+        "col": 7,
+        "colspan": 6,
+        "rowspan": 4
+      },
+      "config": {
+        "title": "記憶體使用趨勢",
+        "chart_type": "line",
+        "y_axis_unit": "bytes",
+        "legend_position": "bottom",
+        "show_grid": true,
+        "color_scheme": ["#10b981", "#f59e0b"]
+      },
+      "data_source": {
+        "type": "prometheus",
+        "query": "node_memory_MemTotal_bytes - node_memory_MemAvailable_bytes",
+        "time_range": {
+          "start": "now-1h",
+          "end": "now",
+          "step": "30s"
+        }
+      }
+    },
+    {
+      "id": "top-processes",
+      "type": "table",
+      "position": {
+        "row": 7,
+        "col": 1,
+        "colspan": 12,
+        "rowspan": 4
+      },
+      "config": {
+        "title": "Top 10 CPU 使用進程",
+        "columns": [
+          {
+            "key": "instance",
+            "label": "機器",
+            "sortable": true
+          },
+          {
+            "key": "cpu_usage",
+            "label": "CPU 使用率",
+            "sortable": true,
+            "format": "number"
+          }
+        ],
+        "pagination": {
+          "enabled": false,
+          "page_size": 10
+        }
+      },
+      "data_source": {
+        "type": "prometheus",
+        "query": "topk(10, 100 - (avg by (instance) (irate(node_cpu_seconds_total{mode=\"idle\"}[5m])) * 100))",
+        "time_range": {
+          "start": "now-5m",
+          "end": "now"
+        }
+      }
+    }
+  ],
+  "actions": [
+    {
+      "id": "time-range",
+      "type": "time_range_picker",
+      "label": "調整時間範圍",
+      "icon": "calendar"
+    },
+    {
+      "id": "refresh",
+      "type": "refresh",
+      "label": "重新整理",
+      "icon": "refresh"
+    },
+    {
+      "id": "export",
+      "type": "export",
+      "label": "匯出資料",
+      "icon": "download"
+    }
+  ]
+}

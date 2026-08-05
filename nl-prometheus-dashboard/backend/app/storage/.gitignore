@@ -1,0 +1,5 @@
+dashboards/*.json
+versions/**/*.json
+task_models/*.json
+task_models/history/**/*.json
+patch_logs/**/*.json

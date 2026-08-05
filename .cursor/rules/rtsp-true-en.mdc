@@ -1,0 +1,32 @@
+---
+alwaysApply: true
+---
+
+rtsp: true
+# Enabled RTSP transport protocols. The handshake is always performed with TCP.
+rtspTransports: [udp, multicast, tcp]
+# Use secure protocol variants (RTSPS, SRTP, SRTCP).
+# Available values are "no", "strict", "optional".
+rtspEncryption: "no"
+# Address of the TCP/RTSP listener. This is needed only when encryption is "no" or "optional".
+rtspAddress: :8554
+# Address of the TCP/RTSPS listener. This is needed only when encryption is "strict" or "optional".
+rtspsAddress: :8322
+# Address of the UDP/RTP listener. This is needed only when "udp" is in rtspTransports and encryption is "no" or "optional".
+rtpAddress: :8000
+# Address of the UDP/RTCP listener. This is needed only when "udp" is in rtspTransports and encryption is "no" or "optional".
+rtcpAddress: :8001
+# IP range of all UDP-multicast listeners. This is needed only when "multicast" is in rtspTransports and encryption is "no" or "optional".
+multicastIPRange: 224.1.0.0/16
+# Port of all UDP-multicast/RTP listeners. This is needed only when "multicast" is in rtspTransports and encryption is "no" or "optional".
+multicastRTPPort: 8002
+# Port of all UDP-multicast/RTCP listeners. This is needed only when "multicast" is in rtspTransports and encryption is "no" or "optional".
+multicastRTCPPort: 8003
+# Address of the UDP/SRTP listener. This is needed only when "udp" is in rtspTransports and encryption is "strict" or "optional".
+srtpAddress: :8004
+# Address of the UDP/SRTCP listener. This is needed only when "udp" is in rtspTransports and encryption is "strict" or "optional".
+srtcpAddress: :8005
+# Port of all UDP-multicast/SRTP listeners. This is needed only when "multicast" is in rtspTransports and encryption is "strict" or "optional".
+multicastSRTPPort: 8006
+# Port of all UDP-multicast/SRTCP listeners. This is needed only when "multicast" is in rtspTransports and encryption is "strict" or "optional".
+multicastSRTCPPort: 8007

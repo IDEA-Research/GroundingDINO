@@ -1,0 +1,53 @@
+apiVersion: 1
+
+datasources:
+  - name: Prometheus
+    id: 1
+    uid: prometheus
+    type: prometheus
+    access: proxy
+    url: http://prometheus:9090
+    isDefault: true
+  - name: Prometheus Demo
+    id: 2
+    uid: prometheus-demo
+    type: prometheus
+    access: proxy
+    url: https://prometheus.demo.prometheus.io
+  - name: Loki
+    id: 3
+    uid: loki
+    type: loki
+    access: proxy
+    url: http://loki:3100
+    isDefault: false
+  - name: pyroscope
+    uid: pyroscope
+    type: grafana-pyroscope-datasource
+    access: proxy
+    url: http://pyroscope:4040
+    isDefault: false
+  - name: Tempo
+    id: 4
+    uid: tempo
+    type: tempo
+    access: proxy
+    url: http://tempo:3200
+    isDefault: false
+  - name: Tempo Secondary
+    id: 5
+    uid: tempo-secondary
+    type: tempo
+    access: proxy
+    url: http://tempo2:3201
+    isDefault: false
+  - name: Alertmanager
+    id: 6
+    uid: alertmanager
+    type: alertmanager
+    access: proxy
+    url: http://alertmanager:9093
+    jsonData:
+      implementation: prometheus
+    isDefault: false
+    editable: false

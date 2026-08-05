@@ -1,0 +1,71 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "project": {
+    "name": "helper-dashboard",
+    "description": "Chat-to-dashboard system for Prometheus, built on safe JSON specs."
+  },
+  "agents": {
+    "helper-chat-agent": {
+      "path": ".opencode/agent/helper-chat-agent.md",
+      "permissions": { "edit": false, "shell": false, "webfetch": false }
+    },
+    "dashboard-spec-agent": {
+      "path": ".opencode/agent/dashboard-spec-agent.md",
+      "permissions": { "edit": false, "shell": false, "webfetch": false }
+    },
+    "patch-agent": {
+      "path": ".opencode/agent/patch-agent.md",
+      "permissions": { "edit": false, "shell": false, "webfetch": false }
+    },
+    "prometheus-agent": {
+      "path": ".opencode/agent/prometheus-agent.md",
+      "permissions": { "edit": false, "shell": false, "webfetch": false }
+    },
+    "browser-eval-agent": {
+      "path": ".opencode/agent/browser-eval-agent.md",
+      "permissions": { "edit": false, "shell": false, "webfetch": false }
+    },
+    "helper-review-agent": {
+      "path": ".opencode/agent/helper-review-agent.md",
+      "permissions": { "edit": false, "shell": false, "webfetch": false }
+    },
+    "big-guy-developer-agent": {
+      "path": ".opencode/agent/big-guy-developer-agent.md",
+      "permissions": { "edit": true, "shell": true, "webfetch": true },
+      "internal": true
+    }
+  },
+  "commands": {
+    "user-message": {
+      "path": ".opencode/commands/user-message.md",
+      "agent": "helper-chat-agent"
+    },
+    "generate-dashboard": {
+      "path": ".opencode/commands/generate-dashboard.md",
+      "agent": "dashboard-spec-agent"
+    },
+    "patch-dashboard": {
+      "path": ".opencode/commands/patch-dashboard.md",
+      "agent": "patch-agent"
+    },
+    "evaluate-dashboard": {
+      "path": ".opencode/commands/evaluate-dashboard.md",
+      "agent": "browser-eval-agent"
+    },
+    "developer-fix": {
+      "path": ".opencode/commands/developer-fix.md",
+      "agent": "big-guy-developer-agent"
+    }
+  },
+  "boundaries": {
+    "user_can_invoke": [
+      "user-message",
+      "generate-dashboard",
+      "patch-dashboard",
+      "evaluate-dashboard"
+    ],
+    "developer_only": [
+      "developer-fix"
+    ]
+  }
+}

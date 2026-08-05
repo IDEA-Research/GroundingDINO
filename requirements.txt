@@ -1,6 +1,8 @@
 torch
 torchvision
-transformers
+transformers==4.33.2
+tokenizers==0.13.3
+huggingface_hub==0.17.3
 addict
 yapf
 timm
@@ -8,3 +10,8 @@ numpy
 opencv-python
 supervision>=0.22.0
 pycocotools
+openai
+flask
+pymongo
+prometheus_client>=0.16.0
+schedule>=1.2.0

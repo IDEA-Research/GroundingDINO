@@ -1,0 +1,50 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    monitor: 'medical-monitoring'
+    environment: 'production'
+
+# 警報規則檔案
+rule_files:
+  - "alerts/medical_alerts.yml"
+
+# 抓取配置
+scrape_configs:
+  # Medical MongoDB Exporter
+  - job_name: 'medical-mongodb-exporter'
+    static_configs:
+      - targets: ['localhost:8000']
+    scrape_interval: 15s
+    scrape_timeout: 10s
+    metrics_path: '/metrics'
+    honor_labels: true
+    params:
+      format: ['prometheus']
+
+  # Prometheus 自身監控
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+    scrape_interval: 30s
+
+# 警報管理器配置 (可選)
+# alerting:
+#   alertmanagers:
+#     - static_configs:
+#         - targets:
+#           - localhost:9093
+
+# 存储配置
+storage:
+  tsdb:
+    path: ./prometheus-data
+    retention.time: 7d
+    retention.size: 10GB
+
+# Web 控制台配置
+web:
+  console.templates: './consoles'
+  console.libraries: './console_libraries'
+  enable-lifecycle: true
+  enable-admin-api: true

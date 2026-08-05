@@ -1,0 +1,95 @@
+name: Build and Push Docker Image
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+jobs:
+  docker:
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8
+
+      - name: Process tag name
+        id: tag
+        run: |
+          VERSION=${GITHUB_REF_NAME#v}
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          # Check if this is a stable release (no rc, alpha, beta, etc.)
+          if [[ ! "$VERSION" =~ (rc|alpha|beta|pre|dev) ]]; then
+            echo "is_stable=true" >> $GITHUB_OUTPUT
+          else
+            echo "is_stable=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Build and Push to Docker Hub
+        uses: grafana/shared-workflows/actions/build-push-to-dockerhub@76191e8b248c430d5d8d974bbf6a2be07212422d
+        with:
+          context: .
+          file: ./Dockerfile
+          repository: grafana/mcp-grafana
+          platforms: linux/amd64,linux/arm64
+          tags: |
+            ${{ steps.tag.outputs.is_stable == 'true' && 'latest' || '' }}
+            ${{ steps.tag.outputs.version }}
+          push: true
+
+  mcp-registry:
+    runs-on: ubuntu-latest
+    needs: docker
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6
+        with:
+          fetch-depth: 0
+
+      - name: Extract version from tag
+        id: version
+        run: |
+          # Get the tag from the triggering workflow
+          TAG=$(git describe --tags --exact-match HEAD 2>/dev/null || echo "")
+          if [ -z "$TAG" ]; then
+            echo "No tag found at HEAD"
+            exit 1
+          fi
+          echo "VERSION=$TAG" >> $GITHUB_OUTPUT
+
+      - name: Extract image tag from version
+        id: image-tag
+        run: |
+          # Extract the image tag from the version
+          VERSION="${{ steps.version.outputs.VERSION }}"
+          echo "IMAGE_TAG=${VERSION#v}" >> $GITHUB_OUTPUT
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update && sudo apt-get install -y jq
+          curl -L "https://github.com/modelcontextprotocol/registry/releases/latest/download/mcp-publisher_linux_amd64.tar.gz" | tar xz mcp-publisher
+          chmod +x mcp-publisher
+          sudo mv mcp-publisher /usr/local/bin/
+
+      - name: Update server.json with Docker image
+        run: |
+          # Update the server.json with the correct Docker image reference
+          # (note the image tag does not include the "v" prefix)
+          jq --arg version "${{ steps.version.outputs.VERSION }}" \
+            --arg image "docker.io/grafana/mcp-grafana:${{ steps.image-tag.outputs.IMAGE_TAG }}" \
+             '.version = $version | .packages[0].identifier = $image' server.json > server.json.tmp
+          mv server.json.tmp server.json
+
+      - name: Login to MCP Registry
+        run: mcp-publisher login github-oidc
+
+      - name: Publish to MCP Registry
+        run: mcp-publisher publish

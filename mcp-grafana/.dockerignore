@@ -1,0 +1,60 @@
+# Git
+.git
+.gitignore
+.github/
+
+# Docker
+Dockerfile
+.dockerignore
+
+# Build artifacts
+bin/
+dist/
+build/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Go specific
+vendor/
+go.work
+
+# Testing
+*_test.go
+**/test/
+**/tests/
+coverage.out
+coverage.html
+
+# IDE and editor files
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS specific
+.DS_Store
+Thumbs.db
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+*.log
+
+# Documentation
+docs/
+*.md
+LICENSE
+
+# Development tools
+.air.toml
+.golangci.yml
+.goreleaser.yml
+
+# Debug files
+debug
+__debug_bin

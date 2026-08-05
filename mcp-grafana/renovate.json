@@ -1,0 +1,17 @@
+{
+    "ignorePresets": [
+            "github>grafana/grafana-renovate-config//presets/base",
+            "github>grafana/grafana-renovate-config//presets/automerge",
+            "github>grafana/grafana-renovate-config//presets/labels",
+            "github>grafana/grafana-renovate-config//presets/npm"
+    ],
+    "extends": [
+        "config:best-practices",
+        ":disableDependencyDashboard",
+        ":preserveSemverRanges",
+        "github>grafana/grafana-renovate-config//presets/plugin-ci-workflows"
+    ],
+    "prConcurrentLimit": 5,
+    "minimumReleaseAge": "14 days",
+    "rebaseWhen": "behind-base-branch"
+}

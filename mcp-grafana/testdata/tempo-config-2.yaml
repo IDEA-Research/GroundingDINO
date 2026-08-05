@@ -1,0 +1,29 @@
+server:
+  http_listen_port: 3201
+  log_level: debug
+
+query_frontend:
+  mcp_server:
+    enabled: true
+
+distributor:
+  receivers:
+    otlp:
+      protocols:
+        http:
+        grpc:
+
+ingester:
+  max_block_duration: 5m
+
+compactor:
+  compaction:
+    block_retention: 1h
+
+storage:
+  trace:
+    backend: local
+    local:
+      path: /tmp/tempo2/blocks
+    wal:
+      path: /tmp/tempo2/wal

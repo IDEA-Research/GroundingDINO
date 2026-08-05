@@ -1,0 +1,178 @@
+apiVersion: 1
+
+groups:
+  - orgId: 1
+    name: Test Alert Rules
+    folder: Tests
+    interval: 1m
+    rules:
+      - uid: test_alert_rule_1
+        title: Test Alert Rule 1
+        condition: B
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: prometheus
+            model:
+              datasource:
+                type: prometheus
+                uid: prometheus
+              editorMode: code
+              expr: vector(1)
+              hide: false
+              instant: true
+              legendFormat: __auto
+              range: false
+              refId: A
+          - refId: B
+            datasourceUid: __expr__
+            model:
+              conditions:
+                - evaluator:
+                    params:
+                      - 0
+                      - 0
+                    type: gt
+                  operator:
+                    type: and
+                  query:
+                    params: []
+                  reducer:
+                    params: []
+                    type: avg
+                  type: query
+              datasource:
+                name: Expression
+                type: __expr__
+                uid: __expr__
+              expression: A
+              hide: false
+              refId: B
+              type: threshold
+        noDataState: NoData
+        execErrState: Error
+        for: 1m
+        keepFiringFor: 0s
+        annotations:
+          description: This is a test alert rule that is always firing
+        labels:
+          severity: info
+          type: test
+          rule: first
+        isPaused: false
+
+      - uid: test_alert_rule_2
+        title: Test Alert Rule 2
+        condition: B
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: prometheus
+            model:
+              datasource:
+                type: prometheus
+                uid: prometheus
+              editorMode: code
+              expr: vector(0)
+              hide: false
+              instant: true
+              legendFormat: __auto
+              range: false
+              refId: A
+          - refId: B
+            datasourceUid: __expr__
+            model:
+              conditions:
+                - evaluator:
+                    params:
+                      - 0
+                      - 0
+                    type: gt
+                  operator:
+                    type: and
+                  query:
+                    params: []
+                  reducer:
+                    params: []
+                    type: avg
+                  type: query
+              datasource:
+                name: Expression
+                type: __expr__
+                uid: __expr__
+              expression: A
+              hide: false
+              refId: B
+              type: threshold
+        noDataState: NoData
+        execErrState: Error
+        for: 1m
+        keepFiringFor: 0s
+        annotations:
+          description: This is a test alert rule that is always normal
+        labels:
+          severity: info
+          type: test
+          rule: second
+        isPaused: false
+
+      - uid: test_alert_rule_paused
+        title: Test Alert Rule (Paused)
+        condition: B
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: prometheus
+            model:
+              datasource:
+                type: prometheus
+                uid: prometheus
+              editorMode: code
+              expr: vector(1)
+              hide: false
+              instant: true
+              legendFormat: __auto
+              range: false
+              refId: A
+          - refId: B
+            datasourceUid: __expr__
+            model:
+              conditions:
+                - evaluator:
+                    params:
+                      - 0
+                      - 0
+                    type: gt
+                  operator:
+                    type: and
+                  query:
+                    params: []
+                  reducer:
+                    params: []
+                    type: avg
+                  type: query
+              datasource:
+                name: Expression
+                type: __expr__
+                uid: __expr__
+              expression: A
+              hide: false
+              refId: B
+              type: threshold
+        noDataState: NoData
+        execErrState: Error
+        for: 1m
+        keepFiringFor: 0s
+        annotations:
+          description: This is a paused alert rule
+        labels:
+          severity: info
+          type: test
+          rule: third
+        isPaused: true

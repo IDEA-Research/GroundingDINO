@@ -1,0 +1,9 @@
+{
+  "name": "grafana",
+  "version": "0.7.0",
+  "mcpServers": {
+    "grafana": {
+      "command": "${extensionPath}${/}mcp-grafana"
+    }
+  }
+}

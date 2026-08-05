@@ -1,0 +1,154 @@
+{
+  "dashboard_id": "api-observability",
+  "title": "API Observability",
+  "description": "Golden-sample dashboard for HTTP API services: request rate, error rate, latency percentiles, availability, resources, and active alerts.",
+  "layout": { "columns": 12, "row_height": 40 },
+  "variables": [],
+  "widgets": [
+    {
+      "id": "w-request-rate",
+      "type": "line_chart",
+      "title": "HTTP request rate",
+      "description": "Requests per second over the last 5m.",
+      "query": {
+        "source": "prometheus",
+        "promql": "sum(rate(http_requests_total[5m]))",
+        "query_type": "range",
+        "range": "1h",
+        "step": "30s"
+      },
+      "position": { "x": 0, "y": 0, "w": 6, "h": 6 },
+      "encoding": { "unit": "req/s", "legend": "total rps", "color": "#38bdf8" },
+      "thresholds": [],
+      "options": { "show_grid": true, "show_legend": true }
+    },
+    {
+      "id": "w-error-rate",
+      "type": "line_chart",
+      "title": "5xx error rate",
+      "description": "Fraction of responses that are 5xx.",
+      "query": {
+        "source": "prometheus",
+        "promql": "sum(rate(http_requests_total{status=~\"5..\"}[5m])) / sum(rate(http_requests_total[5m]))",
+        "query_type": "range",
+        "range": "1h",
+        "step": "30s"
+      },
+      "position": { "x": 6, "y": 0, "w": 6, "h": 6 },
+      "encoding": { "unit": "%", "color": "#f87171" },
+      "thresholds": [
+        { "value": 0.01, "color": "#f59e0b", "label": "warn >1%" },
+        { "value": 0.05, "color": "#ef4444", "label": "critical >5%" }
+      ],
+      "options": { "show_grid": true }
+    },
+    {
+      "id": "w-latency-p95",
+      "type": "line_chart",
+      "title": "Request latency p95",
+      "description": "95th percentile request duration.",
+      "query": {
+        "source": "prometheus",
+        "promql": "histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket[5m])) by (le))",
+        "query_type": "range",
+        "range": "1h",
+        "step": "30s"
+      },
+      "position": { "x": 0, "y": 6, "w": 6, "h": 6 },
+      "encoding": { "unit": "s", "legend": "p95", "color": "#a78bfa" },
+      "thresholds": [
+        { "value": 0.5, "color": "#f59e0b", "label": "warn >500ms" },
+        { "value": 1.0, "color": "#ef4444", "label": "critical >1s" }
+      ],
+      "options": { "show_grid": true }
+    },
+    {
+      "id": "w-latency-p99",
+      "type": "line_chart",
+      "title": "Request latency p99",
+      "description": "99th percentile request duration.",
+      "query": {
+        "source": "prometheus",
+        "promql": "histogram_quantile(0.99, sum(rate(http_request_duration_seconds_bucket[5m])) by (le))",
+        "query_type": "range",
+        "range": "1h",
+        "step": "30s"
+      },
+      "position": { "x": 6, "y": 6, "w": 6, "h": 6 },
+      "encoding": { "unit": "s", "legend": "p99", "color": "#fb7185" },
+      "thresholds": [
+        { "value": 1.0, "color": "#f59e0b", "label": "warn >1s" },
+        { "value": 2.0, "color": "#ef4444", "label": "critical >2s" }
+      ],
+      "options": { "show_grid": true }
+    },
+    {
+      "id": "w-availability",
+      "type": "gauge",
+      "title": "Service availability",
+      "description": "Fraction of targets currently up.",
+      "query": {
+        "source": "prometheus",
+        "promql": "avg(up)",
+        "query_type": "instant"
+      },
+      "position": { "x": 0, "y": 12, "w": 3, "h": 4 },
+      "encoding": { "unit": "", "color": "#34d399" },
+      "thresholds": [
+        { "value": 0.95, "color": "#f59e0b", "label": "warn <95%" },
+        { "value": 0.99, "color": "#34d399", "label": "healthy" }
+      ],
+      "options": { "min": 0, "max": 1, "decimals": 2 }
+    },
+    {
+      "id": "w-cpu",
+      "type": "line_chart",
+      "title": "CPU usage (seconds/s)",
+      "description": "Process CPU time rate.",
+      "query": {
+        "source": "prometheus",
+        "promql": "rate(process_cpu_seconds_total[5m])",
+        "query_type": "range",
+        "range": "1h",
+        "step": "30s"
+      },
+      "position": { "x": 3, "y": 12, "w": 5, "h": 4 },
+      "encoding": { "unit": "s/s", "color": "#60a5fa" },
+      "thresholds": [],
+      "options": { "show_grid": true }
+    },
+    {
+      "id": "w-memory",
+      "type": "line_chart",
+      "title": "Resident memory",
+      "description": "Process RSS bytes.",
+      "query": {
+        "source": "prometheus",
+        "promql": "process_resident_memory_bytes",
+        "query_type": "range",
+        "range": "1h",
+        "step": "30s"
+      },
+      "position": { "x": 8, "y": 12, "w": 4, "h": 4 },
+      "encoding": { "unit": "bytes", "color": "#4ade80" },
+      "thresholds": [],
+      "options": { "show_grid": true }
+    },
+    {
+      "id": "w-alerts",
+      "type": "alert_list",
+      "title": "Firing alerts",
+      "description": "High-latency and high-error-rate alerts.",
+      "query": {
+        "source": "prometheus",
+        "promql": "ALERTS{alertstate=\"firing\"}",
+        "query_type": "instant"
+      },
+      "position": { "x": 0, "y": 16, "w": 12, "h": 4 },
+      "encoding": {},
+      "thresholds": [],
+      "options": { "severity_filter": "warning", "row_limit": 20 }
+    }
+  ],
+  "refresh_interval": "30s"
+}

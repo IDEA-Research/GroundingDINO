@@ -1,0 +1,2144 @@
+{% extends "base.html" %}
+
+{% block title %}醫療數值詳情 - 影片螢幕數字抓取系統{% endblock %}
+
+{% block extra_styles %}
+<style>
+    .details-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 30px;
+        padding-bottom: 20px;
+        border-bottom: 2px solid #e9ecef;
+    }
+
+    .details-header h2 {
+        color: #333;
+        font-size: 1.8em;
+        margin: 0;
+    }
+
+    .btn-back {
+        background: linear-gradient(135deg, #6c757d 0%, #5a6268 100%);
+        color: white;
+        border: none;
+        padding: 12px 24px;
+        border-radius: 6px;
+        cursor: pointer;
+        font-size: 0.95em;
+        font-weight: 600;
+        text-decoration: none;
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        transition: all 0.3s ease;
+    }
+
+    .btn-back:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 5px 15px rgba(108, 117, 125, 0.3);
+    }
+
+    .video-info {
+        background: #f8f9fa;
+        padding: 20px;
+        border-radius: 8px;
+        margin-bottom: 25px;
+    }
+
+    .video-info h3 {
+        color: #333;
+        margin-bottom: 15px;
+        font-size: 1.2em;
+    }
+
+    .info-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 15px;
+    }
+
+    .info-item {
+        display: flex;
+        flex-direction: column;
+    }
+
+    .info-label {
+        color: #666;
+        font-size: 0.85em;
+        margin-bottom: 5px;
+    }
+
+    .info-value {
+        color: #333;
+        font-weight: 600;
+        font-size: 1em;
+    }
+
+    .controls-section {
+        background: white;
+        padding: 20px;
+        border-radius: 8px;
+        margin-bottom: 20px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+
+    .histogram-toggle {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin-bottom: 15px;
+    }
+
+    .histogram-toggle input[type="checkbox"] {
+        width: 20px;
+        height: 20px;
+        cursor: pointer;
+    }
+
+    .histogram-toggle label {
+        font-size: 1.1em;
+        font-weight: 600;
+        color: #333;
+        cursor: pointer;
+    }
+
+    .medical-values-container {
+        max-height: 600px;
+        overflow-y: auto;
+        padding-right: 10px;
+    }
+
+    /* 捲動軸樣式 */
+    .medical-values-container::-webkit-scrollbar {
+        width: 10px;
+    }
+
+    .medical-values-container::-webkit-scrollbar-track {
+        background: #f1f1f1;
+        border-radius: 5px;
+    }
+
+    .medical-values-container::-webkit-scrollbar-thumb {
+        background: #4facfe;
+        border-radius: 5px;
+    }
+
+    .medical-values-container::-webkit-scrollbar-thumb:hover {
+        background: #00f2fe;
+    }
+
+    .medical-values-list {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+        gap: 20px;
+    }
+
+    .medical-value-item {
+        background: white;
+        border-radius: 8px;
+        padding: 20px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        cursor: pointer;
+        transition: all 0.3s ease;
+        border: 2px solid transparent;
+    }
+
+    .medical-value-item:hover {
+        transform: translateY(-3px);
+        box-shadow: 0 5px 15px rgba(0,0,0,0.15);
+        border-color: #4facfe;
+    }
+
+    .medical-value-item h3 {
+        color: #333;
+        margin-bottom: 12px;
+        font-size: 1.1em;
+    }
+
+    .medical-value-item .values {
+        margin-bottom: 12px;
+    }
+
+    .medical-value-item .values span {
+        display: inline-block;
+        background: #e3f2fd;
+        color: #1976d2;
+        padding: 5px 10px;
+        border-radius: 4px;
+        margin: 3px;
+        font-size: 0.9em;
+        font-weight: 600;
+        cursor: pointer;
+        transition: background 0.2s;
+    }
+
+    .medical-value-item .values span:hover {
+        background: #bbdefb;
+    }
+
+    .corrected-text {
+        color: #ff0000 !important; /* 強制使用紅色 */
+        font-weight: bold;
+        margin-left: 8px;
+    }
+
+    .original-text {
+        color: inherit;
+        text-decoration: none !important; /* 確保沒有刪除線 */
+        opacity: 1 !important; /* 確保不透明 */
+        margin-right: 5px;
+    }
+
+    .model-selector {
+        cursor: pointer;
+        padding: 5px;
+        border-radius: 4px;
+        transition: background 0.2s;
+    }
+
+    .model-selector:hover {
+        background: #f0f0f0;
+    }
+
+    .medical-value-item .model {
+        color: #666;
+        font-size: 0.85em;
+        font-style: italic;
+        margin-top: 8px;
+    }
+
+    .quality-marker {
+        margin-top: 10px;
+        display: flex;
+        gap: 10px;
+        flex-wrap: wrap;
+    }
+
+    .quality-marker label {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 0.9em;
+        color: #333;
+        background: #f5f7fa;
+        border: 1px solid #d9e2ec;
+        border-radius: 6px;
+        padding: 4px 8px;
+        cursor: pointer;
+    }
+
+    .quality-marker input[type="checkbox"] {
+        cursor: pointer;
+    }
+
+    .medical-value-item img {
+        max-width: 100%;
+        height: auto;
+        border-radius: 4px;
+        margin: 10px 0;
+    }
+
+    .histograms-section {
+        margin-top: 30px;
+        display: none;
+    }
+
+    .histograms-section.visible {
+        display: block;
+    }
+
+    .histograms-section h3 {
+        color: #333;
+        margin-bottom: 20px;
+        font-size: 1.5em;
+    }
+
+    .histogram-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+        gap: 25px;
+    }
+
+    .histogram-card {
+        background: white;
+        border-radius: 8px;
+        padding: 20px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        cursor: zoom-in;
+        transition: transform 0.2s, box-shadow 0.2s;
+    }
+
+    .histogram-card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    }
+
+    .histogram-card h4 {
+        color: #333;
+        margin-bottom: 15px;
+        font-size: 1.2em;
+    }
+
+    .histogram-chart {
+        width: 100%;
+        height: 400px;
+    }
+
+    .histogram-timeline-controls {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        flex-wrap: wrap;
+        margin-bottom: 16px;
+        padding: 12px;
+        background: #f8fbff;
+        border: 1px solid #dbeafe;
+        border-radius: 8px;
+    }
+
+    .histogram-timeline-controls label {
+        font-size: 0.9em;
+        font-weight: 600;
+        color: #334155;
+    }
+
+    .histogram-timeline-controls input[type="range"] {
+        min-width: 260px;
+        flex: 1;
+    }
+
+    .timeline-range-label {
+        font-size: 0.9em;
+        color: #1e3a8a;
+        font-weight: 600;
+        min-width: 170px;
+    }
+
+    .loading-state {
+        text-align: center;
+        padding: 60px 20px;
+        color: #666;
+    }
+
+    .spinner {
+        border: 4px solid #f3f3f3;
+        border-top: 4px solid #4facfe;
+        border-radius: 50%;
+        width: 50px;
+        height: 50px;
+        animation: spin 1s linear infinite;
+        margin: 0 auto 20px;
+    }
+
+    @keyframes spin {
+        0% { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
+    }
+
+    .modal {
+        display: none;
+        position: fixed;
+        z-index: 1000;
+        left: 0;
+        top: 0;
+        width: 100%;
+        height: 100%;
+        background-color: rgba(0,0,0,0.8);
+    }
+
+    .modal-content {
+        background-color: white;
+        margin: 3% auto;
+        padding: 30px;
+        border-radius: 10px;
+        width: 90%;
+        max-width: 900px;
+        max-height: 85vh;
+        overflow-y: auto;
+    }
+
+    .close {
+        color: #aaa;
+        float: right;
+        font-size: 28px;
+        font-weight: bold;
+        cursor: pointer;
+    }
+
+    .close:hover {
+        color: black;
+    }
+
+    .modal img {
+        max-width: 100%;
+        height: auto;
+        border-radius: 8px;
+        margin: 10px 0;
+    }
+
+    @media (max-width: 768px) {
+        .details-header {
+            flex-direction: column;
+            align-items: flex-start;
+            gap: 15px;
+        }
+        
+        .medical-values-list {
+            grid-template-columns: 1fr;
+        }
+
+        .histogram-grid {
+            grid-template-columns: 1fr;
+        }
+
+        .histogram-timeline-controls {
+            flex-direction: column;
+            align-items: stretch;
+        }
+
+        .timeline-range-label {
+            min-width: auto;
+        }
+    }
+
+    /* 新增樣式：重送按鈕與卡片標題排版 */
+    .card-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start; /* 對齊頂部 */
+        margin-bottom: 12px;
+    }
+
+    .card-header h3 {
+        margin: 0;
+        margin-right: 10px; /* 與按鈕保持距離 */
+    }
+
+    .btn-resend {
+        background: #fff;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+        padding: 5px 10px;
+        font-size: 0.85em;
+        cursor: pointer;
+        color: #555;
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        transition: all 0.2s;
+        white-space: nowrap;
+        box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+    }
+
+    .btn-resend:hover {
+        background: #f8f9fa;
+        border-color: #bbb;
+        color: #333;
+        transform: translateY(-1px);
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    
+    .btn-resend:disabled {
+        opacity: 0.7;
+        cursor: not-allowed;
+        background: #f5f5f5;
+    }
+
+    .new-result-tag {
+        font-size: 0.8em;
+        color: #ef6c00;
+        background: #fff3e0;
+        padding: 2px 6px;
+        border-radius: 4px;
+        margin-left: 5px;
+        border: 1px solid #ffe0b2;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="details-header">
+    <h2 id="pageTitle">🩺 醫療數值詳情</h2>
+    <a href="/database" class="btn-back">
+        ⬅️ 返回資料庫列表
+    </a>
+</div>
+
+<div class="video-info" id="videoInfo">
+    <h3>影片資訊</h3>
+    <div class="info-grid">
+        <div class="info-item">
+            <span class="info-label">Session ID</span>
+            <span class="info-value" id="sessionId">-</span>
+        </div>
+        <div class="info-item" id="cameraNameItem" style="display: none;">
+            <span class="info-label">攝影機名稱</span>
+            <span class="info-value" id="cameraName">-</span>
+        </div>
+        <div class="info-item" id="taskNameItem" style="display: none;">
+            <span class="info-label">任務名稱</span>
+            <span class="info-value" id="taskName">-</span>
+        </div>
+        <div class="info-item">
+            <span class="info-label">總記錄數</span>
+            <span class="info-value" id="totalRecords">-</span>
+        </div>
+    </div>
+    
+    <!-- 新增：各設備正確率統計面板 -->
+    <div id="deviceErrorRateStats" style="margin-top: 20px; background: #f1f8e9; padding: 15px; border-radius: 8px; border-left: 5px solid #8bc34a; display: none;">
+        <h4 style="margin-top: 0; font-size: 1.1em; color: #33691e;">📊 各設備辨識正確率統計</h4>
+        <div id="deviceStatsGrid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 15px; margin-top: 10px;">
+            <!-- 由 JavaScript 動態生成 -->
+        </div>
+    </div>
+    
+    <!-- 統計與正確率面板 -->
+    <div style="margin-top: 20px; border-top: 1px solid #dee2e6; padding-top: 20px; display: flex; gap: 20px; flex-wrap: wrap;">
+        <!-- 正確率面板 -->
+        <div style="flex: 1; min-width: 300px; background: #e8f5e9; padding: 15px; border-radius: 8px; border-left: 5px solid #2e7d32;">
+            <h4 style="margin-top: 0; font-size: 1.1em; color: #2e7d32;">🎯 模型辨識正確率 (Precision)</h4>
+            <div style="display: flex; gap: 40px; margin-top: 10px;">
+                <div>
+                    <div style="font-size: 0.85em; color: #666;">型號正確率 (TP / TP+FP)</div>
+                    <div id="modelAccuracy" style="font-size: 1.4em; font-weight: bold; color: #2e7d32;">100.0%</div>
+                    <div style="font-size: 0.75em; color: #666; margin-top: 4px;">共 <span id="totalModelsCount">0</span> 筆辨識</div>
+                </div>
+                <div>
+                    <div style="font-size: 0.85em; color: #666;">數值正確率 (TP / TP+FP)</div>
+                    <div id="valueAccuracy" style="font-size: 1.4em; font-weight: bold; color: #2e7d32;">100.0%</div>
+                    <div style="font-size: 0.75em; color: #666; margin-top: 4px;">共 <span id="totalValuesDisplay">0</span> 個數值</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 人工訂正統計面板 -->
+        <div style="flex: 1; min-width: 300px; background: #fff3e0; padding: 15px; border-radius: 8px; border-left: 5px solid #ef6c00;">
+            <h4 style="margin-top: 0; font-size: 1.1em; color: #ef6c00;">✍️ 人工訂正統計 (FP)</h4>
+            <div style="display: flex; gap: 40px; margin-top: 10px;">
+                <div>
+                    <div style="font-size: 0.85em; color: #666;">型號訂正次數 (FP)</div>
+                    <div id="modelCorrectionCount" style="font-size: 1.4em; font-weight: bold; color: #d32f2f;">0</div>
+                </div>
+                <div>
+                    <div style="font-size: 0.85em; color: #666;">數值訂正次數 (FP)</div>
+                    <div id="valueCorrectionCount" style="font-size: 1.4em; font-weight: bold; color: #d32f2f;">0</div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="controls-section">
+    <div style="display: flex; gap: 20px; align-items: center; margin-bottom: 15px; padding-bottom: 15px; border-bottom: 1px solid #eee; flex-wrap: wrap;">
+        <div style="font-weight: 600; color: #333;">🤖 選擇檢視模型：</div>
+        <select id="globalModelSelect" onchange="changeViewModel()" style="padding: 8px 12px; border-radius: 6px; border: 1px solid #ccc; font-size: 1em; min-width: 200px;">
+            <option value="google/gemini-3.1-flash-lite">Gemini 3.1 Flash Lite</option>
+            <option value="openai/gpt-5.4">GPT-5.4</option>
+            <option value="openai/gpt-4o">GPT-4o</option>
+        </select>
+        
+        <!-- 新增 API Key 輸入框 -->
+        <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+            <label for="apiKeyInput" style="font-weight: 600; color: #555; font-size: 0.9em;">🔑 API Key:</label>
+            <input type="password" id="apiKeyInput" placeholder="OpenRouter API Key（地端模型可留空）" style="padding: 8px 12px; border-radius: 6px; border: 1px solid #ccc; font-size: 0.9em; width: 250px;">
+            <button type="button" id="saveApiKeyBtn" style="background: linear-gradient(135deg, #28a745 0%, #218838 100%); color: white; border: none; padding: 8px 15px; border-radius: 6px; font-weight: 600; font-size: 0.85rem; cursor: pointer; transition: all 0.3s ease; box-shadow: 0 4px 12px rgba(40,167,69,0.2); white-space: nowrap;">💾 儲存</button>
+            <button type="button" id="deleteApiKeyBtn" style="background: linear-gradient(135deg, #dc3545 0%, #c82333 100%); color: white; border: none; padding: 8px 15px; border-radius: 6px; font-weight: 600; font-size: 0.85rem; cursor: pointer; transition: all 0.3s ease; box-shadow: 0 4px 12px rgba(220,53,69,0.2); white-space: nowrap;">🗑️ 刪除</button>
+        </div>
+
+        <button id="btnAnalyzeMissing" onclick="analyzeMissingFrames()" class="btn-resend" style="display: none; background: #e3f2fd; border-color: #90caf9; color: #1976d2; padding: 8px 15px;">
+            ▶️ 使用此模型分析所有未分析的畫面
+        </button>
+        <div style="display: inline-flex; align-items: center; gap: 8px; flex-wrap: nowrap;">
+            <select id="exportModeSelect" style="padding: 8px 12px; border-radius: 6px; border: 1px solid #ccc; font-size: 0.95em;">
+                <option value="raw">匯出原始數據</option>
+                <option value="corrected">匯出訂正後數據</option>
+            </select>
+            <button type="button" onclick="exportCurrentSessionMedicalValues()" class="btn-resend" style="background: #fff8e1; border-color: #ffe082; color: #ef6c00; padding: 8px 15px; margin: 0;">
+                ⬇️ 匯出此筆醫療數據 CSV
+            </button>
+        </div>
+    </div>
+
+    <div id="detailsAlertBanner" class="hidden" role="alert"></div>
+
+    <div class="histogram-toggle">
+        <input type="checkbox" id="showHistogram" onchange="toggleHistograms()">
+        <label for="showHistogram">📊 顯示數值 Histogram 圖表</label>
+    </div>
+    
+    <div class="histogram-toggle" style="margin-top: 10px;">
+        <input type="checkbox" id="showCorrectedOnly" onchange="toggleCorrectedOnly()">
+        <label for="showCorrectedOnly">✍️ 僅顯示有訂正的數據</label>
+    </div>
+</div>
+
+<div id="contentArea">
+    <div class="loading-state">
+        <div class="spinner"></div>
+        <p>正在載入醫療數值資料...</p>
+    </div>
+</div>
+
+<div class="medical-values-container" id="medicalValuesContainer" style="display: none;">
+    <div class="medical-values-list" id="medicalValuesList">
+        <!-- 動態生成的醫療數值項目 -->
+    </div>
+</div>
+
+<div class="histograms-section" id="histogramsSection">
+    <h3>📈 數值變化 Histogram</h3>
+    <div class="histogram-grid" id="histogramGrid" wire:ignore>
+        <!-- 動態生成的 histogram 圖表 -->
+    </div>
+</div>
+
+<!-- 放大圖表模態視窗 -->
+<div id="hoverChartOverlay" class="modal" style="z-index: 9999;">
+    <div id="hoverChartContainer" style="position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 92%; max-width: 1400px; height: 500px; background: white; box-shadow: 0 15px 50px rgba(0,0,0,0.4); border-radius: 12px; padding: 25px; border: 1px solid #ddd;">
+        <span class="close" id="hoverChartCloseBtn" style="position: absolute; top: 15px; right: 20px; cursor: pointer;">&times;</span>
+        <h3 id="hoverChartTitle" style="margin-top: 0; font-size: 1.4em; color: #333; border-bottom: 2px solid #f0f0f0; padding-bottom: 10px;"></h3>
+        <div id="histogramTimelineControls" class="histogram-timeline-controls" style="display: none; margin-bottom: 10px;">
+            <label for="histogramWindowSizeSelect">顯示點數</label>
+            <select id="histogramWindowSizeSelect" onchange="onHistogramWindowSizeChange()" style="padding: 6px 10px; border-radius: 6px; border: 1px solid #cbd5e1;">
+                <option value="30">30</option>
+                <option value="60" selected>60</option>
+                <option value="120">120</option>
+                <option value="300">300</option>
+            </select>
+            <label for="histogramTimelineSlider">時間軸</label>
+            <input id="histogramTimelineSlider" type="range" min="0" max="0" value="0" step="1" oninput="onHistogramTimelineChange()">
+            <span id="histogramTimelineRangeLabel" class="timeline-range-label">顯示區間：-</span>
+        </div>
+        <div style="height: 380px; width: 100%;">
+            <canvas id="hoverChartCanvas"></canvas>
+        </div>
+        <div style="text-align: center; color: #1976d2; font-size: 0.9em; margin-top: 15px; font-weight: 600;">
+            💡 點擊背景或右上角即可關閉返回
+        </div>
+    </div>
+</div>
+
+<!-- 模態視窗 -->
+<div id="imageModal" class="modal">
+    <div class="modal-content">
+        <span class="close">&times;</span>
+        <h2 id="modalTitle">畫面詳情</h2>
+        <div id="modalContent">
+            <!-- 動態內容 -->
+        </div>
+    </div>
+</div>
+
+<!-- 設備型號訂正模態視窗 -->
+<div id="modelModal" class="modal">
+    <div class="modal-content" style="max-width: 400px;">
+        <span class="close" onclick="closeModelModal()">&times;</span>
+        <h2 style="margin-bottom: 20px;">選擇設備型號</h2>
+        <div class="form-group" style="margin-bottom: 20px;">
+            <label for="modelSelect" style="display: block; margin-bottom: 10px; font-weight: 600;">請選擇正確的型號：</label>
+            <select id="modelSelect" style="width: 100%; padding: 12px; border-radius: 8px; border: 2px solid #e9ecef; font-size: 16px; background-color: white;">
+                <!-- 選項會由 JavaScript 動態生成 -->
+            </select>
+        </div>
+        <div style="display: flex; gap: 10px;">
+            <button onclick="saveModelCorrection()" class="btn" style="flex: 1;">確認訂正</button>
+            <button onclick="closeModelModal()" class="btn" style="flex: 1; background: #6c757d;">取消</button>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script>
+    let medicalValuesData = [];
+    let sessionId = null;
+    let chartInstances = {}; // 儲存圖表實例以防重複創建
+    let hoverChartInstance = null; // 全域放大圖表實例
+    let currentCorrectingAnalysisId = null;
+
+    const LOCAL_MODELS = ['qwen3-vl-235b-a22b-instruct-1m_moe', 'glm-4.6v'];
+    const OPENROUTER_MODELS = [
+        'google/gemini-3.1-flash-lite',
+        'openai/gpt-5.4',
+        'openai/gpt-4o',
+        'google/gemini-3.1-flash-lite-preview',
+        'qwen/qwen3.5-397b-a17b',
+        'google/gemini-2.0-flash-001',
+        'anthropic/claude-3.5-sonnet',
+        'meta-llama/llama-3.2-90b-vision-instruct'
+    ];
+    let availableModels = [...OPENROUTER_MODELS, ...LOCAL_MODELS];
+    let currentModel = 'google/gemini-3.1-flash-lite';
+    let histogramWindowSize = 60;
+    let histogramWindowStart = 0;
+    let currentHoverValueType = null;
+
+    function providerForModel(model) {
+        return LOCAL_MODELS.includes(model) ? 'local' : 'openrouter';
+    }
+
+    function requireApiKeyForCurrentModel() {
+        const apiKey = document.getElementById('apiKeyInput').value.trim();
+        if (providerForModel(currentModel) === 'openrouter' && !apiKey) {
+            showDetailsAlert('請輸入 OpenRouter API Key 後再進行分析。', 'warning');
+            return null;
+        }
+        return apiKey;
+    }
+
+    function escapeHtml(text) {
+        const div = document.createElement('div');
+        div.textContent = text == null ? '' : String(text);
+        return div.innerHTML;
+    }
+
+    function showDetailsAlert(message, type = 'error') {
+        const banner = document.getElementById('detailsAlertBanner');
+        const classMap = {
+            error: 'error-message',
+            warning: 'warning-message',
+            success: 'success-message',
+            info: 'info-message'
+        };
+        banner.className = classMap[type] || 'error-message';
+        banner.innerHTML = message;
+        banner.classList.remove('hidden');
+    }
+
+    function hideDetailsAlert() {
+        const banner = document.getElementById('detailsAlertBanner');
+        banner.classList.add('hidden');
+        banner.innerHTML = '';
+    }
+
+    function formatFailureSummaryHtml(model, summary) {
+        if (!summary || !summary.failed_count) {
+            return null;
+        }
+        const parts = [];
+        if (summary.success_count === 0) {
+            parts.push(`<strong>模型 ${escapeHtml(model)} 的分析全部失敗</strong>（共 ${summary.failed_count} 個螢幕）。`);
+        } else {
+            parts.push(
+                `<strong>模型 ${escapeHtml(model)} 有部分分析失敗</strong>：` +
+                `成功 ${summary.success_count}、失敗 ${summary.failed_count}。`
+            );
+        }
+        const mainError = summary.last_error || (summary.sample_errors && summary.sample_errors[0]);
+        if (mainError) {
+            parts.push(`<br>原因：${escapeHtml(mainError)}`);
+        }
+        const others = (summary.sample_errors || []).filter(e => e && e !== mainError);
+        if (others.length > 0) {
+            parts.push(`<br><small>其他錯誤：${others.map(escapeHtml).join('； ')}</small>`);
+        }
+        parts.push('<br>請檢查 OpenRouter API Key 是否正確，或嘗試其他模型。');
+        return parts.join('');
+    }
+
+    function getDatabaseBackUrl() {
+        const tab = new URLSearchParams(window.location.search).get('tab');
+        return tab === 'stream' ? '/database?tab=stream' : '/database';
+    }
+
+    // 頁面載入時自動載入資料
+    document.addEventListener('DOMContentLoaded', async function() {
+        const backBtn = document.querySelector('.btn-back');
+        if (backBtn) {
+            backBtn.href = getDatabaseBackUrl();
+        }
+
+        // 載入記住的 API Key
+        const apiKeyInput = document.getElementById('apiKeyInput');
+        const savedApiKey = localStorage.getItem('openrouter_api_key');
+        if (savedApiKey && apiKeyInput) {
+            apiKeyInput.value = savedApiKey;
+        }
+
+        // 儲存與刪除 API Key 按鈕事件
+        const saveApiKeyBtn = document.getElementById('saveApiKeyBtn');
+        const deleteApiKeyBtn = document.getElementById('deleteApiKeyBtn');
+
+        if (saveApiKeyBtn) {
+            saveApiKeyBtn.addEventListener('click', function() {
+                const apiKey = apiKeyInput.value.trim();
+                if (!apiKey) {
+                    showDetailsAlert('請先輸入 API Key 再進行儲存。', 'warning');
+                    return;
+                }
+                localStorage.setItem('openrouter_api_key', apiKey);
+                showDetailsAlert('API Key 已成功儲存！', 'success');
+            });
+        }
+
+        if (deleteApiKeyBtn) {
+            deleteApiKeyBtn.addEventListener('click', function() {
+                apiKeyInput.value = '';
+                localStorage.removeItem('openrouter_api_key');
+                showDetailsAlert('API Key 已成功刪除！', 'success');
+            });
+        }
+
+        // 從 URL 參數獲取 session_id
+        const urlParams = new URLSearchParams(window.location.search);
+        sessionId = urlParams.get('session_id');
+        
+        if (sessionId) {
+            document.getElementById('sessionId').textContent = sessionId;
+            await loadSessionModels(sessionId);
+            loadMedicalValues(sessionId, currentModel);
+        } else {
+            showError('未提供 Session ID');
+        }
+    });
+
+    // 載入該 Session 使用過的所有模型
+    async function loadSessionModels(sessionId) {
+        try {
+            const response = await fetch(`./api/mongodb/session_models/${sessionId}`);
+            const data = await response.json();
+            if (data.success && data.models && data.models.length > 0) {
+                // 如果資料庫裡有紀錄，就用資料庫的
+                // 為了確保下拉選單有其他選項可供選擇，我們可以合併預設清單
+                const dbModels = data.models;
+                availableModels = [...new Set([...dbModels, ...availableModels])];
+                
+                // 預設選擇資料庫裡有的第一個模型
+                if (dbModels.length > 0) {
+                    currentModel = dbModels[0];
+                }
+            }
+            updateModelSelect();
+        } catch (error) {
+            console.error('載入模型列表失敗:', error);
+            updateModelSelect(); // 失敗也更新，用預設值
+        }
+    }
+
+    // 新增：載入各設備錯誤率統計
+    async function loadDeviceErrorRateStats(sessionId) {
+        try {
+            const model = document.getElementById('globalModelSelect').value;
+            const response = await fetch(`./api/mongodb/stats?session_id=${sessionId}&model=${model}`);
+            const data = await response.json();
+            
+            if (data.success && data.device_stats) {
+                const statsGrid = document.getElementById('deviceStatsGrid');
+                const statsPanel = document.getElementById('deviceErrorRateStats');
+                statsGrid.innerHTML = '';
+                
+                const stats = data.device_stats;
+                const deviceNames = Object.keys(stats);
+                
+                if (deviceNames.length > 0) {
+                    statsPanel.style.display = 'block';
+                    deviceNames.forEach(name => {
+                        const device = stats[name];
+                        const statCard = document.createElement('div');
+                        statCard.style.background = 'white';
+                        statCard.style.padding = '10px';
+                        statCard.style.borderRadius = '6px';
+                        statCard.style.boxShadow = '0 1px 3px rgba(0,0,0,0.1)';
+                        
+                        // 根據正確率決定顏色
+                        let color = '#d32f2f'; // 紅色 (低正確率)
+                        if (device.accuracy > 50) color = '#ef6c00'; // 橘色
+                        if (device.accuracy > 80) color = '#2e7d32'; // 綠色 (高正確率)
+                        
+                        statCard.innerHTML = `
+                            <div style="font-weight: bold; font-size: 0.9em; color: #333; margin-bottom: 5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${name}">${name}</div>
+                            <div style="display: flex; justify-content: space-between; align-items: center;">
+                                <div style="font-size: 1.2em; font-weight: bold; color: ${color};">${device.accuracy}%</div>
+                                <div style="font-size: 0.75em; color: #666; text-align: right;">
+                                    TP: ${device.total_count - device.corrected_count}<br>
+                                    TP+FP: ${device.total_count}
+                                </div>
+                            </div>
+                            <div style="width: 100%; height: 4px; background: #eee; border-radius: 2px; margin-top: 8px;">
+                                <div style="width: ${device.accuracy}%; height: 100%; background: ${color}; border-radius: 2px;"></div>
+                            </div>
+                        `;
+                        statsGrid.appendChild(statCard);
+                    });
+                } else {
+                    statsPanel.style.display = 'none';
+                }
+            }
+        } catch (error) {
+            console.error('載入設備統計失敗:', error);
+        }
+    }
+
+    function updateModelSelect() {
+        const select = document.getElementById('globalModelSelect');
+        select.innerHTML = '';
+        availableModels.forEach(model => {
+            const option = document.createElement('option');
+            option.value = model;
+            option.textContent = model;
+            if (model === currentModel) {
+                option.selected = true;
+            }
+            select.appendChild(option);
+        });
+    }
+
+    async function changeViewModel() {
+        currentModel = document.getElementById('globalModelSelect').value;
+        hideDetailsAlert();
+        document.getElementById('contentArea').style.display = 'block';
+        document.getElementById('medicalValuesContainer').style.display = 'none';
+        document.getElementById('btnAnalyzeMissing').style.display = 'none';
+        await loadMedicalValues(sessionId, currentModel);
+    }
+
+    function exportCurrentSessionMedicalValues() {
+        if (!sessionId) {
+            alert('缺少 Session ID，無法匯出');
+            return;
+        }
+
+        const model = document.getElementById('globalModelSelect').value || '';
+        const mode = document.getElementById('exportModeSelect').value || 'raw';
+        const exportUrl = `./api/mongodb/export/medical_values/${encodeURIComponent(sessionId)}?model=${encodeURIComponent(model)}&mode=${encodeURIComponent(mode)}`;
+        window.location.href = exportUrl;
+    }
+
+    // 載入醫療數值
+    async function loadMedicalValues(sessionId, model) {
+        try {
+            const url = model ? `./api/mongodb/medical_values/${sessionId}?model=${model}` : `./api/mongodb/medical_values/${sessionId}`;
+            const response = await fetch(url);
+            const data = await response.json();
+            
+            if (!data.success) {
+                throw new Error(data.error || '載入失敗');
+            }
+            
+            if (data.data && data.data.length > 0) {
+                hideDetailsAlert();
+                const partialFail = data.failure_summary && data.failure_summary.failed_count > 0;
+                if (partialFail) {
+                    const html = formatFailureSummaryHtml(model, data.failure_summary);
+                    if (html) {
+                        showDetailsAlert(html, 'warning');
+                    }
+                }
+                // 轉換資料格式
+                medicalValuesData = data.data.map(item => ({
+                    id: item.id,
+                    frame_result_id: item.frame_result_id,
+                    time_seconds: item.minute,
+                    screen_number: item.screen_number,
+                    original_screen_number: item.original_screen_number,
+                    medical_values: item.medical_values || {},
+                    corrected_medical_values: item.corrected_medical_values || {},
+                    frame_image_url: item.original_image_url || '',
+                    screen_image_url: item.screen_image_url || '',
+                    screen_image_path: item.screen_image_path || '',
+                    screen_image_url_for_vlm: item.screen_image_url_for_vlm || '',
+                    screen_image_path_for_vlm: item.screen_image_path_for_vlm || '',
+                    model: item.model,
+                    corrected_model: item.corrected_model,
+                    analyzed_at: item.analyzed_at, // 保存主機時間
+                    llm_model: item.llm_model,
+                    has_glare: !!item.has_glare,
+                    has_occlusion: !!item.has_occlusion
+                }));
+                
+                document.getElementById('totalRecords').textContent = medicalValuesData.length;
+                
+                // 顯示相機與任務名稱（如果存在）
+                if (data.camera_name) {
+                    document.getElementById('cameraName').textContent = data.camera_name;
+                    document.getElementById('cameraNameItem').style.display = 'block';
+                } else {
+                    document.getElementById('cameraNameItem').style.display = 'none';
+                }
+                if (data.task_name) {
+                    document.getElementById('taskName').textContent = data.task_name;
+                    document.getElementById('taskNameItem').style.display = 'block';
+                } else {
+                    document.getElementById('taskNameItem').style.display = 'none';
+                }
+
+                displayMedicalValues(medicalValuesData);
+                updateCorrectionStats(medicalValuesData);
+                loadDeviceErrorRateStats(sessionId); // 新增：載入設備錯誤率統計
+                if (document.getElementById('showHistogram').checked) {
+                    generateHistograms(true);
+                }
+                
+                // 隱藏載入狀態,顯示內容
+                document.getElementById('contentArea').style.display = 'none';
+                document.getElementById('medicalValuesContainer').style.display = 'block';
+                document.getElementById('btnAnalyzeMissing').style.display = 'none';
+            } else {
+                medicalValuesData = [];
+                const fs = data.failure_summary;
+                const hadFailures = fs && fs.failed_count > 0;
+                if (hadFailures) {
+                    const html = formatFailureSummaryHtml(model, fs);
+                    if (html) {
+                        showDetailsAlert(html, 'error');
+                    }
+                    document.getElementById('contentArea').innerHTML = `
+                    <div class="empty-state" style="text-align: center; padding: 40px;">
+                        <div style="font-size: 3em; margin-bottom: 10px;">⚠️</div>
+                        <h3>模型 ${escapeHtml(model)} 沒有可顯示的醫療數值</h3>
+                        <p>已嘗試分析但全部失敗，請見上方紅色提示（多為 API Key 或模型名稱錯誤）。</p>
+                        <p style="margin-top: 12px; color: #666;">修正 API Key 後，可點擊上方按鈕重新分析。</p>
+                    </div>
+                `;
+                } else {
+                    hideDetailsAlert();
+                    document.getElementById('contentArea').innerHTML = `
+                    <div class="empty-state" style="text-align: center; padding: 40px;">
+                        <div style="font-size: 3em; margin-bottom: 10px;">🔍</div>
+                        <h3>這個模型 (${escapeHtml(model)}) 尚未分析過此影片</h3>
+                        <p>您可以點擊上方按鈕開始分析，或選擇其他模型檢視。</p>
+                    </div>
+                `;
+                }
+                document.getElementById('contentArea').style.display = 'block';
+                document.getElementById('medicalValuesContainer').style.display = 'none';
+                document.getElementById('btnAnalyzeMissing').style.display = 'inline-block';
+                document.getElementById('histogramTimelineControls').style.display = 'none';
+                updateCorrectionStats([]);
+            }
+        } catch (error) {
+            showError('載入詳細資料失敗: ' + error.message);
+        }
+    }
+
+    // 分析未分析的畫面
+    async function analyzeMissingFrames() {
+        const btn = document.getElementById('btnAnalyzeMissing');
+        const apiKey = requireApiKeyForCurrentModel();
+        if (apiKey === null) return;
+        
+        btn.disabled = true;
+        btn.innerHTML = '⏳ 正在準備分析...';
+        
+        try {
+            // 獲取此 Session 的所有已分析資料 (不分模型)，以知道有哪些畫面需要分析
+            const response = await fetch(`./api/mongodb/medical_values/${sessionId}`);
+            const data = await response.json();
+            
+            if (!data.success || !data.data || data.data.length === 0) {
+                alert('找不到任何已分析的畫面資料，無法進行批次分析。');
+                btn.disabled = false;
+                btn.innerHTML = '▶️ 使用此模型分析所有未分析的畫面';
+                return;
+            }
+            
+            // 根據 frame_result_id 和 original_screen_number 進行去重，確保每個螢幕只分析一次
+            const uniqueFramesMap = new Map();
+            data.data.forEach(item => {
+                const key = `${item.frame_result_id}_${item.original_screen_number}`;
+                if (!uniqueFramesMap.has(key)) {
+                    uniqueFramesMap.set(key, item);
+                }
+            });
+            
+            const framesToAnalyze = Array.from(uniqueFramesMap.values());
+            let successCount = 0;
+            const failureMessages = [];
+            
+            document.getElementById('contentArea').innerHTML = `
+                <div class="loading-state">
+                    <div class="spinner"></div>
+                    <p id="analysisProgress">正在使用 ${currentModel} 分析畫面 (0/${framesToAnalyze.length})...</p>
+                </div>
+            `;
+            
+            for (let i = 0; i < framesToAnalyze.length; i++) {
+                const item = framesToAnalyze[i];
+                document.getElementById('analysisProgress').textContent = `正在使用 ${currentModel} 分析畫面 (${i+1}/${framesToAnalyze.length})...`;
+                
+                try {
+                    const reanalyzeResponse = await fetch('/api/reanalyze_image', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({
+                            image_path: item.screen_image_path,
+                            model: currentModel,
+                            provider: providerForModel(currentModel),
+                            api_key: apiKey,
+                            frame_result_id: item.frame_result_id,
+                            original_screen_number: item.original_screen_number,
+                            screen_number: item.screen_number,
+                            save_to_db: true // 批次分析時儲存資料
+                        })
+                    });
+                    
+                    const result = await reanalyzeResponse.json();
+                    if (result.success) {
+                        successCount++;
+                    } else {
+                        const errMsg = result.error || '未知錯誤';
+                        console.error(`分析單張圖片失敗 (${item.screen_image_path}):`, errMsg);
+                        if (!failureMessages.includes(errMsg)) {
+                            failureMessages.push(errMsg);
+                        }
+                    }
+                } catch (err) {
+                    console.error('分析單張圖片發生例外錯誤:', err);
+                    const errMsg = err.message || String(err);
+                    if (!failureMessages.includes(errMsg)) {
+                        failureMessages.push(errMsg);
+                    }
+                }
+            }
+
+            const total = framesToAnalyze.length;
+            if (successCount === 0) {
+                const mainErr = failureMessages[0] || '請檢查 API Key 或模型名稱';
+                showDetailsAlert(
+                    `<strong>批次分析全部失敗</strong>（0/${total}）。<br>原因：${escapeHtml(mainErr)}` +
+                    (failureMessages.length > 1
+                        ? `<br><small>其他錯誤：${failureMessages.slice(1).map(escapeHtml).join('； ')}</small>`
+                        : '') +
+                    '<br>請修正 OpenRouter API Key 後再試。',
+                    'error'
+                );
+            } else if (successCount < total) {
+                showDetailsAlert(
+                    `批次分析部分成功：${successCount}/${total}。` +
+                    (failureMessages[0] ? `<br>失敗原因：${escapeHtml(failureMessages[0])}` : ''),
+                    'warning'
+                );
+            } else {
+                showDetailsAlert(`批次分析完成：成功 ${successCount}/${total} 張畫面。`, 'success');
+            }
+            
+            await loadMedicalValues(sessionId, currentModel);
+            btn.disabled = false;
+            btn.innerHTML = '▶️ 使用此模型分析所有未分析的畫面';
+            
+        } catch (error) {
+            showDetailsAlert('分析過程中發生錯誤: ' + escapeHtml(error.message), 'error');
+            btn.disabled = false;
+            btn.innerHTML = '▶️ 使用此模型分析所有未分析的畫面';
+        }
+    }
+
+    // 更新訂正統計資訊
+    function updateCorrectionStats(data) {
+        let modelCorrections = 0;
+        let valueCorrections = 0;
+        let totalScreens = data.length;
+        
+        let totalValuesCount = 0;
+        let correctedValuesCount = 0;
+
+        data.forEach(item => {
+            // 檢查型號是否被訂正
+            if (item.corrected_model !== undefined && item.corrected_model !== null && item.corrected_model !== "") {
+                modelCorrections++;
+            }
+
+            // 計算這張畫面總共有幾個醫療數值欄位
+            if (item.medical_values) {
+                totalValuesCount += Object.keys(item.medical_values).length;
+            }
+
+            // 檢查數值是否被訂正 (只要 corrected_medical_values 中有任何一個非空值)
+            if (item.corrected_medical_values && Object.keys(item.corrected_medical_values).length > 0) {
+                let hasActualCorrection = false;
+                
+                // 檢查每一個被訂正的欄位
+                Object.values(item.corrected_medical_values).forEach(v => {
+                    if (v !== undefined && v !== null && v !== "") {
+                        hasActualCorrection = true;
+                        correctedValuesCount++; // 累加被訂正的具體數值個數
+                    }
+                });
+                
+                if (hasActualCorrection) {
+                    valueCorrections++;
+                }
+            }
+        });
+
+        document.getElementById('modelCorrectionCount').textContent = modelCorrections;
+        document.getElementById('valueCorrectionCount').textContent = correctedValuesCount;
+
+        // 更新總數顯示
+        document.getElementById('totalModelsCount').textContent = totalScreens;
+        document.getElementById('totalValuesDisplay').textContent = totalValuesCount;
+
+        // 計算並更新正確率
+        if (totalScreens > 0) {
+            // 型號正確率 = (總畫面數 - 型號錯誤數) / 總畫面數
+            let modelAcc = ((totalScreens - modelCorrections) / totalScreens * 100).toFixed(1);
+            document.getElementById('modelAccuracy').textContent = modelAcc + '%';
+            
+            // 數值正確率 = (總數值數量 - 錯誤數值數量) / 總數值數量
+            let valueAcc = totalValuesCount > 0 
+                ? ((totalValuesCount - correctedValuesCount) / totalValuesCount * 100).toFixed(1) 
+                : 100.0;
+            document.getElementById('valueAccuracy').textContent = valueAcc + '%';
+        } else {
+            document.getElementById('modelAccuracy').textContent = '-';
+            document.getElementById('valueAccuracy').textContent = '-';
+        }
+    }
+
+    // 顯示醫療數值
+    function displayMedicalValues(medicalValues) {
+        const container = document.getElementById('medicalValuesList');
+        container.innerHTML = '';
+        
+        medicalValues.forEach((item) => {
+            const div = document.createElement('div');
+            div.className = 'medical-value-item';
+            div.onclick = (e) => {
+                // 如果點擊的是 span (數值標籤) 或 div.model (型號區域) 或 btn-resend，不觸發模態視窗
+                if (e.target.tagName === 'SPAN' || e.target.parentElement.tagName === 'SPAN' || 
+                    e.target.closest('.model-selector') || e.target.closest('.btn-resend') ||
+                    e.target.closest('.quality-marker')) return;
+                showImageModal(item);
+            };
+            
+            let valuesHtml = '';
+            if (item.medical_values && Object.keys(item.medical_values).length > 0) {
+                valuesHtml = Object.entries(item.medical_values)
+                    .map(([key, value]) => {
+                        const correctedValue = item.corrected_medical_values[key];
+                        const hasCorrection = correctedValue !== undefined && correctedValue !== null;
+                        
+                        return `
+                            <span onclick="promptCorrection('${item.id}', '${key}', '${value}', event)" 
+                                  oncontextmenu="undoValueCorrection('${item.id}', '${key}', event)"
+                                  title="左鍵：訂正數值\n右鍵：撤銷訂正">
+                                ${key}: 
+                                <span class="${hasCorrection ? 'original-text' : ''}">${value}</span>
+                                ${hasCorrection ? `<span class="corrected-text">${correctedValue}</span>` : ''}
+                            </span>`;
+                    })
+                    .join('');
+            } else {
+                valuesHtml = '<div style="color: #888; font-style: italic; padding: 5px;">⚠️ 未抓取到數值</div>';
+            }
+            
+            const screenImageHtml = item.screen_image_url ?
+                `<img src="${item.screen_image_url}" alt="螢幕圖片">` : '';
+            const hasDistinctVlmPreview = item.screen_image_url_for_vlm && item.screen_image_url_for_vlm !== item.screen_image_url;
+            const vlmScreenImageHtml = hasDistinctVlmPreview
+                ? `<div style="margin-top: 8px;">
+                    <div style="font-size: 0.8em; color: #555; margin-bottom: 4px;">🧠 VLM 輸入圖</div>
+                    <img src="${item.screen_image_url_for_vlm}" alt="VLM 輸入螢幕圖片">
+                </div>`
+                : '';
+            
+            const timeSeconds = item.time_seconds || 0;
+            const minutes = Math.floor(timeSeconds / 60);
+            const seconds = timeSeconds % 60;
+            
+            const hasModelCorrection = item.corrected_model !== undefined && item.corrected_model !== null;
+            const qualityHtml = `
+                <div class="quality-marker">
+                    <label onclick="event.stopPropagation()">
+                        <input type="checkbox"
+                               ${item.has_glare ? 'checked' : ''}
+                               onchange="toggleQualityMark('${item.id}', 'has_glare', this.checked, event)">
+                        ☀️ 有反光
+                    </label>
+                    <label onclick="event.stopPropagation()">
+                        <input type="checkbox"
+                               ${item.has_occlusion ? 'checked' : ''}
+                               onchange="toggleQualityMark('${item.id}', 'has_occlusion', this.checked, event)">
+                        🧱 有遮擋
+                    </label>
+                </div>
+            `;
+            
+            // 時間顯示邏輯
+            let timeDisplay = '';
+            
+            // 嘗試判斷是否為串流資料：
+            // 1. 如果有 analyzed_at
+            // 2. 且 (time_seconds 很大 或是 剛好是 0 且 analyzed_at 很新)
+            // 這裡我們採用一個混合顯示策略：如果有 analyzed_at 就優先顯示日期時間
+            
+            if (item.analyzed_at) {
+                const dateObj = new Date(item.analyzed_at);
+                // 格式化為：YYYY/MM/DD HH:mm:ss
+                const dateStr = dateObj.toLocaleString('zh-TW', {
+                    hour12: false,
+                    year: 'numeric',
+                    month: '2-digit',
+                    day: '2-digit',
+                    hour: '2-digit',
+                    minute: '2-digit',
+                    second: '2-digit'
+                });
+                
+                // 顯示：🕒 2026/02/05 18:00:05 (相對 05:30)
+                timeDisplay = `🕒 ${dateStr} <span style="font-size:0.8em; color:#888;">(相對 ${minutes}:${seconds.toString().padStart(2, '0')})</span>`;
+            } else {
+                // 舊資料或手動上傳無 analyzed_at：顯示相對時間
+                timeDisplay = `⏱️ 相對時間 ${minutes}:${seconds.toString().padStart(2, '0')}`;
+            }
+
+            div.innerHTML = `
+                <div class="card-header">
+                    <h3 style="font-size: 1.1em; line-height: 1.4;">
+                        ${timeDisplay}<br>
+                        <span style="font-size: 0.9em; color: #555;">📺 螢幕 ${item.screen_number}</span>
+                    </h3>
+                    <button class="btn-resend" onclick="resendAnalysis('${item.id}', '${item.screen_image_url}', event)">
+                        🔄 使用 ${currentModel} 重新分析
+                    </button>
+                </div>
+                ${screenImageHtml}
+                ${vlmScreenImageHtml}
+                <div class="values">${valuesHtml}</div>
+                <div class="model model-selector" 
+                     onclick="promptModelCorrection('${item.id}', '${item.model}', event)" 
+                     oncontextmenu="undoModelCorrection('${item.id}', event)"
+                     title="左鍵：訂正型號\n右鍵：撤銷訂正">
+                    設備型號: 
+                    <span class="${hasModelCorrection ? 'original-text' : ''}">${item.model}</span>
+                    ${hasModelCorrection ? `<span class="corrected-text">${item.corrected_model}</span>` : ''}
+                </div>
+                ${qualityHtml}
+                ${item.is_resent ? '<div style="margin-top:5px; text-align:right;"><span class="new-result-tag">✨ 最新重送結果 (未存檔)</span></div>' : ''}
+            `;
+            
+            container.appendChild(div);
+        });
+    }
+
+    // 訂正型號
+    async function promptModelCorrection(analysisId, originalModel, event) {
+        event.stopPropagation();
+        currentCorrectingAnalysisId = analysisId;
+        
+        try {
+            // 先獲取模板清單
+            const responseTemplates = await fetch('/api/templates');
+            const dataTemplates = await responseTemplates.json();
+            
+            if (!dataTemplates.success) throw new Error('獲取型號清單失敗');
+            
+            const select = document.getElementById('modelSelect');
+            select.innerHTML = ''; // 清空舊選項
+            
+            dataTemplates.templates.forEach(templateFile => {
+                const modelName = templateFile.replace('.txt', '');
+                const option = document.createElement('option');
+                option.value = modelName;
+                option.textContent = modelName;
+                // 如果是原始型號或目前的訂正型號，則選中
+                const currentItem = medicalValuesData.find(i => i.id === analysisId);
+                const currentModel = currentItem.corrected_model || currentItem.model;
+                if (modelName === currentModel) option.selected = true;
+                select.appendChild(option);
+            });
+            
+            document.getElementById('modelModal').style.display = 'block';
+        } catch (error) {
+            alert('發生錯誤: ' + error.message);
+        }
+    }
+
+    // 關閉型號訂正視窗
+    function closeModelModal() {
+        document.getElementById('modelModal').style.display = 'none';
+        currentCorrectingAnalysisId = null;
+    }
+
+    // 儲存型號訂正
+    async function saveModelCorrection() {
+        if (!currentCorrectingAnalysisId) return;
+        
+        const selectedModel = document.getElementById('modelSelect').value;
+        
+        try {
+            const response = await fetch('./api/mongodb/correct_model/', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    analysis_id: currentCorrectingAnalysisId,
+                    model: selectedModel
+                })
+            });
+            
+            const data = await response.json();
+            if (data.success) {
+                const item = medicalValuesData.find(i => i.id === currentCorrectingAnalysisId);
+                if (item) {
+                    item.corrected_model = selectedModel;
+                    displayMedicalValues(medicalValuesData);
+                    updateCorrectionStats(medicalValuesData);
+                    loadDeviceErrorRateStats(sessionId); // 新增：型號訂正後重新載入設備統計
+                }
+                closeModelModal();
+            } else {
+                alert('型號訂正失敗: ' + data.error);
+            }
+        } catch (error) {
+            alert('發生錯誤: ' + error.message);
+        }
+    }
+
+    // 撤銷數值訂正
+    async function undoValueCorrection(analysisId, key, event) {
+        event.preventDefault(); // 阻止右鍵選單
+        if (!confirm(`確定要撤銷 ${key} 的訂正，恢復為原始辨識值嗎？`)) return;
+        
+        try {
+            const response = await fetch('./api/mongodb/undo_value_correction/', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ analysis_id: analysisId, key: key })
+            });
+            const data = await response.json();
+            if (data.success) {
+                const item = medicalValuesData.find(i => i.id === analysisId);
+                if (item && item.corrected_medical_values) {
+                    delete item.corrected_medical_values[key];
+                    displayMedicalValues(medicalValuesData);
+                    updateCorrectionStats(medicalValuesData);
+                    loadDeviceErrorRateStats(sessionId);
+                }
+            }
+        } catch (error) {
+            alert('撤銷失敗: ' + error.message);
+        }
+    }
+
+    // 撤銷型號訂正
+    async function undoModelCorrection(analysisId, event) {
+        event.preventDefault(); // 阻止右鍵選單
+        if (!confirm(`確定要撤銷型號訂正，恢復為原始辨識型號嗎？`)) return;
+        
+        try {
+            const response = await fetch('./api/mongodb/undo_model_correction/', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ analysis_id: analysisId })
+            });
+            const data = await response.json();
+            if (data.success) {
+                const item = medicalValuesData.find(i => i.id === analysisId);
+                if (item) {
+                    delete item.corrected_model;
+                    displayMedicalValues(medicalValuesData);
+                    updateCorrectionStats(medicalValuesData);
+                    loadDeviceErrorRateStats(sessionId);
+                }
+            }
+        } catch (error) {
+            alert('撤銷失敗: ' + error.message);
+        }
+    }
+
+    async function toggleQualityMark(analysisId, field, checked, event) {
+        event.stopPropagation();
+        const item = medicalValuesData.find(i => i.id === analysisId);
+        if (!item) return;
+
+        const previousGlare = !!item.has_glare;
+        const previousOcclusion = !!item.has_occlusion;
+
+        if (field === 'has_glare') {
+            item.has_glare = checked;
+        } else if (field === 'has_occlusion') {
+            item.has_occlusion = checked;
+        }
+
+        try {
+            const response = await fetch('./api/mongodb/mark_quality/', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    analysis_id: analysisId,
+                    has_glare: !!item.has_glare,
+                    has_occlusion: !!item.has_occlusion
+                })
+            });
+
+            const data = await response.json();
+            if (!data.success) {
+                item.has_glare = previousGlare;
+                item.has_occlusion = previousOcclusion;
+                displayMedicalValues(medicalValuesData);
+                alert('更新畫面品質標註失敗: ' + (data.error || '未知錯誤'));
+            }
+        } catch (error) {
+            item.has_glare = previousGlare;
+            item.has_occlusion = previousOcclusion;
+            displayMedicalValues(medicalValuesData);
+            alert('更新畫面品質標註失敗: ' + error.message);
+        }
+    }
+
+    // 訂正數據
+    async function promptCorrection(analysisId, key, originalValue, event) {
+        event.stopPropagation();
+        
+        const newValue = prompt(`請輸入 ${key} 的正確數值 (原始值: ${originalValue}):`);
+        
+        if (newValue !== null && newValue.trim() !== "") {
+            try {
+                const response = await fetch('./api/mongodb/correct_value/', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        analysis_id: analysisId,
+                        key: key,
+                        value: newValue.trim()
+                    })
+                });
+                
+                const result = await response.json();
+                if (result.success) {
+                    // 局部更新數據並重新渲染
+                    const item = medicalValuesData.find(i => i.id === analysisId);
+                    if (item) {
+                        item.corrected_medical_values[key] = newValue.trim();
+                        displayMedicalValues(medicalValuesData);
+                        updateCorrectionStats(medicalValuesData);
+                        loadDeviceErrorRateStats(sessionId); // 新增：訂正後重新載入設備統計
+                    }
+                } else {
+                    alert('訂正失敗: ' + result.error);
+                }
+            } catch (error) {
+                alert('發送訂正請求時發生錯誤: ' + error.message);
+            }
+        }
+    }
+
+    // 重新傳送給 GPT 分析 (單張分析不存檔)
+    async function resendAnalysis(itemId, imageUrl, event) {
+        event.stopPropagation(); // 阻止冒泡，避免打開圖片大圖
+        
+        // 單張分析不存檔，移除覆蓋警告
+        // if (!confirm(`確定要使用 ${currentModel} 重新分析此畫面嗎？\n注意：這將會覆蓋當前模型的分析結果。`)) return;
+        
+        const btn = event.currentTarget;
+        const apiKey = requireApiKeyForCurrentModel();
+        if (apiKey === null) return;
+
+        const originalText = btn.innerHTML;
+        btn.innerHTML = '⏳ 分析中...';
+        btn.disabled = true;
+        
+        try {
+            // 找到對應的資料項目以獲取 frame_result_id 等資訊
+            const item = medicalValuesData.find(i => i.id === itemId);
+            if (!item) throw new Error('找不到對應的資料項目');
+            
+            // 為了讓後端能找到正確的檔案，我們需要傳遞原始的 screen_image_path
+            // 如果前端的 URL 是 ./analysis/xxx，我們需要轉回原本的路徑
+            let imagePath = item.screen_image_path;
+            if (!imagePath && item.screen_image_path_for_vlm) {
+                imagePath = item.screen_image_path_for_vlm;
+            }
+            if (!imagePath && imageUrl) {
+                imagePath = imageUrl;
+            }
+            
+            const response = await fetch('/api/reanalyze_image', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    image_path: imagePath,
+                    model: currentModel,
+                    provider: providerForModel(currentModel),
+                    api_key: apiKey,
+                    frame_result_id: item.frame_result_id,
+                    original_screen_number: item.original_screen_number,
+                    screen_number: item.screen_number,
+                    save_to_db: false
+                })
+            });
+
+            const data = await response.json();
+            
+            if (data.success && data.result) {
+                // 獲取新結果中的醫療數值
+                const newMedicalValues = data.result.medical_values || {};
+                const newModel = data.result.model || 'unknown';
+                
+                // 直接更新本地資料陣列，而不重新讀取資料庫
+                const itemIndex = medicalValuesData.findIndex(i => i.id === itemId);
+                if (itemIndex !== -1) {
+                    medicalValuesData[itemIndex].medical_values = newMedicalValues;
+                    medicalValuesData[itemIndex].model = newModel;
+                    medicalValuesData[itemIndex].is_resent = true; // 標記為已重送分析
+                    
+                    // 重新渲染畫面
+                    displayMedicalValues(medicalValuesData);
+                    updateCorrectionStats(medicalValuesData);
+                }
+                
+                // 提示使用者
+                console.log('單張影像重新分析成功 (未存檔):', data.result);
+            } else {
+                alert('分析失敗: ' + (data.error || '無法解析結果'));
+            }
+        } catch (error) {
+            console.error('Error:', error);
+            alert('發生錯誤: ' + error.message);
+        } finally {
+            // 如果按鈕還存在 (沒有被重新渲染掉)，則恢復狀態
+            if (btn && document.body.contains(btn)) {
+                btn.innerHTML = originalText;
+                btn.disabled = false;
+            }
+        }
+    }
+
+    function getHistogramValueTypes() {
+        const valueTypes = new Set();
+        medicalValuesData.forEach(item => {
+            Object.keys(item.medical_values || {}).forEach(key => valueTypes.add(key));
+        });
+        return [...valueTypes];
+    }
+
+    function getSortedTimelineBuckets() {
+        const timeGroups = new Map();
+        medicalValuesData.forEach(item => {
+            const key = item.time_seconds;
+            if (!timeGroups.has(key)) {
+                timeGroups.set(key, []);
+            }
+            timeGroups.get(key).push(item);
+        });
+
+        return [...timeGroups.entries()].sort(
+            (a, b) => getChartSortTime(a[1]) - getChartSortTime(b[1])
+        );
+    }
+
+    function updateHistogramTimelineControls(resetStart = false) {
+        const controls = document.getElementById('histogramTimelineControls');
+        const slider = document.getElementById('histogramTimelineSlider');
+        const rangeLabel = document.getElementById('histogramTimelineRangeLabel');
+        const windowSizeSelect = document.getElementById('histogramWindowSizeSelect');
+        const totalPoints = getSortedTimelineBuckets().length;
+
+        if (totalPoints === 0) {
+            controls.style.display = 'none';
+            return;
+        }
+
+        controls.style.display = 'flex';
+        histogramWindowSize = parseInt(windowSizeSelect.value, 10) || 60;
+        histogramWindowSize = Math.min(histogramWindowSize, totalPoints);
+
+        if (resetStart) {
+            histogramWindowStart = 0;
+        }
+
+        const maxStart = Math.max(totalPoints - histogramWindowSize, 0);
+        histogramWindowStart = Math.min(histogramWindowStart, maxStart);
+
+        slider.max = String(maxStart);
+        slider.value = String(histogramWindowStart);
+        slider.disabled = maxStart === 0;
+
+        const startIndex = histogramWindowStart + 1;
+        const endIndex = Math.min(histogramWindowStart + histogramWindowSize, totalPoints);
+        rangeLabel.textContent = `顯示區間：${startIndex}-${endIndex} / ${totalPoints}`;
+    }
+
+    function getVisibleDataPoints(dataPoints) {
+        if (!Array.isArray(dataPoints) || dataPoints.length === 0) {
+            return [];
+        }
+
+        if (dataPoints.length <= histogramWindowSize) {
+            return dataPoints;
+        }
+
+        const maxStart = Math.max(dataPoints.length - histogramWindowSize, 0);
+        const safeStart = Math.min(histogramWindowStart, maxStart);
+        return dataPoints.slice(safeStart, safeStart + histogramWindowSize);
+    }
+
+    function onHistogramTimelineChange() {
+        const slider = document.getElementById('histogramTimelineSlider');
+        histogramWindowStart = parseInt(slider.value, 10) || 0;
+        updateHistogramTimelineControls(false);
+        generateHistograms(false);
+        if (currentHoverValueType) {
+            showHoverChart(currentHoverValueType);
+        }
+    }
+
+    function onHistogramWindowSizeChange() {
+        updateHistogramTimelineControls(false);
+        generateHistograms(false);
+        if (currentHoverValueType) {
+            showHoverChart(currentHoverValueType);
+        }
+    }
+
+    // 切換 histogram 顯示
+    function toggleHistograms() {
+        const checkbox = document.getElementById('showHistogram');
+        const section = document.getElementById('histogramsSection');
+        
+        if (checkbox.checked) {
+            // 只在第一次或圖表被清除後才生成
+            if (Object.keys(chartInstances).length === 0) {
+                generateHistograms(true);
+            }
+            section.classList.add('visible');
+        } else {
+            section.classList.remove('visible');
+        }
+    }
+
+    // 切換顯示僅有訂正的數據
+    function toggleCorrectedOnly() {
+        const checkbox = document.getElementById('showCorrectedOnly');
+        const showOnlyCorrected = checkbox.checked;
+        
+        if (showOnlyCorrected) {
+            // 過濾出有訂正過的數據
+            // 條件1: 有訂正過的數值 (corrected_medical_values 有內容且非空)
+            // 條件2: 有訂正過的型號 (corrected_model 存在且非空)
+            const correctedData = medicalValuesData.filter(item => {
+                // 檢查數值訂正
+                const hasValueCorrection = item.corrected_medical_values && 
+                                         Object.values(item.corrected_medical_values).some(v => v !== undefined && v !== null && v !== "");
+                
+                // 檢查型號訂正
+                const hasModelCorrection = item.corrected_model !== undefined && item.corrected_model !== null && item.corrected_model !== "";
+                
+                return hasValueCorrection || hasModelCorrection;
+            });
+            
+            displayMedicalValues(correctedData);
+        } else {
+            // 顯示全部數據
+            displayMedicalValues(medicalValuesData);
+        }
+    }
+
+    // 生成 histograms
+    function generateHistograms(resetTimeline = false) {
+        const grid = document.getElementById('histogramGrid');
+        updateHistogramTimelineControls(resetTimeline);
+        
+        // 清除舊的圖表實例
+        Object.values(chartInstances).forEach(chart => {
+            if (chart) {
+                chart.destroy();
+            }
+        });
+        chartInstances = {};
+        
+        grid.innerHTML = '';
+        
+        const valueTypes = getHistogramValueTypes();
+        
+        // 為每種數值類型生成 histogram
+        valueTypes.forEach((valueType, index) => {
+            const card = document.createElement('div');
+            card.className = 'histogram-card';
+            card.style.cursor = 'zoom-in';
+            
+            // 點擊圖表後放大
+            card.onclick = () => showHoverChart(valueType);
+            
+            // 使用更安全的 ID 生成方式：替換所有非字母數字字符為連字符
+            const canvasId = `chart-${valueType.replace(/[^a-zA-Z0-9]/g, '-')}-${index}`;
+            
+            // 創建 canvas 元素並設置固定尺寸
+            const canvas = document.createElement('canvas');
+            canvas.id = canvasId;
+            canvas.className = 'histogram-chart';
+            canvas.width = 600;  // 設置固定寬度
+            canvas.height = 400; // 設置固定高度
+            
+            const title = document.createElement('h4');
+            title.textContent = valueType;
+            
+            card.appendChild(title);
+            card.appendChild(canvas);
+            grid.appendChild(card);
+            
+            // 準備圖表資料
+            const chartData = prepareChartData(valueType);
+            
+            // 立即創建圖表
+            createHistogramChart(canvasId, valueType, chartData);
+        });
+    }
+
+    // 顯示放大圖表模態視窗
+    function showHoverChart(valueType) {
+        const overlay = document.getElementById('hoverChartOverlay');
+        const canvas = document.getElementById('hoverChartCanvas');
+        const title = document.getElementById('hoverChartTitle');
+        currentHoverValueType = valueType;
+        
+        overlay.style.display = 'block';
+        const totalPoints = getSortedTimelineBuckets().length;
+        const startIndex = histogramWindowStart + 1;
+        const endIndex = Math.min(histogramWindowStart + histogramWindowSize, totalPoints);
+        title.innerHTML = `🔍 詳細趨勢：<strong>${valueType}</strong> <span style="font-size:0.8em;color:#64748b;">(${startIndex}-${endIndex} / ${totalPoints})</span>`;
+        
+        const dataPoints = getVisibleDataPoints(prepareChartData(valueType));
+        if (dataPoints.length === 0) {
+            return;
+        }
+        
+        if (hoverChartInstance) {
+            hoverChartInstance.destroy();
+        }
+        
+        hoverChartInstance = new Chart(canvas, {
+            type: 'bar',
+            data: {
+                labels: dataPoints.map(d => d.time),
+                datasets: [{
+                    label: valueType,
+                    data: dataPoints.map(d => d.value),
+                    backgroundColor: dataPoints.map(d => d.isCorrected ? 'rgba(211, 47, 47, 0.8)' : 'rgba(79, 172, 254, 0.7)'),
+                    borderColor: dataPoints.map(d => d.isCorrected ? 'rgba(211, 47, 47, 1)' : 'rgba(79, 172, 254, 1)'),
+                    borderWidth: 1,
+                    barThickness: 'flex', // 放大版自動分配寬度
+                    maxBarThickness: 40
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                animation: {
+                    duration: 200 // 快速顯示
+                },
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        mode: 'index',
+                        intersect: false,
+                        callbacks: {
+                            label: function(context) {
+                                const dataItem = dataPoints[context.dataIndex];
+                                let labels = [`AI 辨識值: ${context.parsed.y}`];
+                                if (dataItem.isCorrected) {
+                                    labels.push(`❌ 修正為: ${dataItem.correctedValue}`);
+                                }
+                                return labels;
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    x: {
+                        ticks: {
+                            autoSkip: false, // 在放大版中強制顯示所有時間點
+                            maxRotation: 90,
+                            minRotation: 90,
+                            font: { size: 10 }
+                        },
+                        title: {
+                            display: true,
+                            text: usesRealTimeForChart() ? '時間 (時:分:秒)' : '時間 (分:秒)'
+                        }
+                    },
+                    y: {
+                        beginAtZero: true,
+                        title: { display: true, text: '數值' }
+                    }
+                }
+            }
+        });
+    }
+
+    function hideHoverChart() {
+        document.getElementById('hoverChartOverlay').style.display = 'none';
+        currentHoverValueType = null;
+        if (hoverChartInstance) {
+            hoverChartInstance.destroy();
+            hoverChartInstance = null;
+        }
+    }
+
+    function usesRealTimeForChart() {
+        return medicalValuesData.some(item => item.analyzed_at);
+    }
+
+    function formatChartTimeLabel(item) {
+        if (item && item.analyzed_at) {
+            const dateObj = new Date(item.analyzed_at);
+            return dateObj.toLocaleTimeString('zh-TW', {
+                hour12: false,
+                hour: '2-digit',
+                minute: '2-digit',
+                second: '2-digit'
+            });
+        }
+        const t = item?.time_seconds || 0;
+        const minutes = Math.floor(t / 60);
+        const seconds = Math.floor(t % 60);
+        return `${minutes}:${seconds.toString().padStart(2, '0')}`;
+    }
+
+    function getChartSortTime(itemsAtTime) {
+        const withRealTime = itemsAtTime.find(item => item.analyzed_at);
+        if (withRealTime) {
+            return new Date(withRealTime.analyzed_at).getTime();
+        }
+        return itemsAtTime[0]?.time_seconds || 0;
+    }
+
+    // 準備圖表資料
+    function prepareChartData(valueType) {
+        const dataPoints = [];
+        const sortedTimeBuckets = getSortedTimelineBuckets();
+        
+        sortedTimeBuckets.forEach(([t, itemsAtTime]) => {
+            const refItem = itemsAtTime.find(item => item.analyzed_at) || itemsAtTime[0];
+            const timeLabel = formatChartTimeLabel(refItem);
+            
+            // 優先找有值的 item
+            let foundItem = itemsAtTime.find(item => 
+                item.medical_values[valueType] !== undefined && 
+                item.medical_values[valueType] !== null &&
+                item.medical_values[valueType] !== ""
+            );
+
+            if (foundItem) {
+                const originalValue = foundItem.medical_values[valueType];
+                const correctedValue = foundItem.corrected_medical_values ? foundItem.corrected_medical_values[valueType] : null;
+                
+                // 判斷是否為訂正項 (代表 AI 原本辨識的是錯的)
+                const isCorrected = correctedValue !== undefined && correctedValue !== null && correctedValue !== "";
+                
+                dataPoints.push({
+                    time: timeLabel,
+                    value: parseFloat(originalValue) || 0,
+                    isCorrected: isCorrected,
+                    correctedValue: correctedValue, // 記錄訂正後的正確值供 tooltip 顯示
+                    timeSeconds: t
+                });
+            } else {
+                // 如果該時間點沒有辨識到這個數值，value 設為 null
+                // null 在 Chart.js Bar Chart 中會保留 X 軸位置但不顯示長條
+                dataPoints.push({
+                    time: timeLabel,
+                    value: null,
+                    isCorrected: false,
+                    correctedValue: null,
+                    timeSeconds: t
+                });
+            }
+        });
+        
+        return dataPoints;
+    }
+
+    // 創建 histogram 圖表
+    function createHistogramChart(canvasId, valueType, dataPoints) {
+        const ctx = document.getElementById(canvasId);
+        if (!ctx) {
+            console.error('Canvas element not found:', canvasId);
+            return;
+        }
+
+        const visiblePoints = getVisibleDataPoints(dataPoints);
+        
+        // 檢查是否已經存在圖表實例，如果存在則先銷毀
+        if (chartInstances[canvasId]) {
+            chartInstances[canvasId].destroy();
+            delete chartInstances[canvasId];
+        }
+        
+        // 設定顏色：AI 辨識錯誤 (有訂正過) 的顯示紅色，正常的顯示藍色
+        const backgroundColors = visiblePoints.map(d => d.isCorrected ? 'rgba(211, 47, 47, 0.7)' : 'rgba(79, 172, 254, 0.6)');
+        const borderColors = visiblePoints.map(d => d.isCorrected ? 'rgba(211, 47, 47, 1)' : 'rgba(79, 172, 254, 1)');
+        
+        // 儲存圖表實例以便後續管理
+        chartInstances[canvasId] = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: visiblePoints.map(d => d.time),
+                datasets: [{
+                    label: valueType,
+                    data: visiblePoints.map(d => d.value),
+                    backgroundColor: backgroundColors,
+                    borderColor: borderColors,
+                    borderWidth: 1,
+                    barThickness: 20,
+                    maxBarThickness: 25
+                }]
+            },
+            options: {
+                responsive: false,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        display: true,
+                        position: 'top',
+                        labels: {
+                            font: {
+                                size: 11
+                            },
+                            padding: 10
+                        }
+                    },
+                    tooltip: {
+                        bodyFont: {
+                            size: 11
+                        },
+                        titleFont: {
+                            size: 12
+                        },
+                        callbacks: {
+                            label: function(context) {
+                                const dataItem = visiblePoints[context.dataIndex];
+                                let labels = [`AI 辨識值: ${context.parsed.y}`];
+                                if (dataItem.isCorrected) {
+                                    labels.push(`❌ 此值錯誤，正確值應為: ${dataItem.correctedValue}`);
+                                }
+                                return labels;
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        ticks: {
+                            font: {
+                                size: 10
+                            }
+                        },
+                        title: {
+                            display: true,
+                            text: '數值 (AI 辨識結果)',
+                            font: {
+                                size: 11
+                            }
+                        }
+                    },
+                    x: {
+                        ticks: {
+                            font: {
+                                size: 9
+                            }
+                        },
+                        title: {
+                            display: true,
+                            text: usesRealTimeForChart() ? '時間 (時:分:秒)' : '時間 (分:秒)',
+                            font: {
+                                size: 11
+                            }
+                        }
+                    }
+                }
+            }
+        });
+    }
+
+    // 顯示圖片模態視窗
+    function showImageModal(item) {
+        const modal = document.getElementById('imageModal');
+        const modalTitle = document.getElementById('modalTitle');
+        const modalContent = document.getElementById('modalContent');
+        
+        const timeSeconds = item.time_seconds || 0;
+        const minutes = Math.floor(timeSeconds / 60);
+        const seconds = timeSeconds % 60;
+        
+        let timeDisplay = '';
+        if (item.analyzed_at) {
+            const dateObj = new Date(item.analyzed_at);
+            timeDisplay = dateObj.toLocaleString('zh-TW', { hour12: false });
+        } else {
+            timeDisplay = `時間 ${minutes}:${seconds.toString().padStart(2, '0')}`;
+        }
+        
+        modalTitle.textContent = `${timeDisplay} - 螢幕 ${item.screen_number}`;
+        
+        const valuesHtml = Object.entries(item.medical_values)
+            .map(([key, value]) => {
+                const correctedValue = item.corrected_medical_values[key];
+                const hasCorrection = correctedValue !== undefined && correctedValue !== null;
+                return `
+                    <p>
+                        <strong>${key}:</strong> 
+                        <span class="${hasCorrection ? 'original-text' : ''}">${value}</span>
+                        ${hasCorrection ? `<span class="corrected-text">${correctedValue}</span>` : ''}
+                    </p>`;
+            })
+            .join('');
+        
+        modalContent.innerHTML = `
+            <h3>原始畫面：</h3>
+            <img src="${item.frame_image_url}" alt="原始畫面">
+            <h3>檢測到的螢幕：</h3>
+            <img src="${item.screen_image_url}" alt="螢幕畫面">
+            ${item.screen_image_url_for_vlm && item.screen_image_url_for_vlm !== item.screen_image_url ? `
+                <h3>VLM 實際輸入圖：</h3>
+                <img src="${item.screen_image_url_for_vlm}" alt="VLM 輸入螢幕畫面">
+            ` : ''}
+            <h3>醫療數值：</h3>
+            ${valuesHtml}
+            <p><strong>設備型號:</strong> ${item.model}</p>
+        `;
+        
+        modal.style.display = 'block';
+    }
+
+    // 顯示錯誤
+    function showError(message) {
+        const contentArea = document.getElementById('contentArea');
+        contentArea.innerHTML = `
+            <div class="empty-state">
+                <div class="empty-state-icon" style="font-size: 4em; opacity: 0.5;">⚠️</div>
+                <h3>載入失敗</h3>
+                <p>${message}</p>
+                <p style="margin-top: 15px;">
+                    <a href="${getDatabaseBackUrl()}" class="btn">返回資料庫列表</a>
+                </p>
+            </div>
+        `;
+        contentArea.style.display = 'block';
+    }
+
+    // 模態視窗關閉
+    document.querySelector('.close').addEventListener('click', function() {
+        document.getElementById('imageModal').style.display = 'none';
+    });
+
+    // 放大圖表關閉按鈕
+    const hoverChartCloseBtn = document.getElementById('hoverChartCloseBtn');
+    if (hoverChartCloseBtn) {
+        hoverChartCloseBtn.addEventListener('click', hideHoverChart);
+    }
+
+    window.addEventListener('click', function(event) {
+        const modal = document.getElementById('imageModal');
+        if (event.target === modal) {
+            modal.style.display = 'none';
+        }
+        
+        const chartOverlay = document.getElementById('hoverChartOverlay');
+        if (event.target === chartOverlay) {
+            hideHoverChart();
+        }
+    });
+</script>
+{% endblock %}

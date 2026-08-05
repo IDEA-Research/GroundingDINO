@@ -1,0 +1,123 @@
+{
+  "video_path": "medSample/med20250812-9.mkv",
+  "timestamp": "2025-11-18T04:46:27.691298",
+  "total_frames": 19,
+  "model_used": "gpt-4o",
+  "target_data": "medical_values",
+  "results": [
+    {
+      "time_seconds": 0,
+      "image_path": "test_monitoring_verification/med20250812-9/frames/frame_0000s.jpg",
+      "screens_detected": 0,
+      "screen_analyses": []
+    },
+    {
+      "time_seconds": 10,
+      "image_path": "test_monitoring_verification/med20250812-9/frames/frame_0010s.jpg",
+      "screens_detected": 0,
+      "screen_analyses": []
+    },
+    {
+      "time_seconds": 20,
+      "image_path": "test_monitoring_verification/med20250812-9/frames/frame_0020s.jpg",
+      "screens_detected": 0,
+      "screen_analyses": []
+    },
+    {
+      "time_seconds": 30,
+      "image_path": "test_monitoring_verification/med20250812-9/frames/frame_0030s.jpg",
+      "screens_detected": 0,
+      "screen_analyses": []
+    },
+    {
+      "time_seconds": 40,
+      "image_path": "test_monitoring_verification/med20250812-9/frames/frame_0040s.jpg",
+      "screens_detected": 0,
+      "screen_analyses": []
+    },
+    {
+      "time_seconds": 50,
+      "image_path": "test_monitoring_verification/med20250812-9/frames/frame_0050s.jpg",
+      "screens_detected": 0,
+      "screen_analyses": []
+    },
+    {
+      "time_seconds": 60,
+      "image_path": "test_monitoring_verification/med20250812-9/frames/frame_0060s.jpg",
+      "screens_detected": 0,
+      "screen_analyses": []
+    },
+    {
+      "time_seconds": 70,
+      "image_path": "test_monitoring_verification/med20250812-9/frames/frame_0070s.jpg",
+      "screens_detected": 0,
+      "screen_analyses": []
+    },
+    {
+      "time_seconds": 80,
+      "image_path": "test_monitoring_verification/med20250812-9/frames/frame_0080s.jpg",
+      "screens_detected": 0,
+      "screen_analyses": []
+    },
+    {
+      "time_seconds": 90,
+      "image_path": "test_monitoring_verification/med20250812-9/frames/frame_0090s.jpg",
+      "screens_detected": 0,
+      "screen_analyses": []
+    },
+    {
+      "time_seconds": 100,
+      "image_path": "test_monitoring_verification/med20250812-9/frames/frame_0100s.jpg",
+      "screens_detected": 0,
+      "screen_analyses": []
+    },
+    {
+      "time_seconds": 110,
+      "image_path": "test_monitoring_verification/med20250812-9/frames/frame_0110s.jpg",
+      "screens_detected": 0,
+      "screen_analyses": []
+    },
+    {
+      "time_seconds": 120,
+      "image_path": "test_monitoring_verification/med20250812-9/frames/frame_0120s.jpg",
+      "screens_detected": 0,
+      "screen_analyses": []
+    },
+    {
+      "time_seconds": 130,
+      "image_path": "test_monitoring_verification/med20250812-9/frames/frame_0130s.jpg",
+      "screens_detected": 0,
+      "screen_analyses": []
+    },
+    {
+      "time_seconds": 140,
+      "image_path": "test_monitoring_verification/med20250812-9/frames/frame_0140s.jpg",
+      "screens_detected": 0,
+      "screen_analyses": []
+    },
+    {
+      "time_seconds": 150,
+      "image_path": "test_monitoring_verification/med20250812-9/frames/frame_0150s.jpg",
+      "screens_detected": 0,
+      "screen_analyses": []
+    },
+    {
+      "time_seconds": 160,
+      "image_path": "test_monitoring_verification/med20250812-9/frames/frame_0160s.jpg",
+      "screens_detected": 0,
+      "screen_analyses": []
+    },
+    {
+      "time_seconds": 170,
+      "image_path": "test_monitoring_verification/med20250812-9/frames/frame_0170s.jpg",
+      "screens_detected": 0,
+      "screen_analyses": []
+    },
+    {
+      "time_seconds": 180,
+      "image_path": "test_monitoring_verification/med20250812-9/frames/frame_0180s.jpg",
+      "screens_detected": 0,
+      "screen_analyses": []
+    }
+  ]
+}

@@ -1,0 +1,17 @@
+{
+  "name": "grafana",
+  "version": "0.7.6",
+  "description": "A Model Context Protocol (MCP) server for Grafana providing access to dashboards, datasources, and querying capabilities",
+  "author": {
+    "name": "Grafana Labs"
+  },
+  "homepage": "https://github.com/grafana/mcp-grafana",
+  "repository": "https://github.com/grafana/mcp-grafana",
+  "license": "Apache-2.0",
+  "mcpServers": {
+    "grafana": {
+      "command": "node",
+      "args": ["${CLAUDE_PLUGIN_ROOT}/.claude-plugin/install-binary.mjs"]
+    }
+  }
+}

@@ -1,0 +1,49 @@
+Device: Dräger Infinity C500 Ventilator
+
+[Visual Identification]
+- Dark interface with a distinct "Bottom Bar" containing circular/oval soft keys.
+- Main screen area contains numeric measurements arranged in two columns (Left and Right).
+- **Structural Feature**: The middle area is a FIXED 6-row grid.
+
+[Visibility & Obstruction Rules]
+- **Physical Obstruction**: If the screen is blocked by a person, hand, tubing, or other objects, output null for the blocked values.
+- **Specific Glare Rule**: Only output null if a specific number is **completely obscured by white reflection (glare)** making it impossible to read.
+- **Lenient Reading Rule**: If the number is slightly blurry or faint but still recognizable, please extract the value.
+
+[Critical: Anti-Skip Rule]
+- **"Off" Occupies a Row**: If you see "Off" or "--", this represents an existing row with invalid data. Return null, **DO NOT SKIP THIS ROW**!
+- **Strict Alignment**: You must find exactly 6 items in the left column and 6 items in the right column. 
+- **Example**: If Row 1 is "Off" and Row 2 is "15", fill null for Field 1 and 15 for Field 2. Do NOT put 15 in Field 1.
+
+[Extraction Rules]
+Extract the following medical values. Please strictly use the following English Keys.
+
+--- Group 1: Middle Measurement Grid (Left & Right Columns) ---
+
+Look at the two main columns in the center. Please strictly correspond **from Top to Bottom**.
+
+**Left Measurement Column (Left Column) - Must correspond to 6 positions:**
+1. vt_meas:         1st value (Top). Label "VT". (If Off, return null).
+2. pip_meas:        2nd value. Label "PIP" or "Ppeak".
+3. pmean_meas:      3rd value. Label "Pmean".
+4. fio2_meas:       4th value. Label "FiO2" or "%". (Measured value, distinct from bottom setting).
+5. resistance:      5th value. Label "R".
+6. compliance_c20:  6th value (Bottom). Label "C20/C" or "C20/Cdyn".
+
+**Right Measurement Column (Right Column) - Must correspond to 6 positions:**
+1. frequency_meas:  1st value (Top). Label "f" or "RR". (Note: Respiratory Rate, NOT Heart Rate).
+2. mv_meas:         2nd value. Label "MVe" or "MV".
+3. ie_ratio:        3rd value. Label "I:E". (e.g., 1:2.0).
+4. leak_percent:    4th value. Label "% leak" or "Leak".
+5. cdyn_meas:       5th value. Label "Cdyn".
+6. time_const:      6th value (Bottom). Label "TC" or "TC+".
+
+--- Group 2: Bottom Row (Settings) ---
+
+Look at the circular buttons at the very bottom. If the circle shows "Off", return null.
+
+- fio2_set:         Value in circle labeled "FiO2" or "%".
+- pinsp_set:        Value in circle labeled "Pinsp" or "P_insp".
+- ti_set:           Value in circle labeled "Ti".
+- frequency_set:    Value in circle labeled "f" (Respiratory Rate Setting).
+- peep_set:         Value in circle labeled "PEEP".

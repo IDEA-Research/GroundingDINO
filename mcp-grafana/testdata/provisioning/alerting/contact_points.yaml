@@ -1,0 +1,19 @@
+apiVersion: 1
+
+contactPoints:
+  - name: Email1
+    receivers:
+      - uid: email1
+        type: email
+        settings:
+          addresses: test1@example.com
+          singleEmail: false
+          message: my optional message1 to include
+  - name: Email2
+    receivers:
+      - uid: email2
+        type: email
+        settings:
+          addresses: test2@example.com
+          singleEmail: false
+          message: my optional message2 to include

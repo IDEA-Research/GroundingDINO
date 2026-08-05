@@ -1,0 +1,27 @@
+groups:
+  - name: loki_test_rules
+    interval: 10s
+    rules:
+      - alert: LokiTestAlertFiring
+        expr: |
+          sum(rate({job="varlogs"}[1m])) >= 0
+        for: 0s
+        labels:
+          severity: warning
+          environment: test
+          source: loki
+        annotations:
+          summary: "Loki test alert"
+          description: "This is a test alert managed by Loki ruler"
+
+      - alert: LokiTestAlertInfo
+        expr: |
+          sum(rate({job="varlogs"}[1m])) > 1000
+        for: 0s
+        labels:
+          severity: info
+          environment: test
+          source: loki
+        annotations:
+          summary: "Loki info alert (should not fire)"
+          description: "High rate alert for testing"

@@ -1,0 +1,25 @@
+{
+  "name": "@ui-agent/agent",
+  "version": "1.0.0",
+  "description": "AI Agent for generating UI specifications",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "type-check": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@ui-agent/types": "workspace:*",
+    "@ui-agent/validator": "workspace:*"
+  },
+  "devDependencies": {
+    "typescript": "^5.3.0"
+  }
+}

@@ -1,0 +1,115 @@
+version: '3.8'
+
+services:
+  # MongoDB 服務 (如果需要在 Docker 中運行)
+  mongodb:
+    image: mongo:6.0
+    container_name: medical-mongodb
+    restart: unless-stopped
+    network_mode: host
+    volumes:
+      - ./mongodb_data:/data/db
+      - ./mongodb_config/mongod.conf:/etc/mongod.conf
+    environment:
+      - MONGO_INITDB_DATABASE=medical_monitor_db
+    command: mongod --config /etc/mongod.conf
+    healthcheck:
+      test: echo 'db.runCommand("ping").ok' | mongosh localhost:27017/medical_monitor_db --quiet
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Prometheus 時間序列數據庫
+  prometheus:
+    image: prom/prometheus:v2.40.0
+    container_name: medical-prometheus
+    restart: unless-stopped
+    network_mode: host
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+      - ./alerts:/etc/prometheus/alerts
+      - prometheus-data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--storage.tsdb.retention.time=7d'
+      - '--storage.tsdb.retention.size=10GB'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--web.enable-lifecycle'
+      - '--web.enable-admin-api'
+      - '--web.external-url=http://localhost:9090'
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9090/-/healthy"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Grafana 可視化儀表板
+  grafana:
+    image: grafana/grafana-oss:9.3.0
+    container_name: medical-grafana
+    restart: unless-stopped
+    network_mode: host
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=medical123
+      - GF_USERS_ALLOW_SIGN_UP=false
+      - GF_SERVER_DOMAIN=localhost
+      - GF_SERVER_HTTP_PORT=3000
+      - GF_SERVER_ROOT_URL=http://localhost:3000
+      - GF_ALERTING_ENABLED=false
+      - GF_UNIFIED_ALERTING_ENABLED=true
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning
+      - ./grafana/dashboards:/var/lib/grafana/dashboards
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Alert Manager (可選 - 用於複雜的警報路由)
+  alertmanager:
+    image: prom/alertmanager:v0.25.0
+    container_name: medical-alertmanager
+    restart: unless-stopped
+    network_mode: host
+    volumes:
+      - ./alertmanager:/etc/alertmanager
+      - alertmanager-data:/alertmanager
+    command:
+      - '--config.file=/etc/alertmanager/alertmanager.yml'
+      - '--storage.path=/alertmanager'
+      - '--web.external-url=http://localhost:9093'
+      - '--web.route-prefix=/'
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9093/-/healthy"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # 可選：Node Exporter (系統監控)
+  node-exporter:
+    image: prom/node-exporter:v1.5.0
+    container_name: medical-node-exporter
+    restart: unless-stopped
+    network_mode: host
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/rootfs:ro
+    command:
+      - '--path.procfs=/host/proc'
+      - '--path.rootfs=/rootfs'
+      - '--path.sysfs=/host/sys'
+      - '--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)'
+
+volumes:
+  prometheus-data:
+    name: medical-prometheus-data
+  grafana-data:
+    name: medical-grafana-data
+  alertmanager-data:
+    name: medical-alertmanager-data
