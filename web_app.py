@@ -501,6 +501,73 @@ def normalize_device_name(llm_returned_name):
         print(f"⚠️ 正規化設備名稱時發生錯誤: {e}")
         return llm_returned_name
 
+
+MIN_STREAM_INTERVAL_MINUTES = 1
+MAX_STREAM_INTERVAL_MINUTES = 60
+DEFAULT_STREAM_INTERVAL_MINUTES = 1
+
+
+def _validate_interval_minutes(minutes):
+    if minutes < MIN_STREAM_INTERVAL_MINUTES or minutes > MAX_STREAM_INTERVAL_MINUTES:
+        raise ValueError('分析間隔必須介於 1 到 60 分鐘')
+    return minutes
+
+
+def _resolve_global_interval_minutes():
+    if not mongo_manager:
+        return DEFAULT_STREAM_INTERVAL_MINUTES
+    minutes = mongo_manager.get_global_capture_interval_minutes(DEFAULT_STREAM_INTERVAL_MINUTES)
+    try:
+        minutes = int(minutes)
+        return _validate_interval_minutes(minutes)
+    except (ValueError, TypeError):
+        return DEFAULT_STREAM_INTERVAL_MINUTES
+
+
+def _resolve_capture_interval_minutes_from_payload(data):
+    raw_interval_minutes = data.get('capture_interval_minutes')
+    raw_interval_seconds = data.get('interval') or data.get('capture_interval_seconds')
+
+    if raw_interval_minutes is not None:
+        try:
+            return _validate_interval_minutes(int(raw_interval_minutes))
+        except (ValueError, TypeError):
+            raise ValueError('分析間隔格式錯誤，請輸入 1~60 的整數分鐘')
+
+    if raw_interval_seconds is not None:
+        try:
+            capture_interval_seconds = int(raw_interval_seconds)
+        except (ValueError, TypeError):
+            raise ValueError('分析間隔格式錯誤，請輸入 1~60 的整數分鐘')
+        if capture_interval_seconds <= 0 or capture_interval_seconds % 60 != 0:
+            raise ValueError('分析間隔必須是整數分鐘（1~60）')
+        return _validate_interval_minutes(capture_interval_seconds // 60)
+
+    return _resolve_global_interval_minutes()
+
+
+@app.route('/api/stream/global_interval', methods=['GET'])
+def get_stream_global_interval():
+    if not mongo_manager:
+        return jsonify({'error': 'MongoDB 未啟用'}), 503
+    minutes = _resolve_global_interval_minutes()
+    return jsonify({'success': True, 'capture_interval_minutes': minutes}), 200
+
+
+@app.route('/api/stream/global_interval', methods=['POST'])
+def set_stream_global_interval():
+    if not mongo_manager:
+        return jsonify({'error': 'MongoDB 未啟用'}), 503
+    try:
+        data = request.get_json() or {}
+        minutes = _validate_interval_minutes(int(data.get('capture_interval_minutes')))
+    except (ValueError, TypeError):
+        return jsonify({'error': '分析間隔格式錯誤，請輸入 1~60 的整數分鐘'}), 400
+
+    if not mongo_manager.set_global_capture_interval_minutes(minutes):
+        return jsonify({'error': '更新全域分析間隔失敗'}), 500
+    return jsonify({'success': True, 'capture_interval_minutes': minutes}), 200
+
 @app.route('/api/stream/start', methods=['POST'])
 def start_stream_monitor():
     global active_stream_processors
@@ -515,29 +582,13 @@ def start_stream_monitor():
     model = data.get('model')
     task_name = data.get('task_name')
     
-    # 僅接受 1~60 分鐘的整數間隔（後端強制驗證，避免前端被繞過）
-    raw_interval_minutes = data.get('capture_interval_minutes')
-    raw_interval_seconds = data.get('interval') or data.get('capture_interval_seconds')
-    capture_interval_minutes = None
-
-    if raw_interval_minutes is not None:
-        try:
-            capture_interval_minutes = int(raw_interval_minutes)
-        except (ValueError, TypeError):
-            return jsonify({'error': '分析間隔格式錯誤，請輸入 1~60 的整數分鐘'}), 400
-    else:
-        try:
-            capture_interval_seconds = int(raw_interval_seconds) if raw_interval_seconds is not None else 60
-        except (ValueError, TypeError):
-            return jsonify({'error': '分析間隔格式錯誤，請輸入 1~60 的整數分鐘'}), 400
-        if capture_interval_seconds <= 0 or capture_interval_seconds % 60 != 0:
-            return jsonify({'error': '分析間隔必須是整數分鐘（1~60）'}), 400
-        capture_interval_minutes = capture_interval_seconds // 60
-
-    if capture_interval_minutes < 1 or capture_interval_minutes > 60:
-        return jsonify({'error': '分析間隔必須介於 1 到 60 分鐘'}), 400
+    try:
+        capture_interval_minutes = _resolve_capture_interval_minutes_from_payload(data)
+    except ValueError as e:
+        return jsonify({'error': str(e)}), 400
 
     capture_interval = capture_interval_minutes * 60
+    mongo_manager.set_global_capture_interval_minutes(capture_interval_minutes)
 
     provider, api_key, base_url, cred_error = resolve_llm_credentials(
         provider, model, api_key
@@ -745,7 +796,7 @@ def save_stream_template():
         provider = data.get('provider')
         model = data.get('model')
         api_key = data.get('api_key')
-        capture_interval_minutes = data.get('capture_interval_minutes', 1)
+        capture_interval_minutes = data.get('capture_interval_minutes', _resolve_global_interval_minutes())
 
         if not template_id or not camera_name or not rtsp_url:
             return jsonify({'error': '缺少必要欄位 (範本名稱、攝影機名稱或 RTSP URL)'}), 400
@@ -753,8 +804,10 @@ def save_stream_template():
             capture_interval_minutes = int(capture_interval_minutes)
         except (ValueError, TypeError):
             return jsonify({'error': '分析間隔格式錯誤，請輸入 1~60 的整數分鐘'}), 400
-        if capture_interval_minutes < 1 or capture_interval_minutes > 60:
-            return jsonify({'error': '分析間隔必須介於 1 到 60 分鐘'}), 400
+        try:
+            _validate_interval_minutes(capture_interval_minutes)
+        except ValueError as e:
+            return jsonify({'error': str(e)}), 400
 
         success = mongo_manager.save_camera_template(
             template_id=template_id,

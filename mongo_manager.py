@@ -601,7 +601,7 @@ security:
                 
         return models
 
-    def save_stream_session(self, session_id, camera_name, rtsp_url, llm_model="unknown", task_name=None):
+    def save_stream_session(self, session_id, camera_name, rtsp_url, llm_model="unknown", task_name=None, capture_interval_seconds=60, capture_interval_minutes=1):
         """儲存一個新的串流監測會話"""
         if self.db is None:
             raise Exception("MongoDB 連接未建立")
@@ -613,6 +613,8 @@ security:
                 "rtsp_url": rtsp_url,
                 "llm_model": llm_model,
                 "task_name": task_name,
+                "capture_interval_seconds": capture_interval_seconds,
+                "capture_interval_minutes": capture_interval_minutes,
                 "status": "inactive", # inactive, active, recording
                 "created_at": datetime.now(),
                 "last_updated_at": datetime.now()
@@ -656,7 +658,7 @@ security:
             print(f"❌ 獲取串流會話失敗: {e}")
             return []
 
-    def save_camera_template(self, template_id, camera_name, rtsp_url, provider, model, api_key=None):
+    def save_camera_template(self, template_id, camera_name, rtsp_url, provider, model, api_key=None, capture_interval_minutes=1):
         """儲存或更新一個相機監測範本"""
         if self.db is None:
             raise Exception("MongoDB 連接未建立")
@@ -669,6 +671,7 @@ security:
                 "provider": provider,
                 "model": model,
                 "api_key": api_key,
+                "capture_interval_minutes": capture_interval_minutes,
                 "updated_at": datetime.now()
             }
             self.db.camera_templates.update_one(
@@ -704,6 +707,38 @@ security:
             return result.deleted_count > 0
         except Exception as e:
             print(f"❌ 刪除相機範本失敗: {e}")
+            return False
+
+    def get_global_capture_interval_minutes(self, default_value=1):
+        """取得全域預設分析間隔（分鐘）"""
+        if self.db is None:
+            return default_value
+        try:
+            doc = self.db.system_settings.find_one({"key": "stream_capture_interval_minutes"})
+            value = int(doc.get("value")) if doc and doc.get("value") is not None else default_value
+            return value
+        except Exception as e:
+            print(f"❌ 讀取全域分析間隔失敗: {e}")
+            return default_value
+
+    def set_global_capture_interval_minutes(self, minutes):
+        """設定全域預設分析間隔（分鐘）"""
+        if self.db is None:
+            return False
+        try:
+            self.db.system_settings.update_one(
+                {"key": "stream_capture_interval_minutes"},
+                {
+                    "$set": {
+                        "value": int(minutes),
+                        "updated_at": datetime.now()
+                    }
+                },
+                upsert=True
+            )
+            return True
+        except Exception as e:
+            print(f"❌ 更新全域分析間隔失敗: {e}")
             return False
 
     def save_single_screen_analysis(self, frame_result_id, original_screen_number, screen_number, screen_image_path, analysis_result, llm_model):

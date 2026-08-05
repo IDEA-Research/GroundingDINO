@@ -21,10 +21,17 @@
         min-height: 100vh;
     }
 
+    .stream-toolbar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 16px;
+    }
+
     .page-title {
         font-weight: 700;
         color: #1a1a1a;
-        margin-bottom: 30px;
+        margin: 0;
         border-left: 5px solid var(--primary-color);
         padding-left: 15px;
     }
@@ -494,12 +501,108 @@
         50% { opacity: 1; }
         100% { opacity: 0.6; }
     }
+
+    .global-settings-trigger {
+        width: 44px;
+        height: 44px;
+        border: 1px solid #dbe2ea;
+        border-radius: 10px;
+        background: #fff;
+        color: #334155;
+        font-size: 1.25rem;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+        cursor: pointer;
+        transition: all 0.2s ease;
+        z-index: 5;
+    }
+
+    .global-settings-trigger:hover {
+        transform: translateY(-1px);
+        border-color: #b9c7d6;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.12);
+    }
+
+    .global-settings-modal {
+        position: fixed;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.35);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 1100;
+        padding: 16px;
+    }
+
+    .global-settings-modal.d-none {
+        display: none !important;
+    }
+
+    .global-settings-card {
+        width: 100%;
+        max-width: 560px;
+        background: #fff;
+        border-radius: 12px;
+        box-shadow: 0 12px 28px rgba(0,0,0,0.2);
+        border: 1px solid #e2e8f0;
+        padding: 18px 18px 14px 18px;
+    }
+
+    .global-settings-title {
+        margin: 0 0 12px 0;
+        font-size: 1.05rem;
+        font-weight: 700;
+        color: #1f2937;
+    }
+
+    .global-settings-actions {
+        margin-top: 12px;
+        display: flex;
+        justify-content: flex-end;
+        gap: 8px;
+    }
+
+    .global-settings-actions .btn {
+        min-width: 90px;
+        border-radius: 8px;
+    }
 </style>
 {% endblock %}
 
 {% block content %}
 <div class="stream-container">
-    <h2 class="page-title">即時串流監測與管理</h2>
+    <div class="stream-toolbar">
+        <h2 class="page-title">即時串流監測與管理</h2>
+        <button type="button" id="global-interval-settings-btn" class="global-settings-trigger" title="全域分析間隔設定">⚙️</button>
+    </div>
+
+    <div id="global-interval-modal" class="global-settings-modal d-none" aria-hidden="true">
+        <div class="global-settings-card" role="dialog" aria-modal="true" aria-labelledby="global-settings-title">
+            <h3 id="global-settings-title" class="global-settings-title">⚙️ 全域分析間隔設定</h3>
+            <div class="form-group" style="margin-bottom: 0;">
+                <label for="capture-interval-minutes">全域分析間隔（分鐘）</label>
+                <input
+                    type="number"
+                    class="form-control"
+                    id="capture-interval-minutes"
+                    min="1"
+                    max="60"
+                    step="1"
+                    value="1"
+                    placeholder="最小 1 分鐘"
+                    required
+                >
+                <small id="interval-hint" class="form-text text-muted">首次分析會在下一個整分鐘開始，之後每 N 分鐘執行一次。</small>
+                <div class="invalid-feedback">請輸入 1~60 的整數分鐘</div>
+            </div>
+            <div class="global-settings-actions">
+                <button type="button" class="btn btn-outline-secondary" id="close-global-interval-modal-btn">取消</button>
+                <button type="button" class="btn btn-primary" id="save-global-interval-btn">儲存</button>
+            </div>
+        </div>
+    </div>
 
     <div class="row">
         <!-- 左側：攝影機配置表單 -->
@@ -534,7 +637,7 @@
                         <input type="url" class="form-control" id="rtsp-url" placeholder="rtsp://user:password@ip:port/stream" required>
                         <div class="invalid-feedback">請輸入有效的 RTSP URL</div>
                     </div>
-                    
+
                     <div class="row" style="margin: 0 -8px;">
                         <div class="col-md-6" style="padding: 0 8px;">
                             <div class="form-group">

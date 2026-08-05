@@ -10,6 +10,16 @@ document.addEventListener('DOMContentLoaded', () => {
     let streamCache = {}; // session_id -> 完整串流對象（避免 HTML 屬性 JSON 解析錯誤）
     let lastFetchId = 0; // 用於避免並行/非同步呼叫導致的卡片重複渲染問題
     let streamStartTimes = {}; // 用於記錄每個串流在本次瀏覽器會話中的最新啟動時間戳記，避免重啟時顯示舊的分析結果
+    const MIN_CAPTURE_INTERVAL_MINUTES = 1;
+    const MAX_CAPTURE_INTERVAL_MINUTES = 60;
+    const DEFAULT_CAPTURE_INTERVAL_MINUTES = 1;
+    const captureIntervalInput = document.getElementById('capture-interval-minutes');
+    const intervalHint = document.getElementById('interval-hint');
+    const globalIntervalSettingsBtn = document.getElementById('global-interval-settings-btn');
+    const globalIntervalModal = document.getElementById('global-interval-modal');
+    const saveGlobalIntervalBtn = document.getElementById('save-global-interval-btn');
+    const closeGlobalIntervalModalBtn = document.getElementById('close-global-interval-modal-btn');
+    let globalCaptureIntervalMinutes = DEFAULT_CAPTURE_INTERVAL_MINUTES;
 
     // 定義各廠商的模型清單 (與 upload.html 保持一致)
     const modelsByProvider = {
@@ -42,6 +52,108 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
+    function parseCaptureIntervalMinutes(rawValue) {
+        const parsed = Number(rawValue);
+        if (!Number.isInteger(parsed)) return null;
+        if (parsed < MIN_CAPTURE_INTERVAL_MINUTES || parsed > MAX_CAPTURE_INTERVAL_MINUTES) return null;
+        return parsed;
+    }
+
+    function getIntervalMinutesFromStream(stream) {
+        const fromMinutes = parseCaptureIntervalMinutes(stream?.capture_interval_minutes);
+        if (fromMinutes !== null) return fromMinutes;
+
+        const seconds = Number(stream?.capture_interval_seconds);
+        if (Number.isFinite(seconds) && seconds > 0 && seconds % 60 === 0) {
+            const minutes = seconds / 60;
+            const parsedMinutes = parseCaptureIntervalMinutes(minutes);
+            if (parsedMinutes !== null) return parsedMinutes;
+        }
+
+        return DEFAULT_CAPTURE_INTERVAL_MINUTES;
+    }
+
+    function updateIntervalGuidance() {
+        if (!captureIntervalInput) return;
+        const selectedMinutes = parseCaptureIntervalMinutes(captureIntervalInput.value);
+        const intervalText = selectedMinutes ?? 'N';
+
+        if (intervalHint) {
+            intervalHint.textContent = `全域分析間隔：首次分析會在下一個整分鐘開始，之後每 ${intervalText} 分鐘執行一次。`;
+        }
+    }
+
+    function openGlobalIntervalModal() {
+        if (!globalIntervalModal) return;
+        captureIntervalInput.value = String(globalCaptureIntervalMinutes);
+        captureIntervalInput.classList.remove('is-invalid');
+        updateIntervalGuidance();
+        globalIntervalModal.classList.remove('d-none');
+        globalIntervalModal.setAttribute('aria-hidden', 'false');
+        captureIntervalInput.focus();
+    }
+
+    function closeGlobalIntervalModal() {
+        if (!globalIntervalModal) return;
+        globalIntervalModal.classList.add('d-none');
+        globalIntervalModal.setAttribute('aria-hidden', 'true');
+    }
+
+    function setCaptureIntervalInput(minutes) {
+        if (!captureIntervalInput) return;
+        const parsed = parseCaptureIntervalMinutes(minutes);
+        if (parsed !== null) {
+            globalCaptureIntervalMinutes = parsed;
+            captureIntervalInput.value = String(parsed);
+            captureIntervalInput.classList.remove('is-invalid');
+        }
+        updateIntervalGuidance();
+    }
+
+    async function fetchGlobalCaptureInterval() {
+        if (!captureIntervalInput) return;
+        try {
+            const response = await fetch('/api/stream/global_interval');
+            const result = await response.json();
+            if (result.success) {
+                setCaptureIntervalInput(result.capture_interval_minutes);
+            } else {
+                updateIntervalGuidance();
+            }
+        } catch (error) {
+            console.error('讀取全域分析間隔失敗:', error);
+            updateIntervalGuidance();
+        }
+    }
+
+    async function saveGlobalCaptureInterval(minutes) {
+        const parsed = parseCaptureIntervalMinutes(minutes);
+        if (parsed === null) {
+            return false;
+        }
+        try {
+            const response = await fetch('/api/stream/global_interval', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    capture_interval_minutes: parsed
+                }),
+            });
+            const result = await response.json();
+            if (!result.success) {
+                showAlert(result.error || '更新全域分析間隔失敗', 'danger');
+                return false;
+            }
+            setCaptureIntervalInput(parsed);
+            return true;
+        } catch (error) {
+            showAlert('更新全域分析間隔失敗: ' + error.message, 'danger');
+            return false;
+        }
+    }
+
     window.updateModelOptions = function() {
         const provider = document.getElementById('provider-select').value;
         const modelSelect = document.getElementById('model-select');
@@ -59,6 +171,45 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     updateModelOptions();
+    updateIntervalGuidance();
+    fetchGlobalCaptureInterval();
+
+    if (captureIntervalInput) {
+        captureIntervalInput.addEventListener('input', updateIntervalGuidance);
+    }
+
+    if (globalIntervalSettingsBtn) {
+        globalIntervalSettingsBtn.addEventListener('click', openGlobalIntervalModal);
+    }
+
+    if (closeGlobalIntervalModalBtn) {
+        closeGlobalIntervalModalBtn.addEventListener('click', closeGlobalIntervalModal);
+    }
+
+    if (globalIntervalModal) {
+        globalIntervalModal.addEventListener('click', (event) => {
+            if (event.target === globalIntervalModal) {
+                closeGlobalIntervalModal();
+            }
+        });
+    }
+
+    if (saveGlobalIntervalBtn) {
+        saveGlobalIntervalBtn.addEventListener('click', async () => {
+            const selectedMinutes = parseCaptureIntervalMinutes(captureIntervalInput.value);
+            if (selectedMinutes === null) {
+                captureIntervalInput.classList.add('is-invalid');
+                return;
+            }
+            captureIntervalInput.classList.remove('is-invalid');
+            const success = await saveGlobalCaptureInterval(selectedMinutes);
+            if (success) {
+                closeGlobalIntervalModal();
+            } else {
+                setCaptureIntervalInput(globalCaptureIntervalMinutes);
+            }
+        });
+    }
 
     // 載入記住的 API Key
     const initApiKeyInput = document.getElementById('api-key');
@@ -149,6 +300,8 @@ document.addEventListener('DOMContentLoaded', () => {
         modelSelect.value = t.model || '';
         
         document.getElementById('api-key').value = t.api_key || '';
+        document.getElementById('capture-interval-minutes').value = String(globalCaptureIntervalMinutes);
+        updateIntervalGuidance();
 
         // 顯示刪除按鈕
         if (deleteTemplateBtn) deleteTemplateBtn.style.display = 'block';
@@ -161,9 +314,11 @@ document.addEventListener('DOMContentLoaded', () => {
     function resetFormFields() {
         document.getElementById('camera-name').value = '';
         document.getElementById('rtsp-url').value = '';
+        document.getElementById('capture-interval-minutes').value = String(globalCaptureIntervalMinutes);
         document.getElementById('provider-select').value = 'openrouter';
         window.updateModelOptions();
         document.getElementById('api-key').value = localStorage.getItem('openrouter_api_key') || '';
+        updateIntervalGuidance();
         if (deleteTemplateBtn) deleteTemplateBtn.style.display = 'none';
         selectedTemplateId = null;
     }
@@ -176,11 +331,19 @@ document.addEventListener('DOMContentLoaded', () => {
             const provider = document.getElementById('provider-select').value;
             const model = document.getElementById('model-select').value;
             const apiKey = document.getElementById('api-key').value.trim();
+            const intervalMinutesInput = document.getElementById('capture-interval-minutes');
+            const captureIntervalMinutes = parseCaptureIntervalMinutes(intervalMinutesInput.value);
 
             if (!cameraName || !rtspUrl) {
                 showAlert('請先填寫攝影機名稱與 RTSP URL 才能儲存為範本。', 'warning');
                 return;
             }
+            if (captureIntervalMinutes === null) {
+                intervalMinutesInput.classList.add('is-invalid');
+                showAlert('分析間隔必須為 1~60 的整數分鐘。', 'warning');
+                return;
+            }
+            intervalMinutesInput.classList.remove('is-invalid');
 
             // 提示輸入範本名稱
             const defaultName = selectedTemplateId || cameraName || 'camera-1';
@@ -205,7 +368,8 @@ document.addEventListener('DOMContentLoaded', () => {
                         rtsp_url: rtspUrl,
                         provider: provider,
                         model: model,
-                        api_key: apiKey
+                        api_key: apiKey,
+                        capture_interval_minutes: captureIntervalMinutes
                     })
                 });
                 const result = await response.json();
@@ -275,6 +439,8 @@ document.addEventListener('DOMContentLoaded', () => {
         const statusBadgeClass = isRunning ? 'bg-success' : 'bg-danger';
         const statusText = isRunning ? '運行中' : '已停止';
         const cardClass = isRunning ? 'active' : 'inactive';
+        const captureIntervalMinutes = getIntervalMinutesFromStream(stream);
+        const captureIntervalSeconds = captureIntervalMinutes * 60;
 
         const cardHtml = `
             <div class="col-md-6 stream-card-wrapper" 
@@ -283,6 +449,8 @@ document.addEventListener('DOMContentLoaded', () => {
                  data-camera-name="${stream.camera_name}"
                  data-rtsp-url="${escapeAttr(stream.rtsp_url || '')}"
                  data-llm-model="${escapeAttr(stream.llm_model || stream.model || '')}"
+                 data-capture-interval-minutes="${captureIntervalMinutes}"
+                 data-capture-interval-seconds="${captureIntervalSeconds}"
                  data-task-name="${escapeAttr(stream.task_name || '')}">
                 <div class="stream-card ${cardClass}" style="margin-bottom: 0; padding: 15px; box-shadow: 0 2px 8px rgba(0,0,0,0.05);">
                     <div class="d-flex justify-content-between align-items-center mb-2">
@@ -299,6 +467,14 @@ document.addEventListener('DOMContentLoaded', () => {
                     <div class="stream-info-item" style="margin-bottom: 5px;">
                         <span class="stream-info-label" style="width: 60px; font-size: 0.8rem;">RTSP:</span>
                         <span class="stream-info-value" style="font-size: 0.7rem; max-width: 120px; overflow: hidden; text-overflow: ellipsis; display: inline-block; vertical-align: bottom;">${stream.rtsp_url}</span>
+                    </div>
+                    <div class="stream-info-item" style="margin-bottom: 5px;">
+                        <span class="stream-info-label" style="width: 60px; font-size: 0.8rem;">間隔:</span>
+                        <span class="stream-info-value" style="font-size: 0.7rem;">${captureIntervalMinutes} 分鐘</span>
+                    </div>
+                    <div class="stream-info-item" style="margin-bottom: 5px;">
+                        <span class="stream-info-label" style="width: 60px; font-size: 0.8rem;">模式:</span>
+                        <span class="stream-info-value" style="font-size: 0.7rem;">整分鐘起始</span>
                     </div>
 
                     <div class="mt-3 d-flex justify-content-end gap-2">
@@ -349,6 +525,8 @@ document.addEventListener('DOMContentLoaded', () => {
             rtsp_url: stream.rtsp_url,
             task_name: stream.task_name,
             current_status: stream.current_status,
+            capture_interval_seconds: stream.capture_interval_seconds,
+            capture_interval_minutes: stream.capture_interval_minutes,
             latest_analysis: stream.latest_analysis,
             latest_analyses: stream.latest_analyses
         };
@@ -388,13 +566,14 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function renderStreamAnalysisSection(stream) {
         const analyses = getStreamAnalyses(stream);
+        const captureIntervalMinutes = getIntervalMinutesFromStream(stream);
         if (analyses.length === 0) {
             if (stream.current_status) {
                 const loadingHtml = `
                     <div class="analysis-entry-compact loading-placeholder-entry" style="border: 1px dashed var(--primary-color); background: rgba(0, 123, 255, 0.02); padding: 25px; border-radius: 8px; text-align: center; margin-bottom: 10px; display: flex; flex-direction: column; align-items: center; justify-content: center;">
                         <div class="spinner"></div>
                         <p class="text-primary mb-1" style="font-weight: 600; font-size: 0.9rem; letter-spacing: 0.5px; color: var(--primary-color) !important;">📡 正在進行首次畫面擷取與 AI 分析...</p>
-                        <p class="text-muted mb-0" style="font-size: 0.75rem; color: #718096;">系統每隔 60 秒會自動擷取螢幕並進行生命徵象辨識，請稍候 (約需 10-15 秒)</p>
+                        <p class="text-muted mb-0" style="font-size: 0.75rem; color: #718096;">首次分析會在下一個整分鐘開始，之後每隔 ${captureIntervalMinutes} 分鐘擷取並辨識，請稍候 (約需 10-15 秒)</p>
                     </div>
                 `;
                 return `
@@ -500,8 +679,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (result.streams.length === 0) {
                     activeStreamsContainer.innerHTML = '';
                     streamAnalysisCache = {};
+                    streamCache = {};
                     noStreamsMessage.classList.remove('d-none');
                     if (streamCountBadge) streamCountBadge.classList.add('d-none');
+                    updateIntervalGuidance();
                     refreshGlobalAnalysisPanel();
                 } else {
                     noStreamsMessage.classList.add('d-none');
@@ -538,6 +719,8 @@ document.addEventListener('DOMContentLoaded', () => {
                             rtsp_url: stream.rtsp_url,
                             task_name: stream.task_name,
                             current_status: stream.current_status,
+                            capture_interval_seconds: stream.capture_interval_seconds,
+                            capture_interval_minutes: stream.capture_interval_minutes,
                             latest_analysis: stream.latest_analysis,
                             latest_analyses: stream.latest_analyses
                         };
@@ -556,6 +739,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     // 更新全域快取
                     streamCache = { ...streamCache, ...tempStreamCache };
                     streamAnalysisCache = tempStreamAnalysisCache;
+                    updateIntervalGuidance();
                     
                     // 根據狀態綁定對應的按鈕事件
                     renderedCards.forEach(c => {
@@ -601,6 +785,8 @@ document.addEventListener('DOMContentLoaded', () => {
                             camera_name: streamCardWrapper.dataset.cameraName || (streamCache[sessionId] || {}).camera_name, // 確保 camera_name 存在
                             rtsp_url: streamCardWrapper.dataset.rtspUrl || (streamCache[sessionId] || {}).rtsp_url,
                             llm_model: streamCardWrapper.dataset.llmModel || (streamCache[sessionId] || {}).llm_model,
+                            capture_interval_minutes: Number(streamCardWrapper.dataset.captureIntervalMinutes || (streamCache[sessionId] || {}).capture_interval_minutes),
+                            capture_interval_seconds: Number(streamCardWrapper.dataset.captureIntervalSeconds || (streamCache[sessionId] || {}).capture_interval_seconds),
                             task_name: streamCardWrapper.dataset.taskName || (streamCache[sessionId] || {}).task_name,
                             current_status: result.status.is_running_in_memory,
                             latest_analysis: result.status.latest_analysis,
@@ -702,8 +888,12 @@ document.addEventListener('DOMContentLoaded', () => {
                     camera_name: streamCardWrapper.dataset.cameraName || (streamCache[sessionId] || {}).camera_name,
                     rtsp_url: streamCardWrapper.dataset.rtspUrl || (streamCache[sessionId] || {}).rtsp_url,
                     llm_model: streamCardWrapper.dataset.llmModel || (streamCache[sessionId] || {}).llm_model,
+                    capture_interval_minutes: Number(streamCardWrapper.dataset.captureIntervalMinutes || (streamCache[sessionId] || {}).capture_interval_minutes),
+                    capture_interval_seconds: Number(streamCardWrapper.dataset.captureIntervalSeconds || (streamCache[sessionId] || {}).capture_interval_seconds),
                     task_name: streamCardWrapper.dataset.taskName || (streamCache[sessionId] || {}).task_name
                 };
+                const captureIntervalMinutes = parseCaptureIntervalMinutes(captureIntervalInput?.value) ?? globalCaptureIntervalMinutes;
+                const captureIntervalSeconds = captureIntervalMinutes * 60;
                 
                 // 獲取 API Key（優先從輸入框獲取，其次從 localStorage 載入）
                 const apiKeyInput = document.getElementById('api-key');
@@ -739,7 +929,9 @@ document.addEventListener('DOMContentLoaded', () => {
                             rtsp_url: stream.rtsp_url,
                             api_key: apiKey,
                             provider: provider,
-                            model: stream.llm_model || stream.model
+                            model: stream.llm_model || stream.model,
+                            capture_interval_minutes: captureIntervalMinutes,
+                            capture_interval_seconds: captureIntervalSeconds
                         }),
                     });
                     const result = await response.json();
@@ -808,6 +1000,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const taskNameInput = document.getElementById('task-name');
         const cameraNameInput = document.getElementById('camera-name');
         const rtspUrlInput = document.getElementById('rtsp-url');
+        const captureIntervalInput = document.getElementById('capture-interval-minutes');
         const apiKeyInput = document.getElementById('api-key');
         const providerSelect = document.getElementById('provider-select');
         const modelSelect = document.getElementById('model-select');
@@ -815,12 +1008,13 @@ document.addEventListener('DOMContentLoaded', () => {
         const taskName = taskNameInput.value.trim();
         const cameraName = cameraNameInput.value.trim();
         const rtspUrl = rtspUrlInput.value.trim();
+        const captureIntervalMinutes = parseCaptureIntervalMinutes(captureIntervalInput.value);
         const apiKey = apiKeyInput.value.trim();
         const provider = providerSelect.value;
         const modelName = modelSelect.value;
 
         // 重置驗證狀態
-        [taskNameInput, cameraNameInput, rtspUrlInput, apiKeyInput].forEach(el => el.classList.remove('is-invalid'));
+        [taskNameInput, cameraNameInput, rtspUrlInput, captureIntervalInput, apiKeyInput].forEach(el => el.classList.remove('is-invalid'));
 
         let hasError = false;
 
@@ -842,7 +1036,13 @@ document.addEventListener('DOMContentLoaded', () => {
             hasError = true;
         }
 
-        // 3. 驗證 API Key（OpenRouter 必填）
+        // 3. 驗證分析間隔（1~60 的整數分鐘）
+        if (captureIntervalMinutes === null) {
+            captureIntervalInput.classList.add('is-invalid');
+            hasError = true;
+        }
+
+        // 4. 驗證 API Key（OpenRouter 必填）
         if (provider === 'openrouter' && !apiKey) {
             apiKeyInput.classList.add('is-invalid');
             hasError = true;
@@ -857,6 +1057,7 @@ document.addEventListener('DOMContentLoaded', () => {
         submitButton.textContent = '啟動中...';
 
         try {
+            await saveGlobalCaptureInterval(captureIntervalMinutes);
             const response = await fetch('/api/stream/start', {
                 method: 'POST',
                 headers: {
@@ -866,6 +1067,8 @@ document.addEventListener('DOMContentLoaded', () => {
                     task_name: taskName,
                     camera_name: cameraName,
                     rtsp_url: rtspUrl,
+                    capture_interval_minutes: captureIntervalMinutes,
+                    capture_interval_seconds: captureIntervalMinutes * 60,
                     api_key: apiKey,
                     provider: provider,
                     model: modelName
@@ -887,6 +1090,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
 
                 addStreamForm.reset();
+                setCaptureIntervalInput(captureIntervalMinutes);
                 
                 // 重置範本選取狀態
                 selectedTemplateId = null;

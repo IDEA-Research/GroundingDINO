@@ -11,7 +11,6 @@
 
 import cv2
 import os
-import math
 import argparse
 import json
 import base64
@@ -311,11 +310,12 @@ class VideoScreenDigitExtractor:
         frame_count = 0
         stream_start_time = time.time()
 
-        # 檢查是否使用絕對時間對齊
+        # 檢查是否使用固定間隔排程
         use_alignment = capture_interval_seconds > 0
         if use_alignment:
-            # 計算出第一個對齊的擷取時間點 (例如：若間隔 60 秒，則對齊到下一個整分鐘)
-            next_capture_time = math.ceil(time.time() / capture_interval_seconds) * capture_interval_seconds
+            # 第一次分析：對齊到下一個整分鐘（例如 10:02:20 -> 10:03:00）
+            # 之後每次固定 +capture_interval_seconds，不做立即分析。
+            next_capture_time = ((int(stream_start_time) // 60) + 1) * 60
         else:
             next_capture_time = time.time()
 
@@ -346,9 +346,9 @@ class VideoScreenDigitExtractor:
 
                 print(f"\n[RTSP 捕獲線程] === 正在連接並擷取畫面 (第 {frame_count + 1} 次) ===")
                 if use_alignment:
-                    print(f"[RTSP 捕獲線程] 🎯 對齊時間點: {datetime.fromtimestamp(capture_timestamp).strftime('%Y-%m-%d %H:%M:%S')}")
+                    print(f"[RTSP 捕獲線程] 🎯 排程時間點: {datetime.fromtimestamp(capture_timestamp).strftime('%Y-%m-%d %H:%M:%S')}")
 
-                # 立即計算「下一個」對齊的擷取時間點（單純遞增，不跳過任何整點，確保排隊分析）
+                # 立即計算下一個固定間隔時間點（單純遞增，維持嚴格固定間隔）
                 if use_alignment:
                     next_capture_time += capture_interval_seconds
 
