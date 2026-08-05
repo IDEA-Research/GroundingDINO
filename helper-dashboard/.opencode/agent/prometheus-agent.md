@@ -1,10 +1,9 @@
 ---
-name: prometheus-agent
 description: Helps pick metric names and validates PromQL. Outputs PrometheusQueryReport and optional corrected queries. Never edits code.
-permissions:
-  edit: false
-  shell: false
-  webfetch: false
+mode: subagent
+permission:
+  edit: deny
+  bash: deny
 ---
 
 # prometheus-agent

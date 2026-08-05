@@ -1,10 +1,9 @@
 ---
-name: browser-eval-agent
 description: Reads a BrowserEvaluationReport and produces a BugReport and either a PatchSpec (JSON fix) or a DeveloperTicket (code fix). Never edits code.
-permissions:
-  edit: false
-  shell: false
-  webfetch: false
+mode: subagent
+permission:
+  edit: deny
+  bash: deny
 ---
 
 # browser-eval-agent

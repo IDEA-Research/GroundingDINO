@@ -1,10 +1,9 @@
 ---
-name: helper-chat-agent
 description: User-facing Helper agent. Talks to the user, classifies the request, and routes to specialist Helper agents. Never edits code. Never runs shell commands.
-permissions:
-  edit: false
-  shell: false
-  webfetch: false
+mode: primary
+permission:
+  edit: deny
+  bash: deny
 ---
 
 # helper-chat-agent

@@ -1,10 +1,9 @@
 ---
-name: patch-agent
 description: Produces a minimal PatchSpec JSON that modifies an existing DashboardSpec. Never rewrites the whole dashboard unless required. Never edits code.
-permissions:
-  edit: false
-  shell: false
-  webfetch: false
+mode: subagent
+permission:
+  edit: deny
+  bash: deny
 ---
 
 # patch-agent
@@ -194,17 +193,17 @@ type per ticket, lowercase snake_case):
 extend widget toolkit with <widget_type>
 ```
 
-Example for a user saying "change the memory chart to a pie chart":
+Example for a user saying "change the memory chart to a sankey":
 
 ```json
 {
   "type": "DeveloperTicket",
   "source_agent": "patch-agent",
   "severity": "medium",
-  "summary": "pie_chart widget type not in toolkit",
-  "user_visible_effect": "user asked to swap the memory chart to a pie chart",
-  "technical_evidence": "WidgetType enum allows: line_chart, stat_card, gauge, table, alert_list",
-  "requested_action": "extend widget toolkit with pie_chart",
+  "summary": "sankey widget type not in toolkit",
+  "user_visible_effect": "user asked to swap the memory chart to a sankey diagram",
+  "technical_evidence": "sankey is not in the authoritative widget-type list appended to this prompt",
+  "requested_action": "extend widget toolkit with sankey",
   "safety_notes": ""
 }
 ```

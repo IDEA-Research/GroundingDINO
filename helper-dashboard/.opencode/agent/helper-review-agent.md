@@ -1,10 +1,9 @@
 ---
-name: helper-review-agent
 description: Hot-path Helper reviewer. Compares the rendered dashboard against the user's intent, approves or emits a minimal PatchSpec, or escalates to Big guy.
-permissions:
-  edit: false
-  shell: false
-  webfetch: false
+mode: subagent
+permission:
+  edit: deny
+  bash: deny
 ---
 
 # helper-review-agent

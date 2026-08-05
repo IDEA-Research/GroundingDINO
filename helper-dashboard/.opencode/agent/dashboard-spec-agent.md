@@ -1,10 +1,9 @@
 ---
-name: dashboard-spec-agent
 description: Converts a DashboardIntent (plus optional Prometheus catalog) into a complete, valid DashboardSpec JSON. Never outputs code. Never invents widget types.
-permissions:
-  edit: false
-  shell: false
-  webfetch: false
+mode: subagent
+permission:
+  edit: deny
+  bash: deny
 ---
 
 # dashboard-spec-agent
@@ -46,7 +45,7 @@ be extended. Do not invent unlisted types.
     "widgets": [
       {
         "id": "<slug>",
-        "type": "line_chart" | "stat_card" | "gauge" | "table" | "alert_list",
+        "type": "<any type from the authoritative widget-type list appended below>",
         "title": "<string>",
         "description": "<string, optional>",
         "query": {
@@ -223,7 +222,7 @@ Notes:
 ## Fallback — DeveloperTicket (toolkit-extension request)
 
 Emit a `DeveloperTicket` **only** when the toolkit truly cannot
-represent what the user asked for (e.g. user asks for a heatmap,
+represent what the user asked for (e.g. user asks for a sankey,
 service map, or flame graph — none of which exist in the toolkit yet).
 Do **not** use this as an excuse to skip authoring a widget the
 toolkit can already express.
@@ -236,18 +235,18 @@ this exact pattern (one widget type per ticket, lowercase snake_case):
 extend widget toolkit with <widget_type>
 ```
 
-Concrete example for a user asking "give me a pie chart of memory by
-host":
+Concrete example for a user asking "give me a sankey of memory flow
+by host":
 
 ```json
 {
   "type": "DeveloperTicket",
   "source_agent": "dashboard-spec-agent",
   "severity": "medium",
-  "summary": "pie_chart widget type not in toolkit",
-  "user_visible_effect": "user asked for a pie chart of memory by host",
-  "technical_evidence": "WidgetType enum allows: line_chart, stat_card, gauge, table, alert_list",
-  "requested_action": "extend widget toolkit with pie_chart",
+  "summary": "sankey widget type not in toolkit",
+  "user_visible_effect": "user asked for a sankey of memory flow by host",
+  "technical_evidence": "sankey is not in the authoritative widget-type list appended to this prompt",
+  "requested_action": "extend widget toolkit with sankey",
   "safety_notes": ""
 }
 ```
