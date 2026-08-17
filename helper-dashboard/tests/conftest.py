@@ -86,6 +86,17 @@ def _fixed_metric_catalog(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def _devfix_runs_tmp(monkeypatch, tmp_path):
+    """The devfix runtime streams a live run log into
+    backend/app/storage/devfix_runs/. Tests must never write into the
+    real store, so the whole suite is redirected to tmp_path (the
+    devfix_log/API tests read this same dir back)."""
+    monkeypatch.setenv(
+        "HELPER_DASHBOARD_DEVFIX_RUNS_DIR", str(tmp_path / "devfix_runs")
+    )
+
+
+@pytest.fixture(autouse=True)
 def _no_background_auto_fix(monkeypatch):
     """Auto-fix spawns background developer_fix threads and writes real
     audit files under backend/app/storage/auto_fix_audit/. Tests that

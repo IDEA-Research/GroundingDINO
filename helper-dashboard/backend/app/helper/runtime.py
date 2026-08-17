@@ -42,6 +42,7 @@ import re
 import shutil
 import subprocess
 import sys
+import threading
 import time
 import uuid
 from dataclasses import dataclass
@@ -398,6 +399,7 @@ class RealHelperCodeRuntime:
 # through an independent allow-list, all-or-nothing. Everything else
 # (chat ops, rescue paths) stays on the hand-rolled CLI.
 
+from . import devfix_log as _devfix_log  # noqa: E402
 from . import devfix_worktree as _devfix_worktree  # noqa: E402
 
 
@@ -542,6 +544,41 @@ def _devfix_wrong_agent(events: list[dict[str, Any]]) -> str | None:
     return None
 
 
+# The run log is pure observability: it must NEVER break (or block) the
+# actual fix run, so every call is routed through these guards and a
+# missing/broken logger degrades to silence.
+
+def _log_event(run_log: "_devfix_log.RunLogger | None", raw: Any) -> None:
+    if run_log is None:
+        return
+    try:
+        run_log.event(raw)
+    except Exception:  # pragma: no cover - observability only
+        pass
+
+
+def _log_note(run_log: "_devfix_log.RunLogger | None", text: str) -> None:
+    if run_log is None:
+        return
+    try:
+        run_log.note(text)
+    except Exception:  # pragma: no cover - observability only
+        pass
+
+
+def _log_finish(
+    run_log: "_devfix_log.RunLogger | None",
+    status: str,
+    error_kind: str | None = None,
+) -> None:
+    if run_log is None:
+        return
+    try:
+        run_log.finish(status, error_kind=error_kind)
+    except Exception:  # pragma: no cover - observability only
+        pass
+
+
 class DevFixOpenCodeCLIRuntime:
     """Subprocess adapter for the REAL OpenCode CLI, `developer_fix`
     only.
@@ -596,15 +633,31 @@ class DevFixOpenCodeCLIRuntime:
         }
         ticket_id = str(args.get("ticket_id") or "manual")
 
+        # Live run log (storage/devfix_runs/): the web UI tails this to
+        # show what Big Guy thinks and does. Never load-bearing.
+        run_log: _devfix_log.RunLogger | None = None
+        try:
+            run_log = _devfix_log.start_run(
+                ticket_id,
+                instruction=str(args.get("instruction") or ""),
+                model=_resolve_devfix_model(),
+            )
+        except Exception:  # pragma: no cover - observability only
+            _warn("devfix: run log unavailable; continuing without it")
+
         try:
             handle = _devfix_worktree.create(ticket_id, payload=payload)
         except _devfix_worktree.WorktreeError as exc:
+            _log_note(run_log, f"worktree creation failed: {exc}")
+            _log_finish(run_log, "failed", "binary_missing")
             raise _HelperCodeUnavailable(
                 f"worktree creation failed: {exc}", kind="binary_missing",
             ) from exc
 
+        _log_note(run_log, f"worktree created: {handle.project_dir}")
+
         try:
-            return self._run_in_worktree(handle, operation)
+            return self._run_in_worktree(handle, operation, run_log)
         finally:
             try:
                 _devfix_worktree.remove(handle)
@@ -614,7 +667,10 @@ class DevFixOpenCodeCLIRuntime:
     # -- internals ---------------------------------------------------
 
     def _run_in_worktree(
-        self, handle: "_devfix_worktree.WorktreeHandle", operation: str,
+        self,
+        handle: "_devfix_worktree.WorktreeHandle",
+        operation: str,
+        run_log: "_devfix_log.RunLogger | None" = None,
     ) -> dict[str, Any]:
         import signal
 
@@ -627,6 +683,10 @@ class DevFixOpenCodeCLIRuntime:
             bin_path, "run",
             "--agent", _DEVFIX_AGENT,
             "--format", "json",
+            # --thinking surfaces "reasoning" events in the JSON stream
+            # so the live log can show WHAT BIG GUY THINKS, not just
+            # what he does.
+            "--thinking",
             "-m", model,
             "--dir", project_dir,
             "--print-logs", "--log-level", "WARN",
@@ -646,32 +706,86 @@ class DevFixOpenCodeCLIRuntime:
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 text=True,
+                bufsize=1,
                 start_new_session=True,
                 cwd=project_dir,
                 env=_devfix_env(bin_path),
             )
         except FileNotFoundError as exc:
+            _log_finish(run_log, "failed", "binary_missing")
             raise _HelperCodeUnavailable(str(exc), kind="binary_missing") from exc
 
+        # Incremental consumption (replaces communicate()): a reader
+        # thread tails stdout line by line so every CLI event reaches
+        # the live run log AS IT HAPPENS; a second thread drains stderr
+        # so neither pipe buffer can deadlock the child. The main
+        # thread keeps the exact timeout contract communicate() gave
+        # us (wait + SIGKILL to the process group).
+        stdout_lines: list[str] = []
+        stderr_chunks: list[str] = []
+        events: list[dict[str, Any]] = []
+
+        def _drain_stdout() -> None:
+            assert proc.stdout is not None
+            for line in proc.stdout:
+                stdout_lines.append(line)
+                s = line.strip()
+                if not s:
+                    continue
+                try:
+                    obj = json.loads(s)
+                except (json.JSONDecodeError, ValueError):
+                    continue
+                if isinstance(obj, dict):
+                    events.append(obj)
+                    _log_event(run_log, obj)
+
+        def _drain_stderr() -> None:
+            assert proc.stderr is not None
+            for chunk in proc.stderr:
+                stderr_chunks.append(chunk)
+
+        t_out = threading.Thread(
+            target=_drain_stdout, name="devfix-stdout", daemon=True,
+        )
+        t_err = threading.Thread(
+            target=_drain_stderr, name="devfix-stderr", daemon=True,
+        )
+        t_out.start()
+        t_err.start()
+
         try:
-            stdout, stderr = proc.communicate(timeout=timeout)
+            proc.wait(timeout=timeout)
         except subprocess.TimeoutExpired:
             try:
                 os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
             except Exception:  # pragma: no cover - already-dead race
                 pass
             try:
-                proc.communicate(timeout=10)
+                proc.wait(timeout=10)
             except Exception:  # pragma: no cover - defensive
                 pass
+            t_out.join(timeout=5)
+            t_err.join(timeout=5)
+            _log_finish(run_log, "failed", "timeout")
             raise _HelperCodeUnavailable(
                 f"timeout after {timeout}s", kind="timeout",
             )
 
-        stdout = stdout or ""
-        stderr = (stderr or "").strip()
+        # EOF on both pipes follows process exit; short joins are a
+        # belt-and-braces bound, not an expected wait.
+        t_out.join(timeout=10)
+        t_err.join(timeout=10)
+        for stream in (proc.stdout, proc.stderr):
+            try:
+                if stream is not None:
+                    stream.close()
+            except Exception:  # pragma: no cover - defensive
+                pass
+
+        stdout = "".join(stdout_lines)
+        stderr = "".join(stderr_chunks).strip()
         elapsed = time.monotonic() - t0
-        events = _devfix_parse_events(stdout)
         _trace(
             f"devfix:done rc={proc.returncode} elapsed={elapsed:.2f}s "
             f"events={len(events)} stderr_len={len(stderr)}"
@@ -692,6 +806,7 @@ class DevFixOpenCodeCLIRuntime:
             elif ("rate-limited" in blob or "rate limit" in blob
                     or "http 429" in blob or "status 429" in blob):
                 kind = "rate_limited"
+            _log_finish(run_log, "failed", kind)
             raise _HelperCodeInvalidOutput(
                 f"opencode exit {proc.returncode}",
                 kind=kind,
@@ -701,6 +816,7 @@ class DevFixOpenCodeCLIRuntime:
 
         text = _devfix_extract_report_text(events)
         if text is None:
+            _log_finish(run_log, "failed", "empty_output")
             raise _HelperCodeInvalidOutput(
                 "no text event in opencode output",
                 kind="empty_output",
@@ -710,6 +826,7 @@ class DevFixOpenCodeCLIRuntime:
 
         wrong_agent = _devfix_wrong_agent(events)
         if wrong_agent is not None:
+            _log_finish(run_log, "failed", "missing_type")
             raise _HelperCodeInvalidOutput(
                 f"opencode ran agent {wrong_agent!r} instead of "
                 f"{_DEVFIX_AGENT!r} — likely silent subagent fallback "
@@ -723,6 +840,7 @@ class DevFixOpenCodeCLIRuntime:
         try:
             report = json.loads(candidate)
         except json.JSONDecodeError as exc:
+            _log_finish(run_log, "failed", "non_json")
             raise _HelperCodeInvalidOutput(
                 f"no parseable DeveloperReport JSON in final message: {exc.msg}",
                 kind="non_json",
@@ -731,6 +849,7 @@ class DevFixOpenCodeCLIRuntime:
             ) from exc
 
         if not isinstance(report, dict) or "type" not in report:
+            _log_finish(run_log, "failed", "missing_type")
             raise _HelperCodeInvalidOutput(
                 "DeveloperReport is not a typed JSON object",
                 kind="missing_type",
@@ -742,11 +861,22 @@ class DevFixOpenCodeCLIRuntime:
             try:
                 applied = _devfix_worktree.copy_back(handle)
             except _devfix_worktree.CopyBackViolation as exc:
+                _log_note(run_log, f"copy-back refused: {exc}")
+                _log_finish(run_log, "failed", "copyback_violation")
                 raise RuntimeError_(str(exc)) from exc
             _trace(f"devfix:copied_back {applied!r}")
+            summary = f"copy-back: {len(applied)} files applied"
+            if applied:
+                summary += " — " + ", ".join(str(p) for p in applied)
+            _log_note(run_log, summary)
         # Non-resolved statuses: nothing is copied at all.
 
         report["runtime_used"] = "opencode"
+        report_status = report.get("status")
+        if report_status in ("resolved", "rejected", "needs_context"):
+            _log_finish(run_log, str(report_status))
+        else:
+            _log_finish(run_log, "failed", "bad_status")
         return report
 
 

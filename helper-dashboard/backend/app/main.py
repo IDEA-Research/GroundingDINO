@@ -18,6 +18,7 @@ from .api import (
     dashboard,
     evaluate,
     developer,
+    devfix,
     saved_dashboards,
     system_rules as system_rules_api,
 )
@@ -125,6 +126,9 @@ def create_app() -> FastAPI:
     )
     # Internal-only, behind a developer gate inside the router.
     app.include_router(developer.router, prefix="/api/developer", tags=["developer"])
+    # Devfix run logs (read-only): the frontend DevFixMonitor tails
+    # these to show what Big Guy thinks and does, live.
+    app.include_router(devfix.router, prefix="/api/devfix", tags=["devfix"])
     # Anomaly read surface (alerts the decision_flow widget consumes) + the
     # ANOMALY_DEMO-only driver. The /alerts endpoint fails loud (store_unavailable)
     # when no evaluator is wired, so it is always safe to mount.

@@ -4,6 +4,7 @@ import React, { useCallback, useMemo, useState } from "react";
 
 import { ChatPanel, type ChatMessage } from "@/components/chat/ChatPanel";
 import { DashboardPreview } from "@/components/dashboard/DashboardPreview";
+import { DevFixMonitor } from "@/components/devfix/DevFixMonitor";
 import { JsonInspector } from "@/components/inspector/JsonInspector";
 import { api } from "@/lib/api";
 import type {
@@ -102,29 +103,34 @@ export default function HomePage() {
   );
 
   return (
-    <div className="grid h-screen grid-cols-12 gap-0">
-      <aside className="col-span-3 h-full border-r border-slate-800">
-        <ChatPanel
-          messages={messages}
-          onSend={send}
-          onQuickReply={send}
-          busy={busy}
-          busyMessage={busyMessage}
-          backend={backend}
-        />
-      </aside>
-      <main className="col-span-6 h-full border-r border-slate-800">
-        <DashboardPreview spec={spec} reviewing={busy} />
-      </main>
-      <aside className="col-span-3 h-full">
-        <JsonInspector
-          spec={spec}
-          lastPatch={lastPatch}
-          warnings={warnings}
-          reviewTrail={reviewTrail}
-        />
-      </aside>
-    </div>
+    <>
+      <div className="grid h-screen grid-cols-12 gap-0">
+        <aside className="col-span-3 h-full border-r border-slate-800">
+          <ChatPanel
+            messages={messages}
+            onSend={send}
+            onQuickReply={send}
+            busy={busy}
+            busyMessage={busyMessage}
+            backend={backend}
+          />
+        </aside>
+        <main className="col-span-6 h-full border-r border-slate-800">
+          <DashboardPreview spec={spec} reviewing={busy} />
+        </main>
+        <aside className="col-span-3 h-full">
+          <JsonInspector
+            spec={spec}
+            lastPatch={lastPatch}
+            warnings={warnings}
+            reviewTrail={reviewTrail}
+          />
+        </aside>
+      </div>
+      {/* Floating, fixed bottom-right: tails devfix runs live without
+          taking a slot in the dashboard grid. */}
+      <DevFixMonitor />
+    </>
   );
 }
 

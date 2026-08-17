@@ -357,3 +357,121 @@ def test_resolved_with_offlist_changes_raises_runtime_error(
     assert "devfix changes outside allow-list" in str(exc.value)
     assert "backend/app/main.py" in str(exc.value)
     assert len(stub_worktree["remove"]) == 1  # cleanup still happens
+
+
+# ---------------------------------------------------------------------------
+# live run log (devfix_log integration — the conftest autouse fixture
+# points HELPER_DASHBOARD_DEVFIX_RUNS_DIR at tmp_path / "devfix_runs")
+# ---------------------------------------------------------------------------
+
+
+def _only_run_dir(tmp_path: Path) -> Path:
+    root = tmp_path / "devfix_runs"
+    dirs = [d for d in root.iterdir() if d.is_dir()]
+    assert len(dirs) == 1, f"expected exactly one run dir, got {dirs}"
+    return dirs[0]
+
+
+def test_happy_run_streams_live_log(tmp_path, monkeypatch, stub_worktree, devfix_env):
+    final_text = "Done.\n```json\n" + json.dumps(_REPORT) + "\n```"
+    stdout = "\n".join([
+        "garbage notice line",
+        _ev("step_start"),
+        _ev("reasoning", text="let me look at the widget toolkit first"),
+        _ev("tool_use", tool="read",
+            state={"status": "completed", "title": "frontend/lib/api.ts"}),
+        _ev("text", text=final_text),
+        "",
+    ])
+    script = _make_fake_cli(tmp_path, stdout)
+    devfix_env(script)
+
+    out = _invoke()
+    assert out["status"] == "resolved"
+
+    run_dir = _only_run_dir(tmp_path)
+    assert run_dir.name.startswith("t-9-")
+
+    # --thinking must be on the argv so reasoning events exist at all.
+    meta_cli = json.loads((tmp_path / "cli-argv.json").read_text())
+    assert "--thinking" in meta_cli["argv"]
+
+    # events.jsonl: the raw JSON events, garbage lines skipped.
+    raw_events = [
+        json.loads(line)
+        for line in (run_dir / "events.jsonl").read_text(
+            encoding="utf-8"
+        ).splitlines()
+    ]
+    assert [e["type"] for e in raw_events] == [
+        "step_start", "reasoning", "tool_use", "text",
+    ]
+
+    # meta.json reached the terminal status.
+    meta = json.loads((run_dir / "meta.json").read_text(encoding="utf-8"))
+    assert meta["status"] == "resolved"
+    assert meta["ticket_id"] == "t-9"
+    assert meta["finished_at"] is not None
+
+    # log.txt: rendered lifecycle + event lines, in order.
+    log = (run_dir / "log.txt").read_text(encoding="utf-8")
+    lines = log.splitlines()
+    assert any("worktree created:" in line for line in lines)
+    assert any("💭 let me look at the widget toolkit first" in line
+               for line in lines)
+    assert any("📖 read frontend/lib/api.ts ✓" in line for line in lines)
+    assert any(line.split(" ", 1)[1].startswith("💬") for line in lines
+               if " " in line)
+    assert any("copy-back: 0 files applied" in line for line in lines)
+    assert lines[-1].endswith("🏁 run finished: resolved")
+
+
+def test_rejected_run_logs_rejected_no_copyback_note(
+    tmp_path, monkeypatch, stub_worktree, devfix_env,
+):
+    report = dict(_REPORT, status="rejected")
+    stdout = _ev("text", text="```json\n" + json.dumps(report) + "\n```")
+    script = _make_fake_cli(tmp_path, stdout)
+    devfix_env(script)
+
+    out = _invoke()
+    assert out["status"] == "rejected"
+
+    run_dir = _only_run_dir(tmp_path)
+    meta = json.loads((run_dir / "meta.json").read_text(encoding="utf-8"))
+    assert meta["status"] == "rejected"
+    log = (run_dir / "log.txt").read_text(encoding="utf-8")
+    assert "copy-back" not in log
+    assert "🏁 run finished: rejected" in log
+
+
+def test_timeout_marks_run_failed_timeout(
+    tmp_path, monkeypatch, stub_worktree, devfix_env,
+):
+    script = _make_fake_cli(tmp_path, _ev("text", text="late"), sleep_s=20.0)
+    devfix_env(script, timeout="1")
+    with pytest.raises(_HelperCodeUnavailable):
+        _invoke()
+
+    run_dir = _only_run_dir(tmp_path)
+    meta = json.loads((run_dir / "meta.json").read_text(encoding="utf-8"))
+    assert meta["status"] == "failed"
+    assert meta["error_kind"] == "timeout"
+    log = (run_dir / "log.txt").read_text(encoding="utf-8")
+    assert "🏁 run finished: failed (timeout)" in log
+
+
+def test_non_json_final_message_marks_run_failed(
+    tmp_path, monkeypatch, stub_worktree, devfix_env,
+):
+    script = _make_fake_cli(
+        tmp_path, _ev("text", text="I did things but forgot the report."),
+    )
+    devfix_env(script)
+    with pytest.raises(_HelperCodeInvalidOutput):
+        _invoke()
+
+    run_dir = _only_run_dir(tmp_path)
+    meta = json.loads((run_dir / "meta.json").read_text(encoding="utf-8"))
+    assert meta["status"] == "failed"
+    assert meta["error_kind"] == "non_json"
