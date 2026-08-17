@@ -485,11 +485,66 @@ def _build_system_prompt(operation: str, agent: str, model: str) -> str:
     return body + contract + schema_block + envelope_block
 
 
+# Operations whose prompt carries the live metric-catalog section when
+# the backend sent one (args["metric_catalog"]). generate_dashboard and
+# user_message author/suggest metric names; prometheus_query reports on
+# them.
+_CATALOG_PROMPT_OPERATIONS = {
+    "generate_dashboard",
+    "user_message",
+    "prometheus_query",
+}
+
+
+def _metric_catalog_prompt_block(operation: str, args: dict) -> str:
+    """Render args["metric_catalog"] as a prompt section.
+
+    The backend fetches the live Prometheus catalog and ships it in the
+    args; here it becomes ground truth for the model: only listed names
+    may be used, clinical metrics must aggregate `max by (patient_id)`,
+    and an unavailable catalog is stated honestly instead of letting
+    the model guess.
+    """
+    cat = args.get("metric_catalog")
+    if operation not in _CATALOG_PROMPT_OPERATIONS or not isinstance(cat, dict):
+        return ""
+    fetched_at = cat.get("fetched_at") or "unknown time"
+    if not cat.get("available"):
+        return (
+            "\n## Live metric catalog\n\n"
+            f"UNAVAILABLE — Prometheus could not be reached "
+            f"(as of {fetched_at}). Do NOT guess or invent metric "
+            "names. Say explicitly that the metric catalog is "
+            "unavailable, or ask the user which metric to use.\n\n"
+        )
+    metrics = [str(m) for m in (cat.get("metrics") or [])][:500]
+    lines = "\n".join(f"- {m}" for m in metrics)
+    return (
+        f"\n## Live metric catalog (ground truth, fetched {fetched_at})\n\n"
+        "These are the ONLY metric names that exist in Prometheus right "
+        "now. NEVER invent a metric name: every PromQL you write must "
+        "use names from this list, or you must say that none matched.\n"
+        "Aggregation rule for clinical metrics (patient_*, ventilator_*, "
+        "cerebral_*): their `device_model` label is free text with "
+        "MULTIPLE variants per physical device, so ONE patient's vital "
+        "appears as SEVERAL parallel series. Always aggregate them as "
+        "`max by (patient_id) (<metric>)` — never sum(), never a raw "
+        "selector (sum once rendered a heart rate of 163 as 814).\n\n"
+        f"{lines}\n\n"
+    )
+
+
 def _build_user_prompt(operation: str, args: dict) -> str:
     # Kimi-style: give it a clear JSON blob + a short instruction.
+    # metric_catalog is rendered as its own section (up to ~500 names
+    # would otherwise eat the 16000-char ARGS budget and truncate the
+    # actual intent payload).
+    catalog_block = _metric_catalog_prompt_block(operation, args)
+    args_for_json = {k: v for k, v in args.items() if k != "metric_catalog"}
     return (
         f"OPERATION: {operation}\n"
-        f"ARGS (JSON):\n{json.dumps(args, indent=2)[:16000]}\n"
+        f"ARGS (JSON):\n{json.dumps(args_for_json, indent=2)[:16000]}\n"
+        f"{catalog_block}"
         "Respond with a single JSON object as specified. No prose."
     )
 

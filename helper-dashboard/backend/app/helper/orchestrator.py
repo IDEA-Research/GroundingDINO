@@ -22,8 +22,11 @@ background scheduler — never synchronously, never blocking the user.
 from __future__ import annotations
 
 import uuid
+from datetime import datetime, timezone
 from typing import Any, Callable
 
+from ..prometheus import catalog as prom_catalog
+from ..prometheus.client import PrometheusUnavailable
 from ..services.dashboard_store import DashboardStore
 from ..services.patch_service import PatchApplicationError, PatchService
 from ..services.saved_dashboard_store import SavedDashboardStore
@@ -54,6 +57,7 @@ _PENDING_SAVE: dict[str, str] = {}
 class Orchestrator:
     def __init__(self) -> None:
         self._runtime = HelperCodeRuntime()
+        self._catalog = prom_catalog.get_catalog()
         self._memory = SessionMemory()
         self._validator = SpecValidator()
         self._patch_service = PatchService(self._validator)
@@ -339,6 +343,7 @@ class Orchestrator:
                         s.model_dump(mode="json")
                         for s in self._saved.summaries()
                     ],
+                    "metric_catalog": self._metric_catalog_args(),
                 },
             )
             print(
@@ -1040,6 +1045,43 @@ class Orchestrator:
         return None
 
     # ---------------------------------------------------------------
+    def _metric_catalog_args(self) -> dict[str, Any]:
+        """Live metric names for the runtime args (LLM ground truth).
+
+        `bin/helpercode` renders this as a prompt section for the
+        dashboard-spec / chat operations so the model only ever uses
+        REAL metric names. Failure is explicit: when Prometheus is
+        unreachable the payload says ``available: False`` and carries
+        no names — the model is told not to guess.
+
+        The list is capped at ~500 names; clinical metrics
+        (patient_*/ventilator_*/cerebral_*) are always kept first.
+        """
+        fetched_at = datetime.now(timezone.utc).isoformat(
+            timespec="seconds"
+        )
+        try:
+            names = list(self._catalog.list_metrics())
+        except PrometheusUnavailable:
+            return {
+                "available": False,
+                "metrics": [],
+                "fetched_at": fetched_at,
+            }
+        cap = 500
+        if len(names) > cap:
+            clinical = [
+                m for m in names if prom_catalog.is_clinical_metric(m)
+            ]
+            clinical_set = set(clinical)
+            rest = [m for m in names if m not in clinical_set]
+            names = clinical + rest[: max(0, cap - len(clinical))]
+        return {
+            "available": True,
+            "metrics": names,
+            "fetched_at": fetched_at,
+        }
+
     def _dispatch(
         self,
         intent: dict[str, Any],
@@ -1052,7 +1094,11 @@ class Orchestrator:
         if t == "DashboardIntent":
             return self._runtime.invoke_operation(
                 "generate_dashboard",
-                {"intent": intent, "previous_dashboard": current_dashboard},
+                {
+                    "intent": intent,
+                    "previous_dashboard": current_dashboard,
+                    "metric_catalog": self._metric_catalog_args(),
+                },
             )
         if t == "PatchIntent":
             if current_dashboard is None:
@@ -1089,7 +1135,11 @@ class Orchestrator:
             contract = contract_for_generate(requirements)
             outcome = self._retry.run(
                 "generate_dashboard",
-                {"intent": intent, "previous_dashboard": current_dashboard},
+                {
+                    "intent": intent,
+                    "previous_dashboard": current_dashboard,
+                    "metric_catalog": self._metric_catalog_args(),
+                },
                 contract=contract,
             )
             # Prefer the accepted output; if none, return the last

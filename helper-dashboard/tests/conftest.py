@@ -28,6 +28,63 @@ def _no_system_rules_loop(monkeypatch, tmp_path):
     system_rules.reset_service_for_tests()
 
 
+# Deterministic metric catalog for the whole suite (Tier 0, no network):
+# spec generation is catalog-backed now, and tests must not depend on a
+# live Prometheus. The fixed list mirrors what the box exposes while a
+# camera stream runs (clinical patient_*/ventilator_*/cerebral_* families
+# + the common system metrics the heuristics reference). Catalog unit
+# tests that need the REAL fetch path restore it via
+# `MetricCatalog._real_fetch_names_for_tests`.
+_TEST_CATALOG_METRICS = [
+    "ALERTS",
+    "cerebral_rso2_left_percentage",
+    "cerebral_rso2_right_percentage",
+    "http_request_duration_seconds",
+    "http_request_duration_seconds_bucket",
+    "http_requests_total",
+    "node_cpu_seconds_total",
+    "node_filesystem_avail_bytes",
+    "node_load1",
+    "node_memory_MemAvailable_bytes",
+    "node_memory_MemTotal_bytes",
+    "patient_blood_pressure_diastolic_mmhg",
+    "patient_blood_pressure_systolic_mmhg",
+    "patient_heart_rate_bpm",
+    "patient_respiration_rate_per_minute",
+    "patient_spo2_percentage",
+    "process_cpu_seconds_total",
+    "process_resident_memory_bytes",
+    "prometheus_build_info",
+    "up",
+    "ventilator_fio2_percentage",
+    "ventilator_peep_cmh2o",
+    "ventilator_pinsp_cmh2o",
+    "ventilator_pip_cmh2o",
+]
+
+
+@pytest.fixture(autouse=True)
+def _fixed_metric_catalog(monkeypatch):
+    from app.prometheus import catalog as catalog_mod
+
+    original = catalog_mod.MetricCatalog._fetch_names
+    # Keep the real fetch reachable for catalog unit tests.
+    monkeypatch.setattr(
+        catalog_mod.MetricCatalog,
+        "_real_fetch_names_for_tests",
+        original,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        catalog_mod.MetricCatalog,
+        "_fetch_names",
+        lambda self: list(_TEST_CATALOG_METRICS),
+    )
+    catalog_mod.get_catalog().invalidate()
+    yield
+    catalog_mod.get_catalog().invalidate()
+
+
 @pytest.fixture(autouse=True)
 def _no_background_auto_fix(monkeypatch):
     """Auto-fix spawns background developer_fix threads and writes real

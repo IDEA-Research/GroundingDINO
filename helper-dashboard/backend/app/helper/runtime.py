@@ -48,6 +48,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from ..prometheus import catalog as prom_catalog
+from ..prometheus.client import PrometheusUnavailable
 from ..specs.widget_spec import WidgetType
 
 
@@ -1027,10 +1029,16 @@ class MockHelperRuntime:
                 "message_to_user": "Let me check your Prometheus data.",
             }
 
-        if any(t in low for t in ["dashboard", "chart", "graph", "show me", "monitor", "overview"]):
+        if any(t in low for t in [
+            "dashboard", "chart", "graph", "show me", "monitor", "overview",
+            # Clinician phrasing — "幫我盯心率和血氧" must reach the
+            # dashboard-spec path, not fall through to small talk.
+            "watch", "盯", "監控", "監測", "监控", "监测", "儀表板",
+            "仪表板", "看板",
+        ]):
             title = _extract_title(msg)
             widget_hints = _extract_widget_hints(low)
-            metric_hints = _extract_metric_hints(low)
+            metric_hints, catalog_available = _resolve_metric_hints(msg)
             return {
                 "type": "DashboardIntent",
                 "summary": title or "New dashboard",
@@ -1040,6 +1048,11 @@ class MockHelperRuntime:
                     "metrics_hints": metric_hints,
                     "widget_hints": widget_hints,
                     "refresh_interval_hint": "30s",
+                    # Explicit degradation marker: when the live metric
+                    # catalog could not be fetched, the spec generator
+                    # says so in the dashboard description instead of
+                    # silently defaulting to made-up metrics.
+                    "metric_catalog_available": catalog_available,
                 },
                 "clarification_needed": False,
                 "message_to_user": "Building that dashboard now.",
@@ -1113,19 +1126,44 @@ class MockHelperRuntime:
         metric_hints = req.get("metrics_hints") or []
         widget_hints = req.get("widget_hints") or []
         goal = (req.get("goal") or "").lower()
+        catalog_available = req.get("metric_catalog_available", True)
         dashboard_id = _slugify(title) or f"dash-{uuid.uuid4().hex[:8]}"
+
+        # When the classifier passed no metric hints (or the operation
+        # was invoked directly), try resolving them from the goal text
+        # against the medical vocabulary + live catalog.
+        if not metric_hints and goal:
+            metric_hints, catalog_available = _resolve_metric_hints(goal)
 
         # If the user's intent looks like an API observability dashboard,
         # use the rich golden composition.
         if _looks_like_api_observability(goal, metric_hints, title):
             widgets = _api_observability_widgets()
+        elif not metric_hints:
+            # No silent defaults: an explicit, clearly-labeled
+            # placeholder instead of fabricated http_requests_total
+            # charts on a clinical dashboard.
+            widgets = [
+                _no_metric_placeholder_widget(
+                    catalog_available=catalog_available
+                )
+            ]
         else:
             widgets = _build_default_widgets(widget_hints, metric_hints)
+
+        description = req.get("goal") or ""
+        if not catalog_available:
+            note = (
+                "[metric catalog unavailable — Prometheus could not be "
+                "reached at generation time, so no metric hints were "
+                "resolved]"
+            )
+            description = f"{description} {note}".strip()
 
         spec = {
             "dashboard_id": dashboard_id,
             "title": title,
-            "description": req.get("goal") or "",
+            "description": description[:1024],
             "layout": {"columns": 12, "row_height": 40},
             "variables": [],
             "widgets": widgets,
@@ -1309,14 +1347,37 @@ class MockHelperRuntime:
     # -- prometheus-agent ---------------------------------------------------
     def _prometheus(self, args: dict[str, Any]) -> dict[str, Any]:
         question = (args.get("question") or "").strip()
+        # Real suggestions from the live catalog (medical synonyms +
+        # catalog matches) — never a canned list. Catalog failure is
+        # reported explicitly, never papered over.
+        try:
+            detailed = prom_catalog.get_catalog().suggest_detailed(
+                question, limit=8
+            )
+        except PrometheusUnavailable as exc:
+            return {
+                "type": "PrometheusQueryReport",
+                "report": {
+                    "queries": [],
+                    "metric_suggestions": [],
+                    "notes": f"metric catalog unavailable: {exc}",
+                },
+            }
+        suggestions = [
+            {
+                "metric": s.metric,
+                "reason": s.reason if s.present else (
+                    f"{s.reason} (not currently present — "
+                    "no active stream)"
+                ),
+            }
+            for s in detailed
+        ]
         return {
             "type": "PrometheusQueryReport",
             "report": {
                 "queries": [],
-                "metric_suggestions": [
-                    {"metric": m, "reason": "common metric"}
-                    for m in ["up", "process_cpu_seconds_total", "node_memory_MemAvailable_bytes"]
-                ],
+                "metric_suggestions": suggestions,
                 "notes": f"question echoed: {question[:200]}" if question else "",
             },
         }
@@ -1536,44 +1597,88 @@ def _extract_widget_hints(msg: str) -> list[str]:
     return hints
 
 
+# System-metric vocabulary (kept tiny). Unlike the medical synonyms,
+# every candidate here is VERIFIED against the live catalog before it
+# becomes a hint — system metrics that aren't scraped on this box must
+# not produce dead widgets.
+_SYSTEM_METRIC_SYNONYMS: tuple[tuple[tuple[str, ...], tuple[str, ...]], ...] = (
+    (("http", "request rate", "rps", "traffic"),
+     ("http_requests_total",)),
+    (("latency", "p95", "p99", "duration"),
+     ("http_request_duration_seconds",
+      "http_request_duration_seconds_bucket")),
+    (("error rate", "5xx", "error_rate"), ("http_requests_total",)),
+    (("cpu",), ("process_cpu_seconds_total", "node_cpu_seconds_total")),
+    (("memory", "ram"),
+     ("process_resident_memory_bytes", "node_memory_MemAvailable_bytes")),
+    (("alert",), ("ALERTS",)),
+    (("up", "availability", "service health", "health"), ("up",)),
+)
+
+
+def _resolve_metric_hints(msg: str) -> tuple[list[str], bool]:
+    """Resolve free text to real metric names via the live catalog.
+
+    Returns ``(hints, catalog_available)``.
+
+    - Medical synonyms (心率/spo2/呼吸器/...) resolve to `patient_*` /
+      `ventilator_*` / `cerebral_*` names and are kept even when absent
+      from the live catalog — those series vanish whenever no camera
+      stream runs, yet they are still the right answer.
+    - System synonyms (cpu/memory/latency/http/...) are kept only when
+      the metric actually exists in the live catalog.
+    - Exact metric names typed by the user are honored when present.
+    - Catalog unreachable → ``([], False)``: the caller must surface an
+      explicit "catalog unavailable" note, never silent defaults.
+    """
+    try:
+        live = prom_catalog.get_catalog().list_metrics()
+    except PrometheusUnavailable:
+        return [], False
+    live_set = set(live)
+    low = msg.lower()
+
+    hints: list[str] = list(prom_catalog.resolve_synonyms(msg))
+    for keys, candidates in _SYSTEM_METRIC_SYNONYMS:
+        if any(k in low for k in keys):
+            hints.extend(m for m in candidates if m in live_set)
+    # Exact metric-name mentions (e.g. "watch node_load1").
+    for token in re.findall(r"[A-Za-z_:][A-Za-z0-9_:]{2,}", msg):
+        if token in live_set:
+            hints.append(token)
+    return list(dict.fromkeys(hints)), True
+
+
 def _extract_metric_hints(msg: str) -> list[str]:
-    hints: list[str] = []
-    # API / HTTP observability metrics
-    if any(k in msg for k in ["http", "request rate", "rps", "traffic"]):
-        hints.append("http_requests_total")
-    if any(k in msg for k in ["latency", "p95", "p99", "duration"]):
-        hints.append("http_request_duration_seconds")
-    if "error rate" in msg or "5xx" in msg or "error_rate" in msg:
-        hints.append("http_requests_total")
-    # CPU
-    if "cpu" in msg:
-        hints.append("process_cpu_seconds_total")
-        hints.append("node_cpu_seconds_total")
-    # Memory
-    if "memory" in msg or "ram" in msg:
-        hints.append("process_resident_memory_bytes")
-        hints.append("node_memory_MemAvailable_bytes")
-    # Alerts
-    if "alert" in msg:
-        hints.append("ALERTS")
-    # Availability
-    if any(k in msg for k in ["up", "availability", "service health", "health"]):
-        hints.append("up")
-    # Dedup preserving order
-    return list(dict.fromkeys(hints))
+    """Catalog-backed hint extraction (names only; see _resolve_metric_hints)."""
+    hints, _available = _resolve_metric_hints(msg)
+    return hints
 
 
 def _default_promql_for(widget_type: str) -> str:
+    """Metric-less default query for a widget type.
+
+    The old http_requests_total defaults are gone: with no metric
+    context, chart-like widgets get an explicit `vector(0)` placeholder
+    (callers MUST label it — see `_no_metric_placeholder_widget`)
+    instead of a fabricated system metric on a clinical dashboard.
+    """
     return {
-        "line_chart": 'rate(http_requests_total[5m])',
         "stat_card": 'sum(up)',
         "gauge": 'avg(up)',
-        "table": 'topk(10, http_requests_total)',
         "alert_list": 'ALERTS{alertstate="firing"}',
-    }.get(widget_type, "up")
+    }.get(widget_type, "vector(0)")
 
 
-def _default_widget(wid: str, wtype: str, *, title: str, promql: str) -> dict[str, Any]:
+_NO_METRIC_NOTE = (
+    "Placeholder — no metric specified; this intentionally reads 0. "
+    "Edit the query to point at a real metric."
+)
+
+
+def _default_widget(
+    wid: str, wtype: str, *, title: str, promql: str, description: str = "",
+) -> dict[str, Any]:
     query_type = "instant" if wtype in {"stat_card", "gauge", "alert_list", "table"} else "range"
     query = {
         "source": "prometheus",
@@ -1583,11 +1688,14 @@ def _default_widget(wid: str, wtype: str, *, title: str, promql: str) -> dict[st
     if query_type == "range":
         query["range"] = "1h"
         query["step"] = "30s"
+    if not description and promql == "vector(0)":
+        # A vector(0) placeholder must never render unlabeled.
+        description = _NO_METRIC_NOTE
     return {
         "id": wid,
         "type": wtype,
         "title": title,
-        "description": "",
+        "description": description[:512],
         "query": query,
         "position": {"x": 0, "y": 0, "w": 6, "h": 6},
         "encoding": {},
@@ -1596,31 +1704,93 @@ def _default_widget(wid: str, wtype: str, *, title: str, promql: str) -> dict[st
     }
 
 
+def _no_metric_placeholder_widget(
+    *, catalog_available: bool,
+) -> dict[str, Any]:
+    """Explicit, clearly-labeled stand-in when zero metrics resolved.
+
+    Never a silent http_requests_total default: the widget says exactly
+    why it shows 0 so the clinician knows nothing real is being watched.
+    """
+    if catalog_available:
+        description = (
+            "No matching metric was found in the live Prometheus catalog "
+            "for this request. This placeholder intentionally reads 0 — "
+            "rephrase with a known vital (e.g. 心率 / SpO2 / 呼吸) or a "
+            "real metric name."
+        )
+    else:
+        description = (
+            "The metric catalog was unavailable (Prometheus unreachable) "
+            "while generating this dashboard, so no metric could be "
+            "matched. This placeholder intentionally reads 0 — retry "
+            "once Prometheus is back."
+        )
+    return _default_widget(
+        "w-no-metric-match",
+        "stat_card",
+        title="No matching metric",
+        promql="vector(0)",
+        description=description,
+    )
+
+
+def _promql_for_metric(metric: str, wtype_name: str) -> str:
+    """Shape a widget query for one resolved metric.
+
+    Clinical gauges (patient_*/ventilator_*/cerebral_*) MUST aggregate
+    `max by (patient_id)`: the `device_model` label is free-text LLM
+    output with MULTIPLE variants per physical device, so one patient's
+    vital appears as N parallel series — sum would multiply the value
+    (observed live: HR 163 rendered as 814 after sum-collapse). `max`
+    over duplicates of the same reading is the honest collapse.
+    """
+    if prom_catalog.is_clinical_metric(metric):
+        return f"max by (patient_id) ({metric})"
+    if metric.endswith("_total"):
+        # Counters keep rate().
+        rate = f"rate({metric}[5m])"
+        if wtype_name in {"stat_card", "gauge"}:
+            return f"sum({rate})"
+        if wtype_name == "table":
+            return f"topk(10, {rate})"
+        return rate
+    # Non-counter system metrics keep their existing shapes.
+    if wtype_name in {"stat_card", "gauge"}:
+        return f"avg({metric})"
+    if wtype_name == "table":
+        return f"topk(10, {metric})"
+    return metric
+
+
 def _build_default_widgets(widget_hints: list[str], metric_hints: list[str]) -> list[dict[str, Any]]:
     widgets: list[dict[str, Any]] = []
     x = 0
     y = 0
     idx = 0
-    wants = list(dict.fromkeys(widget_hints)) or ["line_chart", "stat_card"]
-    for wtype_name in wants:
-        if wtype_name not in {t.value for t in WidgetType}:
-            continue
-        metric = metric_hints[idx % len(metric_hints)] if metric_hints else None
-        promql = _default_promql_for(wtype_name)
+    wants = [
+        w for w in dict.fromkeys(widget_hints)
+        if w in {t.value for t in WidgetType}
+    ] or ["line_chart", "stat_card"]
+    metrics = list(dict.fromkeys(metric_hints))
+    # Every resolved metric gets a widget (cycling through the wanted
+    # widget types) — "盯心率和血氧" must chart BOTH vitals even when
+    # only one widget type was hinted.
+    slots = max(len(wants), len(metrics)) if metrics else len(wants)
+    for slot in range(slots):
+        wtype_name = wants[slot % len(wants)]
+        metric = metrics[slot % len(metrics)] if metrics else None
         if metric:
-            if wtype_name == "line_chart":
-                promql = f"rate({metric}[5m])" if metric.endswith("_total") else metric
-            elif wtype_name in {"stat_card", "gauge"}:
-                promql = f"avg({metric})"
-            elif wtype_name == "table":
-                promql = f"topk(10, {metric})"
+            promql = _promql_for_metric(metric, wtype_name)
+        else:
+            promql = _default_promql_for(wtype_name)
         w = 6 if wtype_name in {"line_chart", "table"} else 3
         h = 6 if wtype_name in {"line_chart", "table"} else 4
         if x + w > 12:
             x = 0
             y += h
         widget = _default_widget(
-            f"w-{idx}-{wtype_name}",
+            f"w-{idx}-{_slugify(metric) if metric else wtype_name}",
             wtype_name,
             title=(metric or wtype_name).replace("_", " ").title(),
             promql=promql,
@@ -1714,13 +1884,49 @@ def _looks_like_api_observability(
     return hits >= 2
 
 
+# Base metric behind each golden widget — used to annotate widgets whose
+# metric is absent from the live catalog (annotate, never fabricate).
+_API_OBS_WIDGET_METRIC: dict[str, str] = {
+    "w-request-rate": "http_requests_total",
+    "w-error-rate": "http_requests_total",
+    "w-latency-p95": "http_request_duration_seconds_bucket",
+    "w-latency-p99": "http_request_duration_seconds_bucket",
+    "w-availability": "up",
+    "w-cpu": "process_cpu_seconds_total",
+    "w-memory": "process_resident_memory_bytes",
+    "w-alerts": "ALERTS",
+}
+
+
 def _api_observability_widgets() -> list[dict[str, Any]]:
     """Return the 8-widget golden API observability composition.
 
     Mirrors `backend/app/samples/api_observability.json` so the
     heuristic mock and the Real LLM both converge on a similar
     structure for this scenario.
+
+    When the live catalog is reachable, widgets whose base metric does
+    not exist on this box are annotated "(metric not present)" — the
+    composition keeps its shape, but nobody mistakes a dead panel for
+    a monitored one. Catalog unreachable → no annotation (unknown is
+    not the same as absent).
     """
+    widgets = _api_observability_widget_list()
+    try:
+        live = set(prom_catalog.get_catalog().list_metrics())
+    except PrometheusUnavailable:
+        return widgets
+    for w in widgets:
+        metric = _API_OBS_WIDGET_METRIC.get(w["id"])
+        if metric and metric not in live:
+            base = w.get("description") or ""
+            w["description"] = (
+                f"{base} (metric not present)".strip()[:512]
+            )
+    return widgets
+
+
+def _api_observability_widget_list() -> list[dict[str, Any]]:
     return [
         {"id": "w-request-rate", "type": "line_chart",
          "title": "HTTP request rate", "description": "",

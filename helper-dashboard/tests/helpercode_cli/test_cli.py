@@ -219,3 +219,70 @@ def test_cli_rejects_missing_api_key_in_openrouter_mode(tmp_path):
     )
     assert rc != 0
     assert "OPENROUTER_API_KEY" in err
+
+
+# ---------------------------------------------------------------------------
+# Metric-catalog prompt injection (LLM path)
+# ---------------------------------------------------------------------------
+
+
+def _load_cli_module():
+    """Import bin/helpercode as a module (no .py suffix — same pattern
+    as tests/helpercode_cli/test_tool_use.py)."""
+    from importlib.machinery import SourceFileLoader
+    from importlib.util import module_from_spec, spec_from_loader
+
+    loader = SourceFileLoader("_bin_helpercode_prompt", str(_CLI))
+    spec = spec_from_loader(loader.name, loader)
+    mod = module_from_spec(spec)
+    loader.exec_module(mod)
+    return mod
+
+
+def test_user_prompt_carries_metric_catalog_section():
+    mod = _load_cli_module()
+    args = {
+        "intent": {"type": "DashboardIntent", "summary": "vitals"},
+        "metric_catalog": {
+            "available": True,
+            "fetched_at": "2026-08-17T00:00:00+00:00",
+            "metrics": [
+                "patient_heart_rate_bpm",
+                "patient_spo2_percentage",
+                "node_cpu_seconds_total",
+            ],
+        },
+    }
+    prompt = mod._build_user_prompt("generate_dashboard", args)
+    # The section lists the real names as ground truth...
+    assert "## Live metric catalog" in prompt
+    assert "- patient_heart_rate_bpm" in prompt
+    assert "- patient_spo2_percentage" in prompt
+    # ...with the clinical aggregation rule and the no-invention order.
+    assert "max by (patient_id)" in prompt
+    assert "NEVER invent" in prompt
+    # The raw payload is NOT duplicated inside the ARGS JSON blob (it
+    # would eat the 16000-char budget).
+    assert '"metric_catalog"' not in prompt
+
+
+def test_user_prompt_states_catalog_unavailable_explicitly():
+    mod = _load_cli_module()
+    args = {
+        "intent": {"type": "DashboardIntent", "summary": "vitals"},
+        "metric_catalog": {"available": False, "metrics": [],
+                           "fetched_at": "2026-08-17T00:00:00+00:00"},
+    }
+    prompt = mod._build_user_prompt("generate_dashboard", args)
+    assert "UNAVAILABLE" in prompt
+    assert "Do NOT guess" in prompt
+
+
+def test_user_prompt_without_catalog_is_unchanged_shape():
+    mod = _load_cli_module()
+    prompt = mod._build_user_prompt(
+        "generate_dashboard", {"intent": {"type": "DashboardIntent"}}
+    )
+    assert "## Live metric catalog" not in prompt
+    assert prompt.startswith("OPERATION: generate_dashboard\n")
+    assert prompt.rstrip().endswith("No prose.")
