@@ -263,6 +263,30 @@ def _content_hash(path: Path) -> str:
         return _MISSING_HASH
 
 
+# Paths that mutate as SIDE EFFECTS of running code in the worktree
+# (pytest appends the session log via app.helper.memory, audit stores,
+# bytecode caches). They are never agent work: invisible to
+# collect_changes and therefore to the copy-back guard.
+_RUNTIME_ARTIFACT_FILES: tuple[str, ...] = (
+    "docs/USER_SESSION_LOG.md",
+    "frontend/tsconfig.tsbuildinfo",
+)
+_RUNTIME_ARTIFACT_PREFIXES: tuple[str, ...] = (
+    "backend/app/storage/",
+    "logs/",
+    ".pytest_cache/",
+    "frontend/.next/",
+)
+
+
+def _is_runtime_artifact(rel: str) -> bool:
+    if rel in _RUNTIME_ARTIFACT_FILES:
+        return True
+    if any(rel.startswith(p) for p in _RUNTIME_ARTIFACT_PREFIXES):
+        return True
+    return "__pycache__" in rel or rel.endswith(".pyc")
+
+
 def _status_changes(handle: WorktreeHandle) -> list[str]:
     """Raw `git status --porcelain -uall` paths (project-relative),
     `.devfix/` excluded. -uall expands untracked dirs into files."""
@@ -278,6 +302,8 @@ def _status_changes(handle: WorktreeHandle) -> list[str]:
             continue
         rel = path[len(prefix):]
         if rel == ".devfix" or rel.startswith(".devfix/"):
+            continue
+        if _is_runtime_artifact(rel):
             continue
         out.append(rel)
     return sorted(set(out))
