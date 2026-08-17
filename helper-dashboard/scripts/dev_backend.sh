@@ -11,6 +11,7 @@ set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
 ROOT="$(pwd)"
+BACKEND_PORT="${HELPER_DASHBOARD_BACKEND_PORT:-8010}"
 mkdir -p "$ROOT/logs"
 
 export HELPER_DASHBOARD_OPENCODE_TRACE="${HELPER_DASHBOARD_OPENCODE_TRACE:-1}"
@@ -60,11 +61,11 @@ if [ "$MODE" = "opencode" ] || [ "$MODE" = "auto" ]; then
 fi
 
 # --- 4. Start backend --------------------------------------------------
-echo "[dev] starting backend on :8000 (mode=$MODE)"
+echo "[dev] starting backend on :$BACKEND_PORT (mode=$MODE)"
 (
   cd backend
   PYTHONPATH=. python3 -m uvicorn app.main:app \
-    --host 127.0.0.1 --port 8000 --log-level info \
+    --host 127.0.0.1 --port "$BACKEND_PORT" --log-level info \
     2>&1 | sed -u 's/^/[backend] /'
 )
 BACK_PID=$!
@@ -82,6 +83,6 @@ echo "[dev] starting frontend on :3050"
   if [ ! -d .next ]; then
     npm run build
   fi
-  NEXT_PUBLIC_API_BASE="http://127.0.0.1:8000" \
+  NEXT_PUBLIC_API_BASE="http://127.0.0.1:${BACKEND_PORT}" \
     npx next start -p 3050
  

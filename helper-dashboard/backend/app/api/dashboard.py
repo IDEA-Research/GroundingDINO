@@ -2,8 +2,12 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException
+from typing import Any
 
+from fastapi import APIRouter, HTTPException
+from pydantic import BaseModel
+
+from ..prometheus.client import PrometheusClient
 from ..services.dashboard_store import DashboardStore
 from ..services.spec_validator import SpecValidator, SpecValidationError
 from ..specs import DashboardSpec
@@ -12,6 +16,7 @@ from ..specs import DashboardSpec
 router = APIRouter()
 _store = DashboardStore()
 _validator = SpecValidator()
+_prom = PrometheusClient()
 
 
 # Both forms registered explicitly: redirect_slashes is disabled on
@@ -47,3 +52,122 @@ def validate_dashboard(payload: dict) -> dict:
     # matching get_dashboard above — a client re-rendering the echoed spec
     # would otherwise silently lose every branch edge.
     return {"ok": True, "spec": spec.model_dump(mode="json", by_alias=True)}
+
+
+# ------------------------------------------------------------
+# Widget data — execute a widget's PromQL against live Prometheus.
+# ------------------------------------------------------------
+class WidgetQueryRequest(BaseModel):
+    """A single widget's QuerySpec, sent by the frontend renderer."""
+
+    source: str = "prometheus"
+    promql: str
+    query_type: str = "instant"
+    range: str | None = None
+    step: str | None = None
+
+
+@router.post("/query")
+def query_widget(req: WidgetQueryRequest) -> dict:
+    """Run one widget's PromQL and return series data for the renderer.
+
+    This is a new consumer of ``prometheus/client.py``. Per the repo rule
+    (mirrored from ``services/anomaly_data_provider.py``) we read the
+    ``source`` flag on every response and pass it through **unscrubbed**:
+    a silent mock fallback stays labeled ``source:"mock"`` so the frontend
+    shows the mock badge and never renders synthetic data as real. A widget
+    whose spec pins ``source != "prometheus"`` is never sent to the live
+    client — the frontend keeps such widgets on its own mock path, and this
+    endpoint fails safe for them too.
+    """
+    if req.source != "prometheus":
+        return {"source": "mock", "points": [], "latest": None, "table": []}
+
+    if req.query_type == "range":
+        range_s = _parse_duration(req.range) or 3600
+        step_s = _parse_duration(req.step) or 30
+        resp = _prom.query_range(req.promql, range_s=range_s, step_s=step_s)
+    else:
+        resp = _prom.query(req.promql)
+
+    return _to_widget_data(resp, req.query_type)
+
+
+def _to_widget_data(resp: dict[str, Any], query_type: str) -> dict[str, Any]:
+    """Transform a Prometheus response into the renderer's WidgetData shape.
+
+    Multi-series results (e.g. ``... by (mode)``) are collapsed into a single
+    summed series, since the current widgets render one line/value; the raw
+    per-series rows are preserved in ``table`` for instant queries. The
+    ``source`` flag is carried through verbatim.
+    """
+    source = str(resp.get("source", "mock"))
+    result = ((resp.get("data") or {}).get("result")) or []
+
+    if query_type != "range":
+        table: list[dict[str, Any]] = []
+        total = 0.0
+        seen = False
+        for series in result:
+            pair = series.get("value")
+            if not pair or len(pair) < 2:
+                continue
+            try:
+                v = float(pair[1])
+            except (TypeError, ValueError):
+                continue
+            seen = True
+            total += v
+            table.append({"metric": series.get("metric", {}), "value": v})
+        return {
+            "source": source,
+            "points": [],
+            "latest": total if seen else None,
+            "table": table,
+        }
+
+    # range → matrix: sum aligned samples across series into one line.
+    bucket: dict[int, float] = {}
+    for series in result:
+        for pair in series.get("values") or []:
+            if not pair or len(pair) < 2:
+                continue
+            try:
+                ts = int(float(pair[0]))
+                v = float(pair[1])
+            except (TypeError, ValueError):
+                continue
+            bucket[ts] = bucket.get(ts, 0.0) + v
+    points = [{"t": ts, "v": bucket[ts]} for ts in sorted(bucket)]
+    return {
+        "source": source,
+        "points": points,
+        "latest": points[-1]["v"] if points else None,
+        "table": [],
+    }
+
+
+def _parse_duration(s: str | None) -> int | None:
+    """Parse a Prometheus-style duration ('1h', '30s', '5m', '500ms') to seconds."""
+    if not s:
+        return None
+    text = s.strip()
+    unit = ""
+    for suffix in ("ms", "s", "m", "h"):
+        if text.endswith(suffix):
+            unit = suffix
+            num = text[: -len(suffix)]
+            break
+    else:
+        return None
+    try:
+        value = int(num)
+    except ValueError:
+        return None
+    if unit == "ms":
+        return max(1, round(value / 1000))
+    if unit == "s":
+        return value
+    if unit == "m":
+        return value * 60
+    return value * 3600

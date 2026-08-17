@@ -2769,3 +2769,2757 @@ _(empty — populated at runtime by backend/app/helper/memory.py)_
 - dashboard_id: d1
 - summary: sankey of memory flow
 
+### 2026-06-30 20:37 — session s-patch
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a CPU dashboard
+
+### 2026-06-30 20:38 — session ext-1
+
+- action: created
+- dashboard_id: d
+- summary: pie chart of memory by host
+
+### 2026-06-30 20:38 — session s1
+
+- action: created
+- dashboard_id: d
+- summary: show me a CPU dashboard
+
+### 2026-06-30 20:38 — session s2
+
+- action: created
+- dashboard_id: d
+- summary: show me a dashboard
+
+### 2026-06-30 20:38 — session s5
+
+- action: patched
+- dashboard_id: d
+- summary: make latency more prominent
+
+### 2026-06-30 20:38 — session sd-api
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a CPU dashboard
+
+### 2026-06-30 20:38 — session sp-1
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a CPU dashboard
+
+### 2026-06-30 20:38 — session sp-2
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a CPU dashboard
+
+### 2026-06-30 20:38 — session sp-3
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a CPU dashboard
+
+### 2026-06-30 20:38 — session sp-3
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a memory dashboard with a line chart
+
+### 2026-06-30 20:38 — session s-widget-test
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a CPU dashboard
+
+### 2026-06-30 20:38 — session s-widget-test
+
+- action: patched
+- dashboard_id: new-dashboard
+- summary: add a stat card
+
+### 2026-06-30 20:42 — session s-patch
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a CPU dashboard
+
+### 2026-06-30 20:42 — session ext-1
+
+- action: created
+- dashboard_id: d
+- summary: pie chart of memory by host
+
+### 2026-06-30 20:43 — session s1
+
+- action: created
+- dashboard_id: d
+- summary: show me a CPU dashboard
+
+### 2026-06-30 20:43 — session s2
+
+- action: created
+- dashboard_id: d
+- summary: show me a dashboard
+
+### 2026-06-30 20:43 — session s5
+
+- action: patched
+- dashboard_id: d
+- summary: make latency more prominent
+
+### 2026-06-30 20:43 — session sd-api
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a CPU dashboard
+
+### 2026-06-30 20:43 — session sp-1
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a CPU dashboard
+
+### 2026-06-30 20:43 — session sp-2
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a CPU dashboard
+
+### 2026-06-30 20:43 — session sp-3
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a CPU dashboard
+
+### 2026-06-30 20:43 — session sp-3
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a memory dashboard with a line chart
+
+### 2026-06-30 20:43 — session s-widget-test
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a CPU dashboard
+
+### 2026-06-30 20:43 — session s-widget-test
+
+- action: patched
+- dashboard_id: new-dashboard
+- summary: add a stat card
+
+### 2026-06-30 20:44 — session s-patch
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a CPU dashboard
+
+### 2026-06-30 20:44 — session s-widget-test
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a CPU dashboard
+
+### 2026-06-30 20:44 — session s-widget-test
+
+- action: patched
+- dashboard_id: new-dashboard
+- summary: add a stat card
+
+### 2026-06-30 20:46 — session s-patch
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a CPU dashboard
+
+### 2026-06-30 20:46 — session ext-1
+
+- action: created
+- dashboard_id: d
+- summary: pie chart of memory by host
+
+### 2026-06-30 20:47 — session s1
+
+- action: created
+- dashboard_id: d
+- summary: show me a CPU dashboard
+
+### 2026-06-30 20:47 — session s2
+
+- action: created
+- dashboard_id: d
+- summary: show me a dashboard
+
+### 2026-06-30 20:47 — session s5
+
+- action: patched
+- dashboard_id: d
+- summary: make latency more prominent
+
+### 2026-06-30 20:47 — session sd-api
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a CPU dashboard
+
+### 2026-06-30 20:47 — session sp-1
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a CPU dashboard
+
+### 2026-06-30 20:47 — session sp-2
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a CPU dashboard
+
+### 2026-06-30 20:47 — session sp-3
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a CPU dashboard
+
+### 2026-06-30 20:47 — session sp-3
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a memory dashboard with a line chart
+
+### 2026-06-30 20:47 — session s-widget-test
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a CPU dashboard
+
+### 2026-06-30 20:47 — session s-widget-test
+
+- action: patched
+- dashboard_id: new-dashboard
+- summary: add a stat card
+
+### 2026-06-30 20:47 — session s-patch
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a CPU dashboard
+
+### 2026-06-30 20:47 — session ext-1
+
+- action: created
+- dashboard_id: d
+- summary: pie chart of memory by host
+
+### 2026-06-30 20:48 — session s1
+
+- action: created
+- dashboard_id: d
+- summary: show me a CPU dashboard
+
+### 2026-06-30 20:48 — session s2
+
+- action: created
+- dashboard_id: d
+- summary: show me a dashboard
+
+### 2026-06-30 20:48 — session s5
+
+- action: patched
+- dashboard_id: d
+- summary: make latency more prominent
+
+### 2026-06-30 20:48 — session sd-api
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a CPU dashboard
+
+### 2026-06-30 20:48 — session sp-1
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a CPU dashboard
+
+### 2026-06-30 20:48 — session sp-2
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a CPU dashboard
+
+### 2026-06-30 20:48 — session sp-3
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a CPU dashboard
+
+### 2026-06-30 20:48 — session sp-3
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a memory dashboard with a line chart
+
+### 2026-06-30 20:48 — session s-widget-test
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a CPU dashboard
+
+### 2026-06-30 20:48 — session s-widget-test
+
+- action: patched
+- dashboard_id: new-dashboard
+- summary: add a stat card
+
+### 2026-06-30 21:00 — session s-patch
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a CPU dashboard
+
+### 2026-06-30 21:01 — session ext-1
+
+- action: created
+- dashboard_id: d
+- summary: pie chart of memory by host
+
+### 2026-06-30 21:01 — session s1
+
+- action: created
+- dashboard_id: d
+- summary: show me a CPU dashboard
+
+### 2026-06-30 21:01 — session s2
+
+- action: created
+- dashboard_id: d
+- summary: show me a dashboard
+
+### 2026-06-30 21:01 — session s5
+
+- action: patched
+- dashboard_id: d
+- summary: make latency more prominent
+
+### 2026-06-30 21:01 — session sd-api
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a CPU dashboard
+
+### 2026-06-30 21:01 — session sp-1
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a CPU dashboard
+
+### 2026-06-30 21:01 — session sp-2
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a CPU dashboard
+
+### 2026-06-30 21:01 — session sp-3
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a CPU dashboard
+
+### 2026-06-30 21:01 — session sp-3
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a memory dashboard with a line chart
+
+### 2026-06-30 21:01 — session s-widget-test
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a CPU dashboard
+
+### 2026-06-30 21:01 — session s-widget-test
+
+- action: patched
+- dashboard_id: new-dashboard
+- summary: add a stat card
+
+### 2026-06-30 21:26 — session s-patch
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a CPU dashboard
+
+### 2026-06-30 21:26 — session ext-1
+
+- action: created
+- dashboard_id: d
+- summary: pie chart of memory by host
+
+### 2026-06-30 21:27 — session s1
+
+- action: created
+- dashboard_id: d
+- summary: show me a CPU dashboard
+
+### 2026-06-30 21:27 — session s2
+
+- action: created
+- dashboard_id: d
+- summary: show me a dashboard
+
+### 2026-06-30 21:27 — session s5
+
+- action: patched
+- dashboard_id: d
+- summary: make latency more prominent
+
+### 2026-06-30 21:27 — session sd-api
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a CPU dashboard
+
+### 2026-06-30 21:27 — session sp-1
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a CPU dashboard
+
+### 2026-06-30 21:27 — session sp-2
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a CPU dashboard
+
+### 2026-06-30 21:27 — session sp-3
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a CPU dashboard
+
+### 2026-06-30 21:27 — session sp-3
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a memory dashboard with a line chart
+
+### 2026-06-30 21:27 — session s-widget-test
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a CPU dashboard
+
+### 2026-06-30 21:27 — session s-widget-test
+
+- action: patched
+- dashboard_id: new-dashboard
+- summary: add a stat card
+
+### 2026-06-30 21:27 — session s-widget-test
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a CPU dashboard
+
+### 2026-06-30 21:27 — session s-widget-test
+
+- action: patched
+- dashboard_id: new-dashboard
+- summary: add a stat card
+
+### 2026-06-30 21:39 — session s-widget-test
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a CPU dashboard
+
+### 2026-06-30 21:39 — session s-widget-test
+
+- action: patched
+- dashboard_id: new-dashboard
+- summary: add a stat card
+
+### 2026-07-01 04:40 — session s-widget-test
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a CPU dashboard
+
+### 2026-07-01 04:40 — session s-widget-test
+
+- action: patched
+- dashboard_id: new-dashboard
+- summary: add a stat card
+
+### 2026-07-01 04:46 — session s-widget-test
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a CPU dashboard
+
+### 2026-07-01 04:46 — session s-widget-test
+
+- action: patched
+- dashboard_id: new-dashboard
+- summary: add a stat card
+
+### 2026-07-01 04:47 — session s-patch
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a CPU dashboard
+
+### 2026-07-01 04:47 — session ext-1
+
+- action: created
+- dashboard_id: d
+- summary: pie chart of memory by host
+
+### 2026-07-01 04:48 — session s1
+
+- action: created
+- dashboard_id: d
+- summary: show me a CPU dashboard
+
+### 2026-07-01 04:48 — session s2
+
+- action: created
+- dashboard_id: d
+- summary: show me a dashboard
+
+### 2026-07-01 04:48 — session s5
+
+- action: patched
+- dashboard_id: d
+- summary: make latency more prominent
+
+### 2026-07-01 04:48 — session sd-api
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a CPU dashboard
+
+### 2026-07-01 04:48 — session sp-1
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a CPU dashboard
+
+### 2026-07-01 04:48 — session sp-2
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a CPU dashboard
+
+### 2026-07-01 04:48 — session sp-3
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a CPU dashboard
+
+### 2026-07-01 04:48 — session sp-3
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a memory dashboard with a line chart
+
+### 2026-07-01 04:48 — session s-widget-test
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a CPU dashboard
+
+### 2026-07-01 04:48 — session s-widget-test
+
+- action: patched
+- dashboard_id: new-dashboard
+- summary: add a stat card
+
+### 2026-07-01 04:49 — session s-widget-test
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a CPU dashboard
+
+### 2026-07-01 04:49 — session s-widget-test
+
+- action: patched
+- dashboard_id: new-dashboard
+- summary: add a stat card
+
+### 2026-07-01 04:51 — session s-patch
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a CPU dashboard
+
+### 2026-07-01 04:52 — session ext-1
+
+- action: created
+- dashboard_id: d
+- summary: pie chart of memory by host
+
+### 2026-07-01 04:52 — session s1
+
+- action: created
+- dashboard_id: d
+- summary: show me a CPU dashboard
+
+### 2026-07-01 04:52 — session s2
+
+- action: created
+- dashboard_id: d
+- summary: show me a dashboard
+
+### 2026-07-01 04:52 — session s5
+
+- action: patched
+- dashboard_id: d
+- summary: make latency more prominent
+
+### 2026-07-01 04:52 — session sd-api
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a CPU dashboard
+
+### 2026-07-01 04:52 — session sp-1
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a CPU dashboard
+
+### 2026-07-01 04:52 — session sp-2
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a CPU dashboard
+
+### 2026-07-01 04:52 — session sp-3
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a CPU dashboard
+
+### 2026-07-01 04:52 — session sp-3
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a memory dashboard with a line chart
+
+### 2026-07-01 04:52 — session s-widget-test
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a CPU dashboard
+
+### 2026-07-01 04:52 — session s-widget-test
+
+- action: patched
+- dashboard_id: new-dashboard
+- summary: add a stat card
+
+### 2026-07-01 04:54 — session s-widget-test
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a CPU dashboard
+
+### 2026-07-01 04:54 — session s-widget-test
+
+- action: patched
+- dashboard_id: new-dashboard
+- summary: add a stat card
+
+### 2026-07-01 04:59 — session s-widget-test
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a CPU dashboard
+
+### 2026-07-01 04:59 — session s-widget-test
+
+- action: patched
+- dashboard_id: new-dashboard
+- summary: add a stat card
+
+### 2026-07-01 05:00 — session s-widget-test
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a CPU dashboard
+
+### 2026-07-01 05:00 — session s-widget-test
+
+- action: patched
+- dashboard_id: new-dashboard
+- summary: add a stat card
+
+### 2026-07-01 05:01 — session s-widget-test
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a CPU dashboard
+
+### 2026-07-01 05:01 — session s-widget-test
+
+- action: patched
+- dashboard_id: new-dashboard
+- summary: add a stat card
+
+### 2026-07-01 05:02 — session s-widget-test
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a CPU dashboard
+
+### 2026-07-01 05:02 — session s-widget-test
+
+- action: patched
+- dashboard_id: new-dashboard
+- summary: add a stat card
+
+### 2026-07-01 05:02 — session s-widget-test
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a CPU dashboard
+
+### 2026-07-01 05:02 — session s-widget-test
+
+- action: patched
+- dashboard_id: new-dashboard
+- summary: add a stat card
+
+### 2026-07-01 05:04 — session s-widget-test
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a CPU dashboard
+
+### 2026-07-01 05:04 — session s-widget-test
+
+- action: patched
+- dashboard_id: new-dashboard
+- summary: add a stat card
+
+### 2026-07-01 05:06 — session s-widget-test
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a CPU dashboard
+
+### 2026-07-01 05:06 — session s-widget-test
+
+- action: patched
+- dashboard_id: new-dashboard
+- summary: add a stat card
+
+### 2026-07-01 05:11 — session s-widget-test
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a CPU dashboard
+
+### 2026-07-01 05:11 — session s-widget-test
+
+- action: patched
+- dashboard_id: new-dashboard
+- summary: add a stat card
+
+### 2026-07-01 05:11 — session s-widget-test
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a CPU dashboard
+
+### 2026-07-01 05:11 — session s-widget-test
+
+- action: patched
+- dashboard_id: new-dashboard
+- summary: add a stat card
+
+### 2026-07-01 05:11 — session sd-api
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a CPU dashboard
+
+### 2026-07-01 05:11 — session sp-1
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a CPU dashboard
+
+### 2026-07-01 05:11 — session sp-2
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a CPU dashboard
+
+### 2026-07-01 05:11 — session sp-3
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a CPU dashboard
+
+### 2026-07-01 05:11 — session sp-3
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a memory dashboard with a line chart
+
+### 2026-07-01 05:13 — session s-widget-test
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a CPU dashboard
+
+### 2026-07-01 05:13 — session s-widget-test
+
+- action: patched
+- dashboard_id: new-dashboard
+- summary: add a stat card
+
+### 2026-07-01 05:14 — session s-widget-test
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a CPU dashboard
+
+### 2026-07-01 05:14 — session s-widget-test
+
+- action: patched
+- dashboard_id: new-dashboard
+- summary: add a stat card
+
+### 2026-07-01 05:16 — session s-widget-test
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a CPU dashboard
+
+### 2026-07-01 05:16 — session s-widget-test
+
+- action: patched
+- dashboard_id: new-dashboard
+- summary: add a stat card
+
+### 2026-07-01 05:18 — session s-widget-test
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a CPU dashboard
+
+### 2026-07-01 05:18 — session s-widget-test
+
+- action: patched
+- dashboard_id: new-dashboard
+- summary: add a stat card
+
+### 2026-07-01 05:22 — session s-widget-test
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a CPU dashboard
+
+### 2026-07-01 05:22 — session s-widget-test
+
+- action: patched
+- dashboard_id: new-dashboard
+- summary: add a stat card
+
+### 2026-07-01 05:25 — session s-widget-test
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a CPU dashboard
+
+### 2026-07-01 05:25 — session s-widget-test
+
+- action: patched
+- dashboard_id: new-dashboard
+- summary: add a stat card
+
+### 2026-07-01 05:26 — session s-patch
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a CPU dashboard
+
+### 2026-07-01 05:27 — session ext-1
+
+- action: created
+- dashboard_id: d
+- summary: pie chart of memory by host
+
+### 2026-07-01 05:27 — session s1
+
+- action: created
+- dashboard_id: d
+- summary: show me a CPU dashboard
+
+### 2026-07-01 05:27 — session s2
+
+- action: created
+- dashboard_id: d
+- summary: show me a dashboard
+
+### 2026-07-01 05:27 — session s5
+
+- action: patched
+- dashboard_id: d
+- summary: make latency more prominent
+
+### 2026-07-01 05:27 — session sd-api
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a CPU dashboard
+
+### 2026-07-01 05:27 — session sp-1
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a CPU dashboard
+
+### 2026-07-01 05:27 — session sp-2
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a CPU dashboard
+
+### 2026-07-01 05:27 — session sp-3
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a CPU dashboard
+
+### 2026-07-01 05:27 — session sp-3
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a memory dashboard with a line chart
+
+### 2026-07-01 05:27 — session s-widget-test
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a CPU dashboard
+
+### 2026-07-01 05:27 — session s-widget-test
+
+- action: patched
+- dashboard_id: new-dashboard
+- summary: add a stat card
+
+### 2026-07-01 05:28 — session s-widget-test
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a CPU dashboard
+
+### 2026-07-01 05:28 — session s-widget-test
+
+- action: patched
+- dashboard_id: new-dashboard
+- summary: add a stat card
+
+### 2026-07-01 05:30 — session s-widget-test
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a CPU dashboard
+
+### 2026-07-01 05:30 — session s-widget-test
+
+- action: patched
+- dashboard_id: new-dashboard
+- summary: add a stat card
+
+### 2026-07-01 05:30 — session s-widget-test
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a CPU dashboard
+
+### 2026-07-01 05:30 — session s-widget-test
+
+- action: patched
+- dashboard_id: new-dashboard
+- summary: add a stat card
+
+### 2026-07-01 05:33 — session s-patch
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a CPU dashboard
+
+### 2026-07-01 05:33 — session ext-1
+
+- action: created
+- dashboard_id: d
+- summary: pie chart of memory by host
+
+### 2026-07-01 05:34 — session s1
+
+- action: created
+- dashboard_id: d
+- summary: show me a CPU dashboard
+
+### 2026-07-01 05:34 — session s2
+
+- action: created
+- dashboard_id: d
+- summary: show me a dashboard
+
+### 2026-07-01 05:34 — session s5
+
+- action: patched
+- dashboard_id: d
+- summary: make latency more prominent
+
+### 2026-07-01 05:34 — session sd-api
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a CPU dashboard
+
+### 2026-07-01 05:34 — session sp-1
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a CPU dashboard
+
+### 2026-07-01 05:34 — session sp-2
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a CPU dashboard
+
+### 2026-07-01 05:34 — session sp-3
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a CPU dashboard
+
+### 2026-07-01 05:34 — session sp-3
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a memory dashboard with a line chart
+
+### 2026-07-01 05:34 — session s-widget-test
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a CPU dashboard
+
+### 2026-07-01 05:34 — session s-widget-test
+
+- action: patched
+- dashboard_id: new-dashboard
+- summary: add a stat card
+
+### 2026-07-01 05:35 — session s-widget-test
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a CPU dashboard
+
+### 2026-07-01 05:35 — session s-widget-test
+
+- action: patched
+- dashboard_id: new-dashboard
+- summary: add a stat card
+
+### 2026-07-01 05:35 — session s-widget-test
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a CPU dashboard
+
+### 2026-07-01 05:35 — session s-widget-test
+
+- action: patched
+- dashboard_id: new-dashboard
+- summary: add a stat card
+
+### 2026-07-01 05:45 — session s-widget-test
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a CPU dashboard
+
+### 2026-07-01 05:45 — session s-widget-test
+
+- action: patched
+- dashboard_id: new-dashboard
+- summary: add a stat card
+
+### 2026-07-01 05:47 — session s-widget-test
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a CPU dashboard
+
+### 2026-07-01 05:47 — session s-widget-test
+
+- action: patched
+- dashboard_id: new-dashboard
+- summary: add a stat card
+
+### 2026-07-03 14:48 — session s-patch
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a CPU dashboard
+
+### 2026-07-03 14:49 — session ext-1
+
+- action: created
+- dashboard_id: d
+- summary: pie chart of memory by host
+
+### 2026-07-03 14:49 — session s1
+
+- action: created
+- dashboard_id: d
+- summary: show me a CPU dashboard
+
+### 2026-07-03 14:49 — session s2
+
+- action: created
+- dashboard_id: d
+- summary: show me a dashboard
+
+### 2026-07-03 14:49 — session s5
+
+- action: patched
+- dashboard_id: d
+- summary: make latency more prominent
+
+### 2026-07-03 14:49 — session sd-api
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a CPU dashboard
+
+### 2026-07-03 14:49 — session sp-1
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a CPU dashboard
+
+### 2026-07-03 14:49 — session sp-2
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a CPU dashboard
+
+### 2026-07-03 14:49 — session sp-3
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a CPU dashboard
+
+### 2026-07-03 14:49 — session sp-3
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a memory dashboard with a line chart
+
+### 2026-07-03 14:49 — session s-widget-test
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a CPU dashboard
+
+### 2026-07-03 14:49 — session s-widget-test
+
+- action: patched
+- dashboard_id: new-dashboard
+- summary: add a stat card
+
+### 2026-07-04 01:13 — session s-patch
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a CPU dashboard
+
+### 2026-07-04 01:14 — session ext-1
+
+- action: created
+- dashboard_id: d
+- summary: pie chart of memory by host
+
+### 2026-07-04 01:14 — session s1
+
+- action: created
+- dashboard_id: d
+- summary: show me a CPU dashboard
+
+### 2026-07-04 01:14 — session s2
+
+- action: created
+- dashboard_id: d
+- summary: show me a dashboard
+
+### 2026-07-04 01:14 — session s5
+
+- action: patched
+- dashboard_id: d
+- summary: make latency more prominent
+
+### 2026-07-04 01:14 — session sd-api
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a CPU dashboard
+
+### 2026-07-04 01:14 — session sp-1
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a CPU dashboard
+
+### 2026-07-04 01:14 — session sp-2
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a CPU dashboard
+
+### 2026-07-04 01:14 — session sp-3
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a CPU dashboard
+
+### 2026-07-04 01:14 — session sp-3
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a memory dashboard with a line chart
+
+### 2026-07-04 01:14 — session s-widget-test
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a CPU dashboard
+
+### 2026-07-04 01:14 — session s-widget-test
+
+- action: patched
+- dashboard_id: new-dashboard
+- summary: add a stat card
+
+### 2026-07-04 06:40 — session s-widget-test
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a CPU dashboard
+
+### 2026-07-04 06:40 — session s-widget-test
+
+- action: patched
+- dashboard_id: new-dashboard
+- summary: add a stat card
+
+### 2026-07-04 06:45 — session t2-a
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a CPU and memory dashboard
+
+### 2026-07-04 06:45 — session t2-a
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a CPU and memory dashboard
+
+### 2026-07-04 06:45 — session t2-a
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a CPU and memory dashboard
+
+### 2026-07-04 06:46 — session t2-a
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a CPU and memory dashboard
+
+### 2026-07-04 06:47 — session t2-a
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a CPU and memory dashboard
+
+### 2026-07-04 06:48 — session t2-a
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a CPU and memory dashboard
+
+### 2026-07-04 06:48 — session t2-a
+
+- action: patched
+- dashboard_id: new-dashboard
+- summary: add a gauge widget
+
+### 2026-07-04 06:49 — session s-patch
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a CPU dashboard
+
+### 2026-07-04 06:49 — session ext-1
+
+- action: created
+- dashboard_id: d
+- summary: pie chart of memory by host
+
+### 2026-07-04 06:50 — session s1
+
+- action: created
+- dashboard_id: d
+- summary: show me a CPU dashboard
+
+### 2026-07-04 06:50 — session s2
+
+- action: created
+- dashboard_id: d
+- summary: show me a dashboard
+
+### 2026-07-04 06:50 — session s5
+
+- action: patched
+- dashboard_id: d
+- summary: make latency more prominent
+
+### 2026-07-04 06:50 — session sd-api
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a CPU dashboard
+
+### 2026-07-04 06:50 — session sp-1
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a CPU dashboard
+
+### 2026-07-04 06:50 — session sp-2
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a CPU dashboard
+
+### 2026-07-04 06:50 — session sp-3
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a CPU dashboard
+
+### 2026-07-04 06:50 — session sp-3
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a memory dashboard with a line chart
+
+### 2026-07-04 06:50 — session s-widget-test
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a CPU dashboard
+
+### 2026-07-04 06:50 — session s-widget-test
+
+- action: patched
+- dashboard_id: new-dashboard
+- summary: add a stat card
+
+### 2026-07-04 17:00 — session s-patch
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a CPU dashboard
+
+### 2026-07-04 17:01 — session t2-a
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a CPU and memory dashboard
+
+### 2026-07-04 17:01 — session t2-a
+
+- action: patched
+- dashboard_id: new-dashboard
+- summary: add a gauge widget
+
+### 2026-07-04 17:01 — session ext-1
+
+- action: created
+- dashboard_id: d
+- summary: pie chart of memory by host
+
+### 2026-07-04 17:01 — session s1
+
+- action: created
+- dashboard_id: d
+- summary: show me a CPU dashboard
+
+### 2026-07-04 17:01 — session s2
+
+- action: created
+- dashboard_id: d
+- summary: show me a dashboard
+
+### 2026-07-04 17:01 — session s5
+
+- action: patched
+- dashboard_id: d
+- summary: make latency more prominent
+
+### 2026-07-04 17:01 — session sd-api
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a CPU dashboard
+
+### 2026-07-04 17:01 — session sp-1
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a CPU dashboard
+
+### 2026-07-04 17:01 — session sp-2
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a CPU dashboard
+
+### 2026-07-04 17:01 — session sp-3
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a CPU dashboard
+
+### 2026-07-04 17:01 — session sp-3
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a memory dashboard with a line chart
+
+### 2026-07-04 17:01 — session s-widget-test
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a CPU dashboard
+
+### 2026-07-04 17:01 — session s-widget-test
+
+- action: patched
+- dashboard_id: new-dashboard
+- summary: add a stat card
+
+### 2026-07-04 17:05 — session s-patch
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a CPU dashboard
+
+### 2026-07-04 17:05 — session s-patch
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a CPU dashboard
+
+### 2026-07-04 17:05 — session s-patch
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a CPU dashboard
+
+### 2026-07-04 17:06 — session ext-1
+
+- action: created
+- dashboard_id: d
+- summary: pie chart of memory by host
+
+### 2026-07-04 17:06 — session ext-1
+
+- action: created
+- dashboard_id: d
+- summary: pie chart of memory by host
+
+### 2026-07-04 17:06 — session ext-1
+
+- action: created
+- dashboard_id: d
+- summary: pie chart of memory by host
+
+### 2026-07-04 17:06 — session s1
+
+- action: created
+- dashboard_id: d
+- summary: show me a CPU dashboard
+
+### 2026-07-04 17:06 — session s2
+
+- action: created
+- dashboard_id: d
+- summary: show me a dashboard
+
+### 2026-07-04 17:06 — session s5
+
+- action: patched
+- dashboard_id: d
+- summary: make latency more prominent
+
+### 2026-07-04 17:06 — session sd-api
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a CPU dashboard
+
+### 2026-07-04 17:06 — session sp-1
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a CPU dashboard
+
+### 2026-07-04 17:06 — session sp-2
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a CPU dashboard
+
+### 2026-07-04 17:06 — session sp-3
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a CPU dashboard
+
+### 2026-07-04 17:06 — session sp-3
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a memory dashboard with a line chart
+
+### 2026-07-04 17:06 — session s-widget-test
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a CPU dashboard
+
+### 2026-07-04 17:06 — session s-widget-test
+
+- action: patched
+- dashboard_id: new-dashboard
+- summary: add a stat card
+
+### 2026-07-04 17:06 — session s1
+
+- action: created
+- dashboard_id: d
+- summary: show me a CPU dashboard
+
+### 2026-07-04 17:06 — session s2
+
+- action: created
+- dashboard_id: d
+- summary: show me a dashboard
+
+### 2026-07-04 17:06 — session s5
+
+- action: patched
+- dashboard_id: d
+- summary: make latency more prominent
+
+### 2026-07-04 17:06 — session sd-api
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a CPU dashboard
+
+### 2026-07-04 17:06 — session sp-1
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a CPU dashboard
+
+### 2026-07-04 17:06 — session sp-2
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a CPU dashboard
+
+### 2026-07-04 17:06 — session sp-3
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a CPU dashboard
+
+### 2026-07-04 17:06 — session sp-3
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a memory dashboard with a line chart
+
+### 2026-07-04 17:06 — session s-widget-test
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a CPU dashboard
+
+### 2026-07-04 17:06 — session s-widget-test
+
+- action: patched
+- dashboard_id: new-dashboard
+- summary: add a stat card
+
+### 2026-07-04 17:09 — session s1
+
+- action: created
+- dashboard_id: d
+- summary: show me a CPU dashboard
+
+### 2026-07-04 17:09 — session s2
+
+- action: created
+- dashboard_id: d
+- summary: show me a dashboard
+
+### 2026-07-04 17:09 — session s5
+
+- action: patched
+- dashboard_id: d
+- summary: make latency more prominent
+
+### 2026-07-04 17:09 — session sd-api
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a CPU dashboard
+
+### 2026-07-04 17:09 — session sp-1
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a CPU dashboard
+
+### 2026-07-04 17:09 — session sp-2
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a CPU dashboard
+
+### 2026-07-04 17:09 — session sp-3
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a CPU dashboard
+
+### 2026-07-04 17:09 — session sp-3
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a memory dashboard with a line chart
+
+### 2026-07-04 17:09 — session s-widget-test
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a CPU dashboard
+
+### 2026-07-04 17:09 — session s-widget-test
+
+- action: patched
+- dashboard_id: new-dashboard
+- summary: add a stat card
+
+### 2026-07-04 17:09 — session ext-1
+
+- action: created
+- dashboard_id: d
+- summary: pie chart of memory by host
+
+### 2026-07-04 17:16 — session s-patch
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a CPU dashboard
+
+### 2026-07-04 17:16 — session ext-1
+
+- action: created
+- dashboard_id: d
+- summary: pie chart of memory by host
+
+### 2026-07-04 17:17 — session s1
+
+- action: created
+- dashboard_id: d
+- summary: show me a CPU dashboard
+
+### 2026-07-04 17:17 — session s2
+
+- action: created
+- dashboard_id: d
+- summary: show me a dashboard
+
+### 2026-07-04 17:17 — session s5
+
+- action: patched
+- dashboard_id: d
+- summary: make latency more prominent
+
+### 2026-07-04 17:17 — session sd-api
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a CPU dashboard
+
+### 2026-07-04 17:17 — session sp-1
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a CPU dashboard
+
+### 2026-07-04 17:17 — session sp-2
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a CPU dashboard
+
+### 2026-07-04 17:17 — session sp-3
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a CPU dashboard
+
+### 2026-07-04 17:17 — session sp-3
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a memory dashboard with a line chart
+
+### 2026-07-04 17:17 — session s-widget-test
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a CPU dashboard
+
+### 2026-07-04 17:17 — session s-widget-test
+
+- action: patched
+- dashboard_id: new-dashboard
+- summary: add a stat card
+
+### 2026-07-04 17:24 — session s-patch
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a CPU dashboard
+
+### 2026-07-04 17:25 — session ext-1
+
+- action: created
+- dashboard_id: d
+- summary: pie chart of memory by host
+
+### 2026-07-04 17:25 — session s1
+
+- action: created
+- dashboard_id: d
+- summary: show me a CPU dashboard
+
+### 2026-07-04 17:25 — session s2
+
+- action: created
+- dashboard_id: d
+- summary: show me a dashboard
+
+### 2026-07-04 17:25 — session s5
+
+- action: patched
+- dashboard_id: d
+- summary: make latency more prominent
+
+### 2026-07-04 17:25 — session sd-api
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a CPU dashboard
+
+### 2026-07-04 17:25 — session sp-1
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a CPU dashboard
+
+### 2026-07-04 17:25 — session sp-2
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a CPU dashboard
+
+### 2026-07-04 17:25 — session sp-3
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a CPU dashboard
+
+### 2026-07-04 17:25 — session sp-3
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a memory dashboard with a line chart
+
+### 2026-07-04 17:25 — session s-widget-test
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a CPU dashboard
+
+### 2026-07-04 17:25 — session s-widget-test
+
+- action: patched
+- dashboard_id: new-dashboard
+- summary: add a stat card
+
+### 2026-07-06 09:47 — session ext-1
+
+- action: created
+- dashboard_id: d
+- summary: pie chart of memory by host
+
+### 2026-07-06 09:47 — session s1
+
+- action: created
+- dashboard_id: d
+- summary: show me a CPU dashboard
+
+### 2026-07-06 09:47 — session s2
+
+- action: created
+- dashboard_id: d
+- summary: show me a dashboard
+
+### 2026-07-06 09:47 — session s5
+
+- action: patched
+- dashboard_id: d
+- summary: make latency more prominent
+
+### 2026-07-06 09:47 — session s-ticket-deliver
+
+- action: created
+- dashboard_id: d
+- summary: show me a line chart of rSO2 for the last hour
+
+### 2026-07-06 09:47 — session s-patch
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a CPU dashboard
+
+### 2026-07-06 09:47 — session s-ticket-deliver
+
+- action: created
+- dashboard_id: d
+- summary: show me a line chart of rSO2 for the last hour
+
+### 2026-07-06 09:48 — session s-ticket-deliver
+
+- action: created
+- dashboard_id: d
+- summary: show me a line chart of rSO2 for the last hour
+
+### 2026-07-06 09:48 — session ext-1
+
+- action: created
+- dashboard_id: d
+- summary: pie chart of memory by host
+
+### 2026-07-06 09:49 — session s1
+
+- action: created
+- dashboard_id: d
+- summary: show me a CPU dashboard
+
+### 2026-07-06 09:49 — session s2
+
+- action: created
+- dashboard_id: d
+- summary: show me a dashboard
+
+### 2026-07-06 09:49 — session s5
+
+- action: patched
+- dashboard_id: d
+- summary: make latency more prominent
+
+### 2026-07-06 09:49 — session s-ticket-deliver
+
+- action: created
+- dashboard_id: d
+- summary: show me a line chart of rSO2 for the last hour
+
+### 2026-07-06 09:49 — session ext-1
+
+- action: created
+- dashboard_id: d
+- summary: pie chart of memory by host
+
+### 2026-07-06 09:50 — session s1
+
+- action: created
+- dashboard_id: d
+- summary: show me a CPU dashboard
+
+### 2026-07-06 09:50 — session s2
+
+- action: created
+- dashboard_id: d
+- summary: show me a dashboard
+
+### 2026-07-06 09:50 — session s5
+
+- action: patched
+- dashboard_id: d
+- summary: make latency more prominent
+
+### 2026-07-06 09:50 — session s-ticket-deliver
+
+- action: created
+- dashboard_id: d
+- summary: show me a line chart of rSO2 for the last hour
+
+### 2026-07-06 09:52 — session ext-1
+
+- action: created
+- dashboard_id: d
+- summary: pie chart of memory by host
+
+### 2026-07-06 09:52 — session s1
+
+- action: created
+- dashboard_id: d
+- summary: show me a CPU dashboard
+
+### 2026-07-06 09:52 — session s2
+
+- action: created
+- dashboard_id: d
+- summary: show me a dashboard
+
+### 2026-07-06 09:52 — session s5
+
+- action: patched
+- dashboard_id: d
+- summary: make latency more prominent
+
+### 2026-07-06 09:52 — session s-ticket-deliver
+
+- action: created
+- dashboard_id: d
+- summary: show me a line chart of rSO2 for the last hour
+
+### 2026-07-06 09:52 — session s-patch
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a CPU dashboard
+
+### 2026-07-06 09:53 — session s-patch
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a CPU dashboard
+
+### 2026-07-06 09:53 — session ext-1
+
+- action: created
+- dashboard_id: d
+- summary: pie chart of memory by host
+
+### 2026-07-06 09:54 — session s1
+
+- action: created
+- dashboard_id: d
+- summary: show me a CPU dashboard
+
+### 2026-07-06 09:54 — session s2
+
+- action: created
+- dashboard_id: d
+- summary: show me a dashboard
+
+### 2026-07-06 09:54 — session s5
+
+- action: patched
+- dashboard_id: d
+- summary: make latency more prominent
+
+### 2026-07-06 09:54 — session s-ticket-deliver
+
+- action: created
+- dashboard_id: d
+- summary: show me a line chart of rSO2 for the last hour
+
+### 2026-07-06 09:54 — session sd-api
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a CPU dashboard
+
+### 2026-07-06 09:54 — session sp-1
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a CPU dashboard
+
+### 2026-07-06 09:54 — session sp-2
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a CPU dashboard
+
+### 2026-07-06 09:54 — session sp-3
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a CPU dashboard
+
+### 2026-07-06 09:54 — session sp-3
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a memory dashboard with a line chart
+
+### 2026-07-06 09:54 — session s-widget-test
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a CPU dashboard
+
+### 2026-07-06 09:54 — session s-widget-test
+
+- action: patched
+- dashboard_id: new-dashboard
+- summary: add a stat card
+
+### 2026-07-06 09:54 — session t2-a
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a CPU and memory dashboard
+
+### 2026-07-06 09:54 — session t2-a
+
+- action: patched
+- dashboard_id: new-dashboard
+- summary: add a gauge widget
+
+### 2026-07-06 09:55 — session ext-1
+
+- action: created
+- dashboard_id: d
+- summary: pie chart of memory by host
+
+### 2026-07-06 09:55 — session s1
+
+- action: created
+- dashboard_id: d
+- summary: show me a CPU dashboard
+
+### 2026-07-06 09:55 — session s2
+
+- action: created
+- dashboard_id: d
+- summary: show me a dashboard
+
+### 2026-07-06 09:55 — session s5
+
+- action: patched
+- dashboard_id: d
+- summary: make latency more prominent
+
+### 2026-07-06 09:55 — session s-ticket-deliver
+
+- action: created
+- dashboard_id: d
+- summary: show me a line chart of rSO2 for the last hour
+
+### 2026-07-06 09:58 — session ext-1
+
+- action: created
+- dashboard_id: d
+- summary: pie chart of memory by host
+
+### 2026-07-06 09:59 — session s1
+
+- action: created
+- dashboard_id: d
+- summary: show me a CPU dashboard
+
+### 2026-07-06 09:59 — session s2
+
+- action: created
+- dashboard_id: d
+- summary: show me a dashboard
+
+### 2026-07-06 09:59 — session s5
+
+- action: patched
+- dashboard_id: d
+- summary: make latency more prominent
+
+### 2026-07-06 09:59 — session s-ticket-deliver
+
+- action: created
+- dashboard_id: d
+- summary: show me a line chart of rSO2 for the last hour
+
+### 2026-07-06 09:59 — session s-patch
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a CPU dashboard
+
+### 2026-07-06 10:00 — session ext-1
+
+- action: created
+- dashboard_id: d
+- summary: pie chart of memory by host
+
+### 2026-07-06 10:00 — session s1
+
+- action: created
+- dashboard_id: d
+- summary: show me a CPU dashboard
+
+### 2026-07-06 10:00 — session s2
+
+- action: created
+- dashboard_id: d
+- summary: show me a dashboard
+
+### 2026-07-06 10:00 — session s5
+
+- action: patched
+- dashboard_id: d
+- summary: make latency more prominent
+
+### 2026-07-06 10:00 — session s-ticket-deliver
+
+- action: created
+- dashboard_id: d
+- summary: show me a line chart of rSO2 for the last hour
+
+### 2026-07-06 10:00 — session sd-api
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a CPU dashboard
+
+### 2026-07-06 10:00 — session sp-1
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a CPU dashboard
+
+### 2026-07-06 10:00 — session sp-2
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a CPU dashboard
+
+### 2026-07-06 10:00 — session sp-3
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a CPU dashboard
+
+### 2026-07-06 10:00 — session sp-3
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a memory dashboard with a line chart
+
+### 2026-07-06 10:00 — session s-widget-test
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a CPU dashboard
+
+### 2026-07-06 10:00 — session s-widget-test
+
+- action: patched
+- dashboard_id: new-dashboard
+- summary: add a stat card
+
+### 2026-07-06 10:14 — session s-patch
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a CPU dashboard
+
+### 2026-07-06 10:15 — session ext-1
+
+- action: created
+- dashboard_id: d
+- summary: pie chart of memory by host
+
+### 2026-07-06 10:15 — session s1
+
+- action: created
+- dashboard_id: d
+- summary: show me a CPU dashboard
+
+### 2026-07-06 10:15 — session s2
+
+- action: created
+- dashboard_id: d
+- summary: show me a dashboard
+
+### 2026-07-06 10:15 — session s5
+
+- action: patched
+- dashboard_id: d
+- summary: make latency more prominent
+
+### 2026-07-06 10:15 — session s-ticket-deliver
+
+- action: created
+- dashboard_id: d
+- summary: show me a line chart of rSO2 for the last hour
+
+### 2026-07-06 10:15 — session s-ticket-autofix
+
+- action: created
+- dashboard_id: d
+- summary: show me a line chart of rSO2 for the last hour
+
+### 2026-07-06 10:15 — session sd-api
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a CPU dashboard
+
+### 2026-07-06 10:15 — session sp-1
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a CPU dashboard
+
+### 2026-07-06 10:15 — session sp-2
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a CPU dashboard
+
+### 2026-07-06 10:15 — session sp-3
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a CPU dashboard
+
+### 2026-07-06 10:15 — session sp-3
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a memory dashboard with a line chart
+
+### 2026-07-06 10:15 — session s-widget-test
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a CPU dashboard
+
+### 2026-07-06 10:15 — session s-widget-test
+
+- action: patched
+- dashboard_id: new-dashboard
+- summary: add a stat card
+
+### 2026-07-06 10:15 — session t2-a
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a CPU and memory dashboard
+
+### 2026-07-06 10:16 — session t2-a
+
+- action: patched
+- dashboard_id: new-dashboard
+- summary: add a gauge widget
+
+### 2026-07-06 10:17 — session s-patch
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a CPU dashboard
+
+### 2026-07-06 10:18 — session ext-1
+
+- action: created
+- dashboard_id: d
+- summary: pie chart of memory by host
+
+### 2026-07-06 10:18 — session s1
+
+- action: created
+- dashboard_id: d
+- summary: show me a CPU dashboard
+
+### 2026-07-06 10:18 — session s2
+
+- action: created
+- dashboard_id: d
+- summary: show me a dashboard
+
+### 2026-07-06 10:18 — session s5
+
+- action: patched
+- dashboard_id: d
+- summary: make latency more prominent
+
+### 2026-07-06 10:18 — session s-ticket-deliver
+
+- action: created
+- dashboard_id: d
+- summary: show me a line chart of rSO2 for the last hour
+
+### 2026-07-06 10:18 — session s-ticket-autofix
+
+- action: created
+- dashboard_id: d
+- summary: show me a line chart of rSO2 for the last hour
+
+### 2026-07-06 10:19 — session s-patch
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a CPU dashboard
+
+### 2026-07-06 10:20 — session ext-1
+
+- action: created
+- dashboard_id: d
+- summary: pie chart of memory by host
+
+### 2026-07-06 10:20 — session s1
+
+- action: created
+- dashboard_id: d
+- summary: show me a CPU dashboard
+
+### 2026-07-06 10:20 — session s2
+
+- action: created
+- dashboard_id: d
+- summary: show me a dashboard
+
+### 2026-07-06 10:20 — session s5
+
+- action: patched
+- dashboard_id: d
+- summary: make latency more prominent
+
+### 2026-07-06 10:20 — session s-ticket-deliver
+
+- action: created
+- dashboard_id: d
+- summary: show me a line chart of rSO2 for the last hour
+
+### 2026-07-06 10:20 — session s-ticket-autofix
+
+- action: created
+- dashboard_id: d
+- summary: show me a line chart of rSO2 for the last hour
+
+### 2026-07-06 10:20 — session sd-api
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a CPU dashboard
+
+### 2026-07-06 10:20 — session sp-1
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a CPU dashboard
+
+### 2026-07-06 10:20 — session sp-2
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a CPU dashboard
+
+### 2026-07-06 10:20 — session sp-3
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a CPU dashboard
+
+### 2026-07-06 10:20 — session sp-3
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a memory dashboard with a line chart
+
+### 2026-07-06 10:20 — session s-widget-test
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a CPU dashboard
+
+### 2026-07-06 10:20 — session s-widget-test
+
+- action: patched
+- dashboard_id: new-dashboard
+- summary: add a stat card
+
+### 2026-07-06 13:35 — session s-m9zkb8yg
+
+- action: created
+- dashboard_id: cpu-usage-last-hour
+- summary: Show me a line chart of CPU usage for the last hour
+
+### 2026-07-06 14:03 — session s-patch
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a CPU dashboard
+
+### 2026-07-06 14:03 — session ext-1
+
+- action: created
+- dashboard_id: d
+- summary: pie chart of memory by host
+
+### 2026-07-06 14:04 — session s1
+
+- action: created
+- dashboard_id: d
+- summary: show me a CPU dashboard
+
+### 2026-07-06 14:04 — session s2
+
+- action: created
+- dashboard_id: d
+- summary: show me a dashboard
+
+### 2026-07-06 14:04 — session s5
+
+- action: patched
+- dashboard_id: d
+- summary: make latency more prominent
+
+### 2026-07-06 14:04 — session s-ticket-deliver
+
+- action: created
+- dashboard_id: d
+- summary: show me a line chart of rSO2 for the last hour
+
+### 2026-07-06 14:04 — session s-ticket-autofix
+
+- action: created
+- dashboard_id: d
+- summary: show me a line chart of rSO2 for the last hour
+
+### 2026-07-06 14:04 — session sd-api
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a CPU dashboard
+
+### 2026-07-06 14:04 — session sp-1
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a CPU dashboard
+
+### 2026-07-06 14:04 — session sp-2
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a CPU dashboard
+
+### 2026-07-06 14:04 — session sp-3
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a CPU dashboard
+
+### 2026-07-06 14:04 — session sp-3
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a memory dashboard with a line chart
+
+### 2026-07-06 14:04 — session s-widget-test
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a CPU dashboard
+
+### 2026-07-06 14:04 — session s-widget-test
+
+- action: patched
+- dashboard_id: new-dashboard
+- summary: add a stat card
+
+### 2026-07-06 14:04 — session t2-a
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a CPU and memory dashboard
+
+### 2026-07-06 14:04 — session t2-a
+
+- action: patched
+- dashboard_id: new-dashboard
+- summary: add a gauge widget
+
+### 2026-07-07 08:14 — session s-tif1auoe
+
+- action: created
+- dashboard_id: cpu-usage-last-hour
+- summary: Show me a line chart of CPU usage for the last hour
+
+### 2026-07-07 08:20 — session s-eg30b7ck
+
+- action: created
+- dashboard_id: cpu-usage-last-hour
+- summary: Show me a line chart of CPU usage for the last hour
+
+### 2026-07-07 08:21 — session live-cpu-chart
+
+- action: created
+- dashboard_id: cpu-usage-last-hour
+- summary: Show me a line chart of CPU usage for the last hour
+
+### 2026-07-08 12:39 — session s-widget-test
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a CPU dashboard
+
+### 2026-07-08 12:39 — session s-widget-test
+
+- action: patched
+- dashboard_id: new-dashboard
+- summary: add a stat card
+
+### 2026-07-21 09:41 — session s-zxl62yig
+
+- action: created
+- dashboard_id: cpu-usage-last-3h
+- summary: show me the CPU usage in last 3 hours
+
+### 2026-07-21 09:48 — session s-hjalj1j7
+
+- action: created
+- dashboard_id: cpu-usage-last-3h
+- summary: give me the last 3 hours CPU usage
+
+### 2026-07-21 09:50 — session s-patch
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a CPU dashboard
+
+### 2026-07-21 09:51 — session ext-1
+
+- action: created
+- dashboard_id: d
+- summary: pie chart of memory by host
+
+### 2026-07-21 09:51 — session s1
+
+- action: created
+- dashboard_id: d
+- summary: show me a CPU dashboard
+
+### 2026-07-21 09:51 — session s2
+
+- action: created
+- dashboard_id: d
+- summary: show me a dashboard
+
+### 2026-07-21 09:51 — session s5
+
+- action: patched
+- dashboard_id: d
+- summary: make latency more prominent
+
+### 2026-07-21 09:51 — session s-ticket-deliver
+
+- action: created
+- dashboard_id: d
+- summary: show me a line chart of rSO2 for the last hour
+
+### 2026-07-21 09:51 — session s-ticket-autofix
+
+- action: created
+- dashboard_id: d
+- summary: show me a line chart of rSO2 for the last hour
+
+### 2026-07-21 09:51 — session sd-api
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a CPU dashboard
+
+### 2026-07-21 09:51 — session sp-1
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a CPU dashboard
+
+### 2026-07-21 09:51 — session sp-2
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a CPU dashboard
+
+### 2026-07-21 09:51 — session sp-3
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a CPU dashboard
+
+### 2026-07-21 09:51 — session sp-3
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a memory dashboard with a line chart
+
+### 2026-07-21 09:51 — session s-widget-test
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a CPU dashboard
+
+### 2026-07-21 09:51 — session s-widget-test
+
+- action: patched
+- dashboard_id: new-dashboard
+- summary: add a stat card
+
+### 2026-07-21 09:53 — session s-hjalj1j7
+
+- action: patched
+- dashboard_id: cpu-usage-last-3h
+- summary: change to yesterday cpu usage
+
+### 2026-07-21 10:04 — session s-hjalj1j7
+
+- action: patched
+- dashboard_id: cpu-usage-last-3h
+- summary: Show CPU usage rate (all cores) only
+
+### 2026-08-05 09:41 — session s-widget-test
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a CPU dashboard
+
+### 2026-08-05 09:41 — session s-widget-test
+
+- action: patched
+- dashboard_id: new-dashboard
+- summary: add a stat card
+
+### 2026-08-05 09:41 — session s-patch
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a CPU dashboard
+
+### 2026-08-05 09:42 — session ext-1
+
+- action: created
+- dashboard_id: d
+- summary: pie chart of memory by host
+
+### 2026-08-05 09:42 — session s1
+
+- action: created
+- dashboard_id: d
+- summary: show me a CPU dashboard
+
+### 2026-08-05 09:42 — session s2
+
+- action: created
+- dashboard_id: d
+- summary: show me a dashboard
+
+### 2026-08-05 09:42 — session s5
+
+- action: patched
+- dashboard_id: d
+- summary: make latency more prominent
+
+### 2026-08-05 09:42 — session s-ticket-deliver
+
+- action: created
+- dashboard_id: d
+- summary: show me a line chart of rSO2 for the last hour
+
+### 2026-08-05 09:42 — session s-ticket-autofix
+
+- action: created
+- dashboard_id: d
+- summary: show me a line chart of rSO2 for the last hour
+
+### 2026-08-05 09:42 — session sd-api
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a CPU dashboard
+
+### 2026-08-05 09:42 — session sp-1
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a CPU dashboard
+
+### 2026-08-05 09:42 — session sp-2
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a CPU dashboard
+
+### 2026-08-05 09:42 — session sp-3
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a CPU dashboard
+
+### 2026-08-05 09:42 — session sp-3
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a memory dashboard with a line chart
+
+### 2026-08-05 09:42 — session s-widget-test
+
+- action: created
+- dashboard_id: new-dashboard
+- summary: Show me a CPU dashboard
+
+### 2026-08-05 09:42 — session s-widget-test
+
+- action: patched
+- dashboard_id: new-dashboard
+- summary: add a stat card
+

@@ -1,7 +1,11 @@
 """Tests for the heatmap widget type extension.
 
-Validates that heatmap is properly registered in the backend enum,
-frontend schema, and can be used in dashboard/patch specs.
+Validates that heatmap is properly registered in the backend enum and
+can be used in dashboard/patch specs. Frontend-schema registration
+(spec-schema.ts, renderer.tsx, the widget-toolkit component) is a
+separate, cross-language concern covered by
+`test_widget_frontend_backend_parity.py` — this file only ever imports
+from the backend, so it cannot verify the frontend side.
 """
 
 from __future__ import annotations

@@ -13,7 +13,7 @@ const nextConfig = {
   reactStrictMode: true,
   async rewrites() {
     const backend =
-      process.env.NEXT_PUBLIC_API_BASE || "http://localhost:8000";
+      process.env.NEXT_PUBLIC_API_BASE || "http://localhost:8010";
     return [
       // Keep /api/chat/message handled by app route handler
       // (frontend/app/api/chat/message/route.ts) instead of rewrite proxy.

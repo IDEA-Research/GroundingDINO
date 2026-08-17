@@ -22,15 +22,14 @@ from ..specs import DashboardSpec, BrowserEvaluationReport
 from ..specs.developer_ticket import DeveloperTicket
 
 
+# Defaults for stores constructed without an explicit root. These are
+# immutable: a per-instance `root=` (used by tests) must never redirect
+# them, or every later default-constructed store in the process leaks
+# into that root.
 _STORAGE_ROOT = Path(__file__).resolve().parent.parent / "storage"
 _DASHBOARDS_DIR = _STORAGE_ROOT / "dashboards"
 _TICKETS_DIR = _STORAGE_ROOT / "tickets"
 _REPORTS_DIR = _STORAGE_ROOT / "evaluation_reports"
-
-
-def _ensure_dirs() -> None:
-    for d in (_DASHBOARDS_DIR, _TICKETS_DIR, _REPORTS_DIR):
-        d.mkdir(parents=True, exist_ok=True)
 
 
 def _now_iso() -> str:
@@ -46,37 +45,36 @@ class DashboardStore:
     _DRAFTS: dict[str, DashboardSpec] = {}
 
     def __init__(self, root: Path | None = None) -> None:
-        global _STORAGE_ROOT, _DASHBOARDS_DIR, _TICKETS_DIR, _REPORTS_DIR
-        if root is not None:
-            _STORAGE_ROOT = root
-            _DASHBOARDS_DIR = root / "dashboards"
-            _TICKETS_DIR = root / "tickets"
-            _REPORTS_DIR = root / "evaluation_reports"
-        _ensure_dirs()
+        self._root = Path(root) if root is not None else _STORAGE_ROOT
+        self._dashboards_dir = self._root / "dashboards"
+        self._tickets_dir = self._root / "tickets"
+        self._reports_dir = self._root / "evaluation_reports"
+        self._ensure_dirs()
         self._ensure_drafts_dir()
 
+    def _ensure_dirs(self) -> None:
+        for d in (self._dashboards_dir, self._tickets_dir, self._reports_dir):
+            d.mkdir(parents=True, exist_ok=True)
+
     # -- drafts --
-    @staticmethod
-    def _drafts_dir() -> Path:
-        return _DASHBOARDS_DIR / "_drafts"
+    def _drafts_dir(self) -> Path:
+        return self._dashboards_dir / "_drafts"
 
-    @staticmethod
-    def _draft_path(dashboard_id: str) -> Path:
-        return DashboardStore._drafts_dir() / f"{dashboard_id}.json"
+    def _draft_path(self, dashboard_id: str) -> Path:
+        return self._drafts_dir() / f"{dashboard_id}.json"
 
-    @staticmethod
-    def _ensure_drafts_dir() -> None:
-        DashboardStore._drafts_dir().mkdir(parents=True, exist_ok=True)
+    def _ensure_drafts_dir(self) -> None:
+        self._drafts_dir().mkdir(parents=True, exist_ok=True)
 
     # -- dashboards --
     def save_dashboard(self, spec: DashboardSpec) -> Path:
-        _ensure_dirs()
-        path = _DASHBOARDS_DIR / f"{spec.dashboard_id}.json"
-        path.write_text(json.dumps(spec.model_dump(mode="json"), indent=2))
+        self._ensure_dirs()
+        path = self._dashboards_dir / f"{spec.dashboard_id}.json"
+        path.write_text(json.dumps(spec.model_dump(mode="json", by_alias=True), indent=2))
         # Promoting: clear any draft (memory + disk) for this id.
         DashboardStore._DRAFTS.pop(spec.dashboard_id, None)
         try:
-            draft = DashboardStore._draft_path(spec.dashboard_id)
+            draft = self._draft_path(spec.dashboard_id)
             if draft.exists():
                 draft.unlink()
         except Exception:  # pragma: no cover - best effort
@@ -99,20 +97,20 @@ class DashboardStore:
         After `clear_draft` (set in review_loop's `finally`), draft
         sources are empty and we fall back to the saved version.
         """
-        _ensure_dirs()
+        self._ensure_dirs()
         # 1. In-memory draft (same-process fast path; set_draft writes here)
         cached = DashboardStore._DRAFTS.get(dashboard_id)
         if cached is not None:
             return cached
         # 2. On-disk draft (other uvicorn workers can see this)
         try:
-            draft = DashboardStore._draft_path(dashboard_id)
+            draft = self._draft_path(dashboard_id)
             if draft.exists():
                 return DashboardSpec.model_validate_json(draft.read_text())
         except Exception:  # pragma: no cover - corrupt draft
             pass
         # 3. Saved disk version (no draft active for this id)
-        path = _DASHBOARDS_DIR / f"{dashboard_id}.json"
+        path = self._dashboards_dir / f"{dashboard_id}.json"
         if path.exists():
             return DashboardSpec.model_validate_json(path.read_text())
         return None
@@ -129,11 +127,11 @@ class DashboardStore:
         to remove.
         """
         DashboardStore._DRAFTS[spec.dashboard_id] = spec
-        DashboardStore._ensure_drafts_dir()
-        path = DashboardStore._draft_path(spec.dashboard_id)
+        self._ensure_drafts_dir()
+        path = self._draft_path(spec.dashboard_id)
         tmp = path.with_name(f"{spec.dashboard_id}.{uuid.uuid4().hex[:6]}.tmp")
         try:
-            tmp.write_text(json.dumps(spec.model_dump(mode="json"), indent=2))
+            tmp.write_text(json.dumps(spec.model_dump(mode="json", by_alias=True), indent=2))
             os.replace(tmp, path)
         except Exception:  # pragma: no cover - best effort
             try:
@@ -145,36 +143,36 @@ class DashboardStore:
     def clear_draft(self, dashboard_id: str) -> None:
         DashboardStore._DRAFTS.pop(dashboard_id, None)
         try:
-            draft = DashboardStore._draft_path(dashboard_id)
+            draft = self._draft_path(dashboard_id)
             if draft.exists():
                 draft.unlink()
         except Exception:  # pragma: no cover - best effort
             pass
 
     def list_dashboard_ids(self) -> list[str]:
-        _ensure_dirs()
-        return sorted(p.stem for p in _DASHBOARDS_DIR.glob("*.json"))
+        self._ensure_dirs()
+        return sorted(p.stem for p in self._dashboards_dir.glob("*.json"))
 
     # -- tickets --
     def save_ticket(self, ticket: DeveloperTicket) -> Path:
-        _ensure_dirs()
+        self._ensure_dirs()
         if ticket.created_at is None:
             ticket = ticket.model_copy(update={"created_at": _now_iso()})
-        path = _TICKETS_DIR / f"{ticket.ticket_id}.json"
+        path = self._tickets_dir / f"{ticket.ticket_id}.json"
         path.write_text(json.dumps(ticket.model_dump(mode="json"), indent=2))
         return path
 
     def load_ticket(self, ticket_id: str) -> DeveloperTicket | None:
-        _ensure_dirs()
-        path = _TICKETS_DIR / f"{ticket_id}.json"
+        self._ensure_dirs()
+        path = self._tickets_dir / f"{ticket_id}.json"
         if not path.exists():
             return None
         return DeveloperTicket.model_validate_json(path.read_text())
 
     def list_tickets(self) -> list[dict]:
-        _ensure_dirs()
+        self._ensure_dirs()
         out = []
-        for p in sorted(_TICKETS_DIR.glob("*.json")):
+        for p in sorted(self._tickets_dir.glob("*.json")):
             try:
                 t = DeveloperTicket.model_validate_json(p.read_text())
                 out.append(t.model_dump(mode="json"))
@@ -184,18 +182,18 @@ class DashboardStore:
 
     # -- evaluation reports --
     def save_evaluation(self, report: BrowserEvaluationReport) -> Path:
-        _ensure_dirs()
+        self._ensure_dirs()
         if report.created_at is None:
             report = report.model_copy(update={"created_at": _now_iso()})
         stamp = (report.created_at or _now_iso()).replace(":", "-")
-        path = _REPORTS_DIR / f"{report.dashboard_id}__{stamp}.json"
+        path = self._reports_dir / f"{report.dashboard_id}__{stamp}.json"
         path.write_text(json.dumps(report.model_dump(mode="json"), indent=2))
         return path
 
     def list_evaluation_reports(self, dashboard_id: str) -> list[dict]:
-        _ensure_dirs()
+        self._ensure_dirs()
         out = []
-        for p in sorted(_REPORTS_DIR.glob(f"{dashboard_id}__*.json")):
+        for p in sorted(self._reports_dir.glob(f"{dashboard_id}__*.json")):
             try:
                 out.append(json.loads(p.read_text()))
             except Exception:  # pragma: no cover

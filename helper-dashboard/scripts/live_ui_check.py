@@ -19,6 +19,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 BACKEND_DIR = ROOT / "backend"
 FRONTEND_DIR = ROOT / "frontend"
+BACKEND_PORT = 8010
+BACKEND_URL = f"http://127.0.0.1:{BACKEND_PORT}"
 
 
 def hr(c="="): print(c * 72)
@@ -59,7 +61,7 @@ def main():
            "PYTHONPATH": str(BACKEND_DIR)}
     backend = subprocess.Popen(
         [sys.executable, "-m", "uvicorn", "app.main:app",
-         "--host", "127.0.0.1", "--port", "8000", "--log-level", "warning"],
+         "--host", "127.0.0.1", "--port", str(BACKEND_PORT), "--log-level", "warning"],
         env=env, cwd=str(BACKEND_DIR),
         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
         start_new_session=True,
@@ -73,7 +75,7 @@ def main():
 
     try:
         print(f"backend pid={backend.pid}, frontend pid={frontend.pid}; waiting...")
-        assert wait_healthy("http://127.0.0.1:8000/api/health"), "backend"
+        assert wait_healthy(f"{BACKEND_URL}/api/health"), "backend"
         assert wait_healthy("http://127.0.0.1:3010/", tries=40), "frontend"
 
         banner("LIVE UI <-> BACKEND in MOCK mode (default)")

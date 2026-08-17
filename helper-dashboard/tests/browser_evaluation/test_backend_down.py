@@ -63,7 +63,7 @@ def test_backend_down_ux_shows_disconnected_and_improved_error():
     assert _port_free(port), f"port {port} already in use"
 
     # Start frontend without a backend running. NEXT_PUBLIC_API_BASE is
-    # baked at build time to http://localhost:8000 which will be down.
+    # baked at build time to http://localhost:8010 which will be down.
     front = subprocess.Popen(
         ["npx", "next", "start", "-p", str(port)],
         cwd=str(FRONTEND_DIR),

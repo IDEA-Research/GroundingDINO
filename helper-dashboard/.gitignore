@@ -22,6 +22,7 @@ backend/app/storage/evaluation_reports/*.json
 backend/app/storage/evaluation_reports/screenshots/
 backend/app/storage/saved_dashboards/*.json
 backend/app/storage/retry_logs/*.json
+backend/app/storage/*
 
 # Keep the directories themselves
 !backend/app/storage/dashboards/.gitkeep

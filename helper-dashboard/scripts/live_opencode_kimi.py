@@ -31,6 +31,8 @@ SHOT_DIR = (
     BACKEND_DIR / "app" / "storage" / "evaluation_reports"
     / "screenshots" / "opencode_live"
 )
+BACKEND_PORT = 8010
+BACKEND_URL = f"http://127.0.0.1:{BACKEND_PORT}"
 SHOT_DIR.mkdir(parents=True, exist_ok=True)
 
 
@@ -81,7 +83,7 @@ def start_backend():
     }
     return subprocess.Popen(
         [sys.executable, "-m", "uvicorn", "app.main:app",
-         "--host", "127.0.0.1", "--port", "8000", "--log-level", "warning"],
+         "--host", "127.0.0.1", "--port", str(BACKEND_PORT), "--log-level", "warning"],
         env=env, cwd=str(BACKEND_DIR),
         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
         start_new_session=True,
@@ -118,7 +120,7 @@ def main():
     frontend = start_frontend()
     try:
         print(f"backend pid={backend.pid}, frontend pid={frontend.pid}")
-        assert wait_http("http://127.0.0.1:8000/api/health"), "backend"
+        assert wait_http(f"{BACKEND_URL}/api/health"), "backend"
         assert wait_http("http://127.0.0.1:3010/", tries=60), "frontend"
 
         from playwright.sync_api import expect, sync_playwright

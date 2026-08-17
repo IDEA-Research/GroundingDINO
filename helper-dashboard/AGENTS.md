@@ -163,7 +163,7 @@ Validates every `DashboardSpec` and `PatchSpec` against the strict Pydantic
 schemas. Rejects unsupported widget types, unknown operations, arbitrary
 HTML/JS, or dangerous Prometheus queries.
 
-### Renderer (`frontend/lib/renderer.ts` + `frontend/widget-toolkit/`)
+### Renderer (`frontend/lib/renderer.tsx` + `frontend/widget-toolkit/`)
 Deterministic mapping from a validated `DashboardSpec` to React components
 from the fixed widget toolkit. Never interprets arbitrary JSX, HTML, or JS
 from the spec.

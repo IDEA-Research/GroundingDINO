@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 
 const BACKEND_BASE = (
-  process.env.NEXT_PUBLIC_API_BASE || "http://127.0.0.1:8000"
+  process.env.NEXT_PUBLIC_API_BASE || "http://127.0.0.1:8010"
 ).replace(/\/$/, "");
 
 const REQUEST_TIMEOUT_MS = 30 * 1000;
@@ -38,4 +38,3 @@ export async function GET(
     clearTimeout(timer);
   }
 }
-

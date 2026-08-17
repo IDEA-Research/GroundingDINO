@@ -28,6 +28,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 BACKEND_DIR = ROOT / "backend"
+BACKEND_PORT = 8010
+BACKEND_URL = f"http://127.0.0.1:{BACKEND_PORT}"
 
 
 STUB_BODY = r"""#!/usr/bin/env python3
@@ -162,7 +164,7 @@ def get(url, timeout=5):
 def wait_healthy(tries=30):
     for _ in range(tries):
         try:
-            s, _ = get("http://127.0.0.1:8000/api/health", timeout=1)
+            s, _ = get(f"{BACKEND_URL}/api/health", timeout=1)
             if s == 200:
                 return True
         except Exception:
@@ -175,7 +177,7 @@ def start_backend(env_extra):
     env = {**os.environ, "PYTHONPATH": str(BACKEND_DIR), **env_extra}
     return subprocess.Popen(
         [sys.executable, "-m", "uvicorn", "app.main:app",
-         "--host", "127.0.0.1", "--port", "8000", "--log-level", "warning"],
+         "--host", "127.0.0.1", "--port", str(BACKEND_PORT), "--log-level", "warning"],
         env=env, cwd=str(BACKEND_DIR),
         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
         start_new_session=True,
@@ -215,7 +217,7 @@ def main():
 
         sub("POST /api/chat/message — create")
         s, body = post(
-            "http://127.0.0.1:8000/api/chat/message",
+            f"{BACKEND_URL}/api/chat/message",
             {"session_id": "oc-1",
              "message": "Show me a dashboard from real OpenCode"},
         )
@@ -234,7 +236,7 @@ def main():
 
         sub("POST /api/chat/message — patch")
         s, body = post(
-            "http://127.0.0.1:8000/api/chat/message",
+            f"{BACKEND_URL}/api/chat/message",
             {"session_id": "oc-1",
              "message": "add a memory gauge",
              "current_dashboard_id": did},
@@ -264,7 +266,7 @@ def main():
 
         sub("POST /api/chat/message — real binary missing")
         s, body = post(
-            "http://127.0.0.1:8000/api/chat/message",
+            f"{BACKEND_URL}/api/chat/message",
             {"session_id": "oc-fail",
              "message": "Show me a dashboard"},
         )
@@ -294,7 +296,7 @@ def main():
         assert wait_healthy(), "backend never came up"
         sub("POST /api/chat/message — auto falls back")
         s, body = post(
-            "http://127.0.0.1:8000/api/chat/message",
+            f"{BACKEND_URL}/api/chat/message",
             {"session_id": "auto-1",
              "message": "Show me a dashboard"},
         )

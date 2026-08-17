@@ -114,4 +114,4 @@ def test_draft_survives_in_memory_loss(tmp_path):
     # session starts clean.
     store.clear_draft("cross-worker")
     assert store.load_dashboard("cross-worker") is None
-    assert not DashboardStore._draft_path("cross-worker").exists()
+    assert not store._draft_path("cross-worker").exists()

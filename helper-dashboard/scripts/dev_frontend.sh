@@ -70,14 +70,14 @@ echo "[dev] starting frontend on :3050"
   fi
   if [ "$FRONTEND_DEBUG" = "1" ]; then
     echo "[dev] frontend debug mode: next dev"
-    NEXT_PUBLIC_API_BASE="http://127.0.0.1:8000" \
+    NEXT_PUBLIC_API_BASE="${NEXT_PUBLIC_API_BASE:-http://127.0.0.1:8010}" \
       npx next dev -p 3050
   else
     # Production build once for cleaner reload.
     if [ ! -d .next ]; then
       npm run build
     fi
-    NEXT_PUBLIC_API_BASE="http://127.0.0.1:8000" \
+    NEXT_PUBLIC_API_BASE="${NEXT_PUBLIC_API_BASE:-http://127.0.0.1:8010}" \
       npx next start -p 3050
   fi
 

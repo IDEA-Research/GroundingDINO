@@ -74,7 +74,7 @@ async def _anomaly_loop(app: FastAPI) -> None:
 def create_app() -> FastAPI:
     # `redirect_slashes=False` matters: FastAPI's default redirect turns
     # `/api/saved_dashboards` into `/api/saved_dashboards/` via a 307 to
-    # the ABSOLUTE backend URL (e.g. http://127.0.0.1:8000/...). When
+    # the ABSOLUTE backend URL (e.g. http://127.0.0.1:8010/...). When
     # the browser called us through the Next.js dev proxy on :3050, the
     # 307 takes the request OUT of the proxy and direct-hits the backend
     # — cross-origin, no CORS Origin header on the redirect target, and

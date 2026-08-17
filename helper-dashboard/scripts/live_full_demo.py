@@ -57,6 +57,8 @@ SHOT_DIR.mkdir(parents=True, exist_ok=True)
 # cleanly with guidance.
 # ---------------------------------------------------------------------
 CHAT_BUDGET_S = 300
+BACKEND_PORT = 8010
+BACKEND_URL = f"http://127.0.0.1:{BACKEND_PORT}"
 
 
 def hr(c="="): print(c * 72)
@@ -126,7 +128,7 @@ def start_backend():
     }
     return subprocess.Popen(
         [sys.executable, "-m", "uvicorn", "app.main:app",
-         "--host", "127.0.0.1", "--port", "8000", "--log-level", "warning"],
+         "--host", "127.0.0.1", "--port", str(BACKEND_PORT), "--log-level", "warning"],
         env=env, cwd=str(BACKEND_DIR),
         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
         start_new_session=True,
@@ -257,7 +259,7 @@ def main() -> int:
 
     try:
         print(f"backend pid={backend.pid}, frontend pid={frontend.pid}")
-        if not wait_http("http://127.0.0.1:8000/api/health"):
+        if not wait_http(f"{BACKEND_URL}/api/health"):
             warn("backend never became healthy")
             return 2
         if not wait_http("http://127.0.0.1:3010/", tries=60):
@@ -284,7 +286,7 @@ def main() -> int:
 
             step("POST /api/chat/message — create a dashboard")
             status, body, elapsed = http_post(
-                "http://127.0.0.1:8000/api/chat/message",
+                f"{BACKEND_URL}/api/chat/message",
                 {
                     "session_id": "tier3-a",
                     "message": (
@@ -326,7 +328,7 @@ def main() -> int:
 
                 step("POST /api/chat/message — answer the save prompt")
                 status, body, elapsed = http_post(
-                    "http://127.0.0.1:8000/api/chat/message",
+                    f"{BACKEND_URL}/api/chat/message",
                     {"session_id": "tier3-a",
                      "message": "api observability"},
                     timeout=120,
@@ -336,7 +338,7 @@ def main() -> int:
 
                 step("GET /api/saved_dashboards/ — library should have 1")
                 s_status, raw = http_get(
-                    "http://127.0.0.1:8000/api/saved_dashboards/")
+                    f"{BACKEND_URL}/api/saved_dashboards/")
                 lib = json.loads(raw)
                 print(f"  HTTP {s_status}  saved items: {len(lib['saved'])}")
                 for s in lib["saved"]:
@@ -349,7 +351,7 @@ def main() -> int:
 
             step("POST /api/chat/message — request unsupported widgets")
             status, body, elapsed = http_post(
-                "http://127.0.0.1:8000/api/chat/message",
+                f"{BACKEND_URL}/api/chat/message",
                 {
                     "session_id": "tier3-b",
                     "message": (

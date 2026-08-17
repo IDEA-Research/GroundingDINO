@@ -1,14 +1,16 @@
-"""Synthetic neonatal rSO2 metrics PUBLISHER for the app's :8000 /metrics.
+"""Synthetic neonatal rSO2 metrics PUBLISHER for the app's :8010 /metrics.
 
-Increment 6 — "point to 8000".
+This is a dashboard-local synthetic publisher, not a medical exporter.
 
 Real medical data is NOT flowing yet, so we publish the deterministic
 synthetic neonatal physiology from `NeonatalSim` onto the SAME
 `prometheus_client` DEFAULT registry that the FastAPI app already exposes at
 `/metrics` (via `Instrumentator().instrument(app).expose(app)` in
-`main.py`). Prometheus already scrapes `http://localhost:8000/metrics`, so
-once the backend is (separately, by the supervisor) restarted with the
-publish gate ON, the rule's series resolve:
+`main.py`). This module does not change Prometheus scrape configuration.
+The repository's production configuration targets the medical exporter at
+`http://localhost:8000/metrics`; do not add this synthetic endpoint to it.
+Once the dashboard backend is separately restarted with the publish gate ON,
+the in-process series resolve:
 
     rso2_left{patient="neo-001"}
     avg_over_time(rso2_left{patient="neo-001"}[24h])

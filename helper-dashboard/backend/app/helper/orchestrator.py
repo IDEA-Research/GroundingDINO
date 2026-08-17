@@ -170,7 +170,7 @@ class Orchestrator:
         backend_env = _os.environ.copy()
         backend_env.setdefault(
             "NEXT_PUBLIC_API_BASE",
-            backend_env.get("NEXT_PUBLIC_API_BASE", "http://127.0.0.1:8000"),
+            backend_env.get("NEXT_PUBLIC_API_BASE", "http://127.0.0.1:8010"),
         )
         print("[orchestrator] running `npm run build` in frontend/ (this may take 30-60s)")
         try:
@@ -198,7 +198,7 @@ class Orchestrator:
         try:
             (frontend / ".next").mkdir(exist_ok=True)
             (frontend / ".next" / ".api_base_baked").write_text(
-                backend_env.get("NEXT_PUBLIC_API_BASE", "http://127.0.0.1:8000")
+                backend_env.get("NEXT_PUBLIC_API_BASE", "http://127.0.0.1:8010")
             )
         except Exception:  # pragma: no cover
             pass

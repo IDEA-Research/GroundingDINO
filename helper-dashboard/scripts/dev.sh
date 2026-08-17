@@ -11,6 +11,8 @@ set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
 ROOT="$(pwd)"
+BACKEND_PORT="${HELPER_DASHBOARD_BACKEND_PORT:-8010}"
+BACKEND_URL="http://127.0.0.1:${BACKEND_PORT}"
 
 # --- 1. Load .env if present ------------------------------------------
 if [ -f .env ]; then
@@ -60,11 +62,11 @@ fi
 # whatever else is on that port (or nothing) — every "missing widgets"
 # report becomes a false positive that escalates to the rescue agent.
 export HELPER_DASHBOARD_FRONTEND_URL="${HELPER_DASHBOARD_FRONTEND_URL:-http://127.0.0.1:3050}"
-echo "[dev] starting backend on :8000 (mode=$MODE, frontend_url=$HELPER_DASHBOARD_FRONTEND_URL)"
+echo "[dev] starting backend on :$BACKEND_PORT (mode=$MODE, frontend_url=$HELPER_DASHBOARD_FRONTEND_URL)"
 (
   cd backend
   PYTHONPATH=. python3 -m uvicorn app.main:app \
-    --host 127.0.0.1 --port 8000 --log-level info \
+    --host 127.0.0.1 --port "$BACKEND_PORT" --log-level info \
     2>&1 | sed -u 's/^/[backend] /'
 ) &
 BACK_PID=$!
@@ -77,7 +79,7 @@ BACK_PID=$!
 #   1. Always pass NEXT_PUBLIC_API_BASE to both build and start.
 #   2. Rebuild whenever the cached "baked" URL doesn't match the
 #      current target (sentinel file under .next/).
-NEXT_API_BASE_DEV="${NEXT_PUBLIC_API_BASE:-http://127.0.0.1:8000}"
+NEXT_API_BASE_DEV="${NEXT_PUBLIC_API_BASE:-$BACKEND_URL}"
 echo "[dev] starting frontend on :3050 (backend=$NEXT_API_BASE_DEV)"
 (
   cd frontend
@@ -117,7 +119,7 @@ trap cleanup EXIT INT TERM
 
 # --- 7. Wait for health ------------------------------------------------
 for i in $(seq 1 40); do
-  if curl -fsS -m 1 http://127.0.0.1:8000/api/health >/dev/null 2>&1; then
+  if curl -fsS -m 1 "$BACKEND_URL/api/health" >/dev/null 2>&1; then
     echo "[dev] backend healthy"
     break
   fi
