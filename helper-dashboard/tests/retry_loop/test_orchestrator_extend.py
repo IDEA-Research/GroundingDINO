@@ -52,7 +52,7 @@ class _ScriptedRuntime:
             return {"type": "UserResponse", "message": "noop",
                     "runtime_used": "mock"}
         r = dict(q.pop(0))
-        r.setdefault("runtime_used", "opencode")
+        r.setdefault("runtime_used", "helpercode")
         return r
 
 
@@ -68,7 +68,7 @@ def _intent_dashboard() -> dict:
         },
         "clarification_needed": False,
         "message_to_user": "on it",
-        "runtime_used": "opencode",
+        "runtime_used": "helpercode",
     }
 
 

@@ -10,7 +10,7 @@ ticket records the outcome.
 Gate layers (every one fails closed):
 
   1. Enabled check — ON by default when the runtime mode is
-     `opencode`/`auto`, OFF in `mock` (CI). `HELPER_DASHBOARD_AUTO_FIX`
+     `helpercode`/`auto`, OFF in `mock` (CI). `HELPER_DASHBOARD_AUTO_FIX`
      overrides either way; setting it to 0/false is the kill switch.
   2. Ticket-text safety — the prompt-injection signature check from
      `extend_gate` runs over every user-influenced ticket field.
@@ -108,7 +108,7 @@ def is_enabled() -> bool:
     if raw is not None:
         return raw not in ("0", "", "false", "False", "no", "off")
     mode = (os.getenv("HELPER_DASHBOARD_HELPERCODE") or "mock").strip().lower()
-    return mode in {"opencode", "auto"}
+    return mode in {"helpercode", "auto"}
 
 
 _QUOTA_DEFAULT = 10

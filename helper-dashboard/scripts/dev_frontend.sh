@@ -2,7 +2,7 @@
 # Start backend (uvicorn) + frontend (next) together.
 # Sources .env if present. Traps EXIT so Ctrl-C kills both.
 #
-# Usage: ./scripts/dev_frontend.sh [--mode mock|opencode|auto] [--debug]
+# Usage: ./scripts/dev_frontend.sh [--mode mock|helpercode|auto] [--debug]
 #
 # Default mode: whatever is in .env (HELPER_DASHBOARD_HELPERCODE), or
 # `mock` if unset.
@@ -35,7 +35,7 @@ while [ $# -gt 0 ]; do
       shift
       ;;
     --help|-h)
-      echo "Usage: $0 [--mode mock|opencode|auto] [--debug]"
+      echo "Usage: $0 [--mode mock|helpercode|auto] [--debug]"
       exit 0
       ;;
     *)
@@ -47,7 +47,7 @@ done
 export HELPER_DASHBOARD_HELPERCODE="$MODE"
 
 # --- 3. Runtime sanity checks ------------------------------------------
-if [ "$MODE" = "opencode" ] || [ "$MODE" = "auto" ]; then
+if [ "$MODE" = "helpercode" ] || [ "$MODE" = "auto" ]; then
   BIN="${HELPER_DASHBOARD_HELPERCODE_BIN:-./bin/helpercode}"
   if [ ! -x "$BIN" ]; then
     echo "[dev] helperCode binary not executable at $BIN" >&2

@@ -13,7 +13,7 @@ less** — not a fence limiting what may be built. When a user asks for a widget
 that doesn't exist (e.g. sankey), the correct behavior is: **an agent codes it**
 (in-app: the `rescue_extend` path; dev-time: a Claude session/subagent edits the six
 widget files directly). Refusing with "flagged for the team" / DeveloperTicket-and-wait
-is explicitly wrong. The six files (authoritative list: `bin/opencode` ~line 1362):
+is explicitly wrong. The six files (authoritative list: `bin/helpercode` ~line 1362; renamed 2026-08-17):
 `backend/app/specs/widget_spec.py`, `backend/app/specs/widget_schema_doc.py`,
 `frontend/lib/spec-schema.ts`, `frontend/lib/renderer.tsx`,
 `frontend/widget-toolkit/<Type>Widget.tsx`, `tests/spec_validation/test_extend_<type>.py`.

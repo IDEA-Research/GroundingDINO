@@ -9,7 +9,7 @@ correctness proof.
 What this script does:
   - Starts FastAPI (uvicorn) + Next.js production server + Playwright.
   - Exercises the full chat -> review loop -> save prompt pipeline
-    against a real LLM (opencode mode).
+    against a real LLM (helpercode mode).
   - Validates that the rendered dashboard appears in the browser.
 
 Known failure modes (reported clearly, not treated as system bugs):
@@ -121,7 +121,7 @@ def start_backend():
         **os.environ,
         **dotenv,
         "PYTHONPATH": str(BACKEND_DIR),
-        "HELPER_DASHBOARD_HELPERCODE": "opencode",
+        "HELPER_DASHBOARD_HELPERCODE": "helpercode",
         "HELPER_DASHBOARD_HELPERCODE_BIN": str(ROOT / "bin" / "helpercode"),
         "HELPER_DASHBOARD_HELPERCODE_CMD": json.dumps(["{bin}"]),
         "HELPER_DASHBOARD_PRE_OUTPUT_REVIEW": "1",

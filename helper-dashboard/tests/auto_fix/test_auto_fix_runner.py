@@ -131,14 +131,14 @@ def test_disabled_in_mock_mode(monkeypatch):
     ) is None
 
 
-def test_enabled_in_opencode_mode(monkeypatch):
+def test_enabled_in_helpercode_mode(monkeypatch):
     monkeypatch.delenv("HELPER_DASHBOARD_AUTO_FIX", raising=False)
-    monkeypatch.setenv("HELPER_DASHBOARD_HELPERCODE", "opencode")
+    monkeypatch.setenv("HELPER_DASHBOARD_HELPERCODE", "helpercode")
     assert auto_fix.is_enabled() is True
 
 
 def test_kill_switch_overrides_mode(monkeypatch):
-    monkeypatch.setenv("HELPER_DASHBOARD_HELPERCODE", "opencode")
+    monkeypatch.setenv("HELPER_DASHBOARD_HELPERCODE", "helpercode")
     monkeypatch.setenv("HELPER_DASHBOARD_AUTO_FIX", "0")
     assert auto_fix.is_enabled() is False
 

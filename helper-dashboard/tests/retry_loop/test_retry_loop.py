@@ -28,7 +28,7 @@ from app.helper.semantic_contracts import (
 class _StubRuntime:
     """Replays a queue of pre-set responses per operation."""
 
-    def __init__(self, script: list[dict], runtime_used: str = "opencode"):
+    def __init__(self, script: list[dict], runtime_used: str = "helpercode"):
         self._q = list(script)
         self._runtime_used = runtime_used
         self.calls: list[tuple[str, dict]] = []

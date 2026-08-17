@@ -19,7 +19,7 @@ _CLI = Path(__file__).resolve().parents[2] / "bin" / "helpercode"
 
 @pytest.fixture(scope="module")
 def cli():
-    loader = importlib.machinery.SourceFileLoader("_opencode_cli_under_test", str(_CLI))
+    loader = importlib.machinery.SourceFileLoader("_helpercode_cli_under_test", str(_CLI))
     spec = importlib.util.spec_from_loader(loader.name, loader)
     mod = importlib.util.module_from_spec(spec)
     loader.exec_module(mod)

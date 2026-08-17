@@ -1,6 +1,6 @@
-"""End-to-end live demo using real OpenCode CLI + Kimi K2.
+"""End-to-end live demo using real helperCode CLI + Kimi K2.
 
-Starts backend in `opencode` mode with the real bin/helpercode binary
+Starts backend in `helpercode` mode with the real bin/helpercode binary
 and OPENROUTER_API_KEY loaded from .env. Drives a real Chromium via
 Playwright through the whole journey:
 
@@ -29,7 +29,7 @@ BACKEND_DIR = ROOT / "backend"
 FRONTEND_DIR = ROOT / "frontend"
 SHOT_DIR = (
     BACKEND_DIR / "app" / "storage" / "evaluation_reports"
-    / "screenshots" / "opencode_live"
+    / "screenshots" / "helpercode_live"
 )
 BACKEND_PORT = 8010
 BACKEND_URL = f"http://127.0.0.1:{BACKEND_PORT}"
@@ -75,8 +75,8 @@ def start_backend():
         **os.environ,
         **dotenv,
         "PYTHONPATH": str(BACKEND_DIR),
-        # Force opencode mode explicitly for this demo.
-        "HELPER_DASHBOARD_HELPERCODE": "opencode",
+        # Force helpercode mode explicitly for this demo.
+        "HELPER_DASHBOARD_HELPERCODE": "helpercode",
         "HELPER_DASHBOARD_HELPERCODE_BIN": str(ROOT / "bin" / "helpercode"),
         "HELPER_DASHBOARD_HELPERCODE_CMD": json.dumps(["{bin}"]),
         "HELPER_DASHBOARD_PRE_OUTPUT_REVIEW": "0",
@@ -147,7 +147,7 @@ def main():
             print("  connection dot: green ✓")
             shot(page, "01_home_green_dot")
 
-            banner("PART 2 — USER ASKS FOR A DASHBOARD (opencode / Kimi K2)")
+            banner("PART 2 — USER ASKS FOR A DASHBOARD (helpercode / Kimi K2)")
             box = page.get_by_placeholder(
                 "Ask Helper for a dashboard or a change…"
             )
@@ -167,7 +167,7 @@ def main():
                 "els => els.map(e => e.getAttribute('data-widget-id'))",
             )
             print(f"  widgets on screen: {widgets}")
-            shot(page, "03_dashboard_rendered_via_opencode")
+            shot(page, "03_dashboard_rendered_via_helpercode")
 
             banner("PART 3 — INSPECTOR REVIEW TAB SHOWS THE TRAIL")
             page.get_by_role("button", name="Review", exact=True).click()

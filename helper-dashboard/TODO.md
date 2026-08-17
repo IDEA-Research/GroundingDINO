@@ -32,20 +32,20 @@ for the findings register see `docs/agent-ops/A_DIAGNOSIS.md`.
   decide where/how to add this as a hard gate, verify under Tier 0 plus a
   live `rescue_extend` dry run.
 
-- [ ] **Fix the stale "no tool access" safety claim in `bin/opencode`'s own module docstring.**
+- [ ] **Fix the stale "no tool access" safety claim in `bin/helpercode`'s own module docstring.**
 
-  Context: `bin/opencode:25-26` states "Safety: This is a one-shot
+  Context: `bin/helpercode:25-26` states "Safety: This is a one-shot
   subprocess. The LLM never gets tool access from this CLI. The only way
   anything happens is via JSON on stdout." This was true when the file
-  was first written, but is no longer accurate: `bin/opencode:161` defines
+  was first written, but is no longer accurate: `bin/helpercode:161` defines
   `TOOL_USE_OPERATIONS = {"rescue_extend", "developer_fix"}`, and the file
   contains a full agentic tool-use loop (5 tools — `read_file`,
   `write_file`, `replace_in_file`, `run_command`, `done` — capped at
-  `_TOOL_LOOP_MAX_ITERS = 30`, around `bin/opencode:1940-2100`) used by
+  `_TOOL_LOOP_MAX_ITERS = 30`, around `bin/helpercode:1940-2100`) used by
   `big-guy-developer-agent` for those two operations. A reader who trusts
   the docstring literally would underestimate this script's actual attack
   surface for 2 of its 9 operations. Found 2026-08-05 while explaining
-  `bin/opencode` to the user.
+  `bin/helpercode` to the user.
 
   Fix: reword the docstring to state the real invariant — e.g. "the LLM
   gets tool access ONLY for `rescue_extend`/`developer_fix` (Big guy,

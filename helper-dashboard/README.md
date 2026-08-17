@@ -15,7 +15,7 @@ agent.
 | Role | Who | Can talk to | Can author widget instances | Can edit source code |
 | --- | --- | --- | --- | --- |
 | User | End user | Helper agents only | no (asks Helper) | no |
-| Helper | Small user-facing OpenCode agents | User, orchestrator | **yes** (via `DashboardSpec` / `PatchSpec`) | no |
+| Helper | Small user-facing helperCode agents | User, orchestrator | **yes** (via `DashboardSpec` / `PatchSpec`) | no |
 | Big guy | Internal developer agent | Developer, DeveloperTickets | yes | yes |
 
 Users never talk to Big guy directly. Big guy never becomes the chatbot.
@@ -48,7 +48,7 @@ User
 - Charts: Recharts
 - Browser evaluation: Playwright
 - Data source: Prometheus HTTP API (with mock fallback)
-- Agent runtime: OpenCode
+- Agent runtime: helperCode (`bin/helpercode`, this repo's own CLI)
 - Storage: local JSON files (`backend/app/storage/`)
 
 ## Layout
@@ -96,7 +96,7 @@ set -a; source .env; set +a            # load OPENROUTER_API_KEY
 python3 scripts/tier1_cli_check.py
 ```
 
-Exercises `bin/opencode` directly against the configured LLM
+Exercises `bin/helpercode` directly against the configured LLM
 (Kimi K2.6 / GLM 5.1 / whatever is in `.env`) for:
 
 - `user_message` → DashboardIntent / UserResponse / …
@@ -110,7 +110,7 @@ producing well-typed JSON.
 
 To run without an LLM key:
 ```bash
-OPENCODE_LLM_PROVIDER=heuristic python3 scripts/tier1_cli_check.py
+HELPERCODE_LLM_PROVIDER=heuristic python3 scripts/tier1_cli_check.py
 ```
 
 ### Tier 2 — backend-only HTTP E2E (~5 s in mock, ~1–3 min with real LLM)
@@ -118,7 +118,7 @@ OPENCODE_LLM_PROVIDER=heuristic python3 scripts/tier1_cli_check.py
 ```bash
 cd helper-dashboard
 python3 scripts/tier2_backend_e2e.py                   # mock, review off
-TIER2_LLM=opencode python3 scripts/tier2_backend_e2e.py        # real LLM
+TIER2_LLM=helpercode python3 scripts/tier2_backend_e2e.py        # real LLM
 TIER2_REVIEW=1 python3 scripts/tier2_backend_e2e.py            # review ON
 ```
 
@@ -131,7 +131,7 @@ orchestrator pipeline through real HTTP calls:
 - Apply a patch via chat.
 - Check that the developer endpoint is gated (403 without token,
   200 with correct token, 403 with wrong token).
-- In `opencode` mode: verify unsupported-widget requests produce a
+- In `helpercode` mode: verify unsupported-widget requests produce a
   DeveloperTicket or ClarificationRequest.
   (Historical behavior — superseded by the LD-1 code-gen default;
   `rescue_extend` now handles out-of-toolkit requests.)
@@ -178,7 +178,7 @@ cd helper-dashboard
 set -a; source .env; set +a                         # real LLM
 python3 scripts/tier1_api_observability.py
 # or, no LLM key needed:
-OPENCODE_LLM_PROVIDER=heuristic \
+HELPERCODE_LLM_PROVIDER=heuristic \
   python3 scripts/tier1_api_observability.py
 ```
 
@@ -201,7 +201,7 @@ Verifies that the configured LLM can:
 ```bash
 cd helper-dashboard
 python3 scripts/tier2_api_observability.py           # mock (default)
-TIER2_LLM=opencode python3 scripts/tier2_api_observability.py   # real LLM
+TIER2_LLM=helpercode python3 scripts/tier2_api_observability.py   # real LLM
 ```
 
 Drives the FastAPI app via TestClient through the full user journey:
@@ -259,7 +259,7 @@ Fastest path — one command, both processes:
 
 ```bash
 ./scripts/dev.sh            # backend :8000 + frontend :3000
-./scripts/dev.sh --mode opencode
+./scripts/dev.sh --mode helpercode
 ./scripts/dev.sh --mode mock
 ```
 
@@ -291,11 +291,11 @@ python -m playwright install chromium
 ## Secrets
 
 Copy `.env.example` to `.env` and fill in `OPENROUTER_API_KEY` (or
-the key env for whichever LLM you wire into `bin/opencode`). `.env`
+the key env for whichever LLM you wire into `bin/helpercode`). `.env`
 is git-ignored. Rotate the key if it's ever pasted into chat logs
 or shared over insecure channels.
 
-## OpenCode runtime modes
+## helperCode runtime modes
 
 Helper and Big guy agents are invoked through
 `backend/app/helper/runtime.py` via a fixed **operation allow-list**:
@@ -319,16 +319,16 @@ Three runtime modes, selected by environment variables:
 
 | Env var | Default | Meaning |
 | --- | --- | --- |
-| `HELPER_DASHBOARD_OPENCODE` | `mock` | `mock` — always use the in-process `MockHelperRuntime`. `opencode` — must use the real subprocess adapter; any failure raises. `auto` — optional dev convenience; may fall back to mock, but the response carries `runtime_used="mock_fallback"` and `fallback_reason`. |
-| `HELPER_DASHBOARD_OPENCODE_BIN` | `opencode` | Path or name of the CLI binary. |
-| `HELPER_DASHBOARD_OPENCODE_CMD` | `["{bin}","run","--agent","{agent}","--json"]` | JSON array for the subprocess argv. Only `{bin}` and `{agent}` are substituted. `{agent}` always comes from the allow-list, never from user input. |
-| `HELPER_DASHBOARD_OPENCODE_TIMEOUT_SECONDS` | `30` | Seconds per invocation. |
+| `HELPER_DASHBOARD_HELPERCODE` | `mock` | `mock` — always use the in-process `MockHelperRuntime`. `helpercode` — must use the real subprocess adapter; any failure raises. `auto` — optional dev convenience; may fall back to mock, but the response carries `runtime_used="mock_fallback"` and `fallback_reason`. |
+| `HELPER_DASHBOARD_HELPERCODE_BIN` | `./bin/helpercode` | Path or name of the CLI binary. |
+| `HELPER_DASHBOARD_HELPERCODE_CMD` | `["{bin}","run","--agent","{agent}","--json"]` | JSON array for the subprocess argv. Only `{bin}` and `{agent}` are substituted. `{agent}` always comes from the allow-list, never from user input. |
+| `HELPER_DASHBOARD_HELPERCODE_TIMEOUT_SECONDS` | `30` | Seconds per invocation. |
 
-**Why `opencode` mode does not silently fall back.** If you've asked
+**Why `helpercode` mode does not silently fall back.** If you've asked
 for the real runtime, silent mock fallback would mean the user sees
 plausible output from the wrong runtime. That makes debugging
 impossible and quietly hides production problems. Use `auto` if you
-want graceful degradation during development; use `opencode` in CI
+want graceful degradation during development; use `helpercode` in CI
 and production.
 
 **Subprocess safety:**
@@ -376,7 +376,7 @@ draft -> render (headless browser) -> Helper review (3 attempts max)
 
 Gated by `HELPER_DASHBOARD_PRE_OUTPUT_REVIEW`:
 
-- Unset + mode `opencode`/`auto` → review is **on**.
+- Unset + mode `helpercode`/`auto` → review is **on**.
 - Unset + mode `mock` → review is **off** (keeps CI fast).
 - `=1` / `=0` → force override.
 
@@ -401,16 +401,17 @@ is exposed at:
 At session start, Helper gets the library summaries in its prompt so
 it can semantically suggest reuse.
 
-## The opencode CLI
+## The helperCode CLI
 
-`bin/opencode` is the real executable. Given `{operation, agent, args}`
+`bin/helpercode` is the real executable — this project's own CLI,
+unrelated to the OpenCode CLI product. Given `{operation, agent, args}`
 on stdin it returns a single JSON object on stdout.
 
-Providers (selected by `OPENCODE_LLM_PROVIDER`):
+Providers (selected by `HELPERCODE_LLM_PROVIDER`):
 
 - `openrouter` (default when `OPENROUTER_API_KEY` is set) — calls
   `https://openrouter.ai/api/v1/chat/completions`. Models picked from
-  `OPENCODE_HELPER_MODEL` and `OPENCODE_BIG_GUY_MODEL` (default
+  `HELPERCODE_HELPER_MODEL` and `HELPERCODE_BIG_GUY_MODEL` (default
   `moonshotai/kimi-k2-thinking`).
 - `heuristic` — deterministic rules identical to the in-process mock.
   Useful in CI and when no key is configured.

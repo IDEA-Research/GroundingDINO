@@ -18,7 +18,7 @@ No Playwright. No browser. Deterministic.
 Usage:
     cd helper-dashboard
     python3 scripts/tier2_api_observability.py           # mock (default)
-    TIER2_LLM=opencode python3 scripts/tier2_api_observability.py
+    TIER2_LLM=helpercode python3 scripts/tier2_api_observability.py
 
 Exit code: 0 on success, non-zero otherwise.
 """
@@ -51,7 +51,7 @@ def main() -> int:
     mode = os.environ.get("TIER2_LLM", "mock").strip().lower()
     os.environ["HELPER_DASHBOARD_HELPERCODE"] = mode
     os.environ["HELPER_DASHBOARD_PRE_OUTPUT_REVIEW"] = "0"
-    if mode == "opencode":
+    if mode == "helpercode":
         os.environ["HELPER_DASHBOARD_HELPERCODE_BIN"] = str(
             ROOT / "bin" / "helpercode"
         )

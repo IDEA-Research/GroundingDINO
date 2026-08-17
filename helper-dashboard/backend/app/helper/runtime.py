@@ -1,4 +1,4 @@
-"""OpenCode runtime wrapper.
+"""helperCode runtime wrapper.
 
 Responsibilities:
 
@@ -9,8 +9,9 @@ Responsibilities:
   vs. developer-only.
 - Validate the output contract per operation (must be a known
   response `type`).
-- Dispatch to a mock runtime or to a subprocess OpenCode CLI
-  runtime depending on mode.
+- Dispatch to a mock runtime or to a subprocess helperCode CLI
+  runtime depending on mode (`bin/helpercode`, this project's own
+  CLI, unrelated to the OpenCode CLI product).
 
 Safety model (defense in depth — this file is **not** the primary
 enforcement point; see `docs/SECURITY_BOUNDARIES.md`):
@@ -25,7 +26,7 @@ enforcement point; see `docs/SECURITY_BOUNDARIES.md`):
 Modes (selected by `HELPER_DASHBOARD_HELPERCODE`):
 
 - `mock` (default): always use `MockHelperRuntime`.
-- `opencode`: must use the subprocess adapter. If the CLI is missing,
+- `helpercode`: must use the subprocess adapter. If the CLI is missing,
   times out, or returns invalid JSON, a `RuntimeError_` is raised.
   Never silently falls back to mock.
 - `auto`: optional development convenience. Tries the subprocess
@@ -172,7 +173,7 @@ for op, meta in OPERATIONS.items():
 
 class RuntimeError_(Exception):
     """Raised for contract violations (bad agent/operation name,
-    invalid output type, opencode-mode failures, etc.)."""
+    invalid output type, helpercode-mode failures, etc.)."""
 
 
 # ---------------------------------------------------------------------------
@@ -281,7 +282,7 @@ class RealHelperCodeRuntime:
         stdin_payload = json.dumps({
             "operation": operation,
             "agent": agent,
-            # Compatibility: some opencode builds expect `command` to be
+            # Compatibility: some helperCode CLI builds expect `command` to be
             # a string and call `.strip()` internally.
             # For operations without a slash command, pass empty string
             # instead of null/omitted to avoid NoneType.strip crashes.
@@ -494,7 +495,7 @@ class HelperCodeRuntime:
             result = self._mock.invoke(agent, args, operation=operation)
             result.setdefault("runtime_used", "mock")
 
-        elif mode == "opencode":
+        elif mode == "helpercode":
             try:
                 result = self._real.invoke(operation, agent, args)
             except (_HelperCodeUnavailable, _HelperCodeInvalidOutput) as exc:
@@ -502,12 +503,12 @@ class HelperCodeRuntime:
                 raise RuntimeError_(
                     f"helpercode runtime failure ({exc.kind}): {exc}"
                 ) from exc
-            result.setdefault("runtime_used", "opencode")
+            result.setdefault("runtime_used", "helpercode")
 
         elif mode == "auto":
             try:
                 result = self._real.invoke(operation, agent, args)
-                result.setdefault("runtime_used", "opencode")
+                result.setdefault("runtime_used", "helpercode")
             except (_HelperCodeUnavailable, _HelperCodeInvalidOutput) as exc:
                 reason = f"{exc.kind}:{exc}"
                 _warn(f"auto mode: falling back to mock ({reason})")
@@ -519,7 +520,7 @@ class HelperCodeRuntime:
         else:
             raise RuntimeError_(
                 f"unknown HELPER_DASHBOARD_HELPERCODE mode: {mode!r} "
-                "(expected 'mock', 'opencode', or 'auto')"
+                "(expected 'mock', 'helpercode', or 'auto')"
             )
 
         self._validate_output_contract(operation, result)

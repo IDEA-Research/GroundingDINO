@@ -86,14 +86,14 @@ def test_resolve_cmd_accepts_absolute_bin(monkeypatch, tmp_path):
 def test_resolve_cmd_bare_name_uses_path(monkeypatch, tmp_path):
     """A bare binary name (no slash) still uses PATH via shutil.which."""
     # Create a stub executable in tmp_path, add it to PATH.
-    stub = tmp_path / "fake-opencode-test"
+    stub = tmp_path / "fake-helpercode-test"
     stub.write_text("#!/bin/sh\nexit 0\n")
     stub.chmod(0o755)
-    monkeypatch.setenv("HELPER_DASHBOARD_HELPERCODE_BIN", "fake-opencode-test")
+    monkeypatch.setenv("HELPER_DASHBOARD_HELPERCODE_BIN", "fake-helpercode-test")
     monkeypatch.setenv(
         "PATH", f"{tmp_path}:{os.environ.get('PATH', '')}"
     )
     monkeypatch.setenv("HELPER_DASHBOARD_HELPERCODE_CMD", json.dumps(["{bin}"]))
     cmd = _resolve_cmd("helper-chat-agent")
     assert cmd is not None
-    assert cmd[0] == "fake-opencode-test"  # unresolved; shutil.which confirmed it
+    assert cmd[0] == "fake-helpercode-test"  # unresolved; shutil.which confirmed it

@@ -1,11 +1,11 @@
 """HelperCodeRuntime adapter tests.
 
-Covers the three runtime modes (mock / opencode / auto), the
+Covers the three runtime modes (mock / helpercode / auto), the
 operation allow-list, the user-vs-developer gate, the subprocess
 contract, and the output-contract validation.
 
 Uses small on-disk stub executables to stand in for the real
-`opencode` CLI so we can verify the end-to-end protocol without a
+`helpercode` CLI so we can verify the end-to-end protocol without a
 real install.
 """
 
@@ -53,7 +53,7 @@ def _clear_runtime_env(monkeypatch):
         monkeypatch.delenv(k, raising=False)
 
 
-def _configure_stub(monkeypatch, stub_path: Path, *, mode: str = "opencode"):
+def _configure_stub(monkeypatch, stub_path: Path, *, mode: str = "helpercode"):
     monkeypatch.setenv("HELPER_DASHBOARD_HELPERCODE", mode)
     monkeypatch.setenv("HELPER_DASHBOARD_HELPERCODE_BIN", str(stub_path))
     # Simplest possible argv: just the binary, nothing else.
@@ -94,15 +94,15 @@ def test_unknown_mode_is_refused(monkeypatch):
 
 
 # ---------------------------------------------------------------------------
-# Mode: opencode must NOT silently fall back
+# Mode: helpercode must NOT silently fall back
 # ---------------------------------------------------------------------------
 
 
-def test_opencode_mode_missing_binary_raises(monkeypatch):
+def test_helpercode_mode_missing_binary_raises(monkeypatch):
     _clear_runtime_env(monkeypatch)
-    monkeypatch.setenv("HELPER_DASHBOARD_HELPERCODE", "opencode")
+    monkeypatch.setenv("HELPER_DASHBOARD_HELPERCODE", "helpercode")
     monkeypatch.setenv(
-        "HELPER_DASHBOARD_HELPERCODE_BIN", "/nonexistent/opencode-xyz-1234"
+        "HELPER_DASHBOARD_HELPERCODE_BIN", "/nonexistent/helpercode-xyz-1234"
     )
     monkeypatch.setenv("HELPER_DASHBOARD_HELPERCODE_CMD", json.dumps(["{bin}"]))
     rt = HelperCodeRuntime()
@@ -112,20 +112,20 @@ def test_opencode_mode_missing_binary_raises(monkeypatch):
     assert "binary_missing" in str(exc.value)
 
 
-def test_opencode_mode_non_json_stdout_raises(monkeypatch, tmp_path):
+def test_helpercode_mode_non_json_stdout_raises(monkeypatch, tmp_path):
     _clear_runtime_env(monkeypatch)
-    stub = _write_stub(tmp_path / "opencode", 'print("not json at all")')
-    _configure_stub(monkeypatch, stub, mode="opencode")
+    stub = _write_stub(tmp_path / "helpercode", 'print("not json at all")')
+    _configure_stub(monkeypatch, stub, mode="helpercode")
     rt = HelperCodeRuntime()
     with pytest.raises(RuntimeError_) as exc:
         rt.invoke_operation("user_message", {"message": "hi"})
     assert "non_json" in str(exc.value)
 
 
-def test_opencode_mode_nonzero_exit_raises(monkeypatch, tmp_path):
+def test_helpercode_mode_nonzero_exit_raises(monkeypatch, tmp_path):
     _clear_runtime_env(monkeypatch)
     stub = _write_stub(
-        tmp_path / "opencode",
+        tmp_path / "helpercode",
         textwrap.dedent(
             """
             import sys
@@ -134,32 +134,32 @@ def test_opencode_mode_nonzero_exit_raises(monkeypatch, tmp_path):
             """
         ),
     )
-    _configure_stub(monkeypatch, stub, mode="opencode")
+    _configure_stub(monkeypatch, stub, mode="helpercode")
     rt = HelperCodeRuntime()
     with pytest.raises(RuntimeError_) as exc:
         rt.invoke_operation("user_message", {"message": "hi"})
     assert "nonzero_exit" in str(exc.value)
 
 
-def test_opencode_mode_missing_type_field_raises(monkeypatch, tmp_path):
+def test_helpercode_mode_missing_type_field_raises(monkeypatch, tmp_path):
     _clear_runtime_env(monkeypatch)
     stub = _write_stub(
-        tmp_path / "opencode",
+        tmp_path / "helpercode",
         'import json; print(json.dumps({"not_typed": True}))',
     )
-    _configure_stub(monkeypatch, stub, mode="opencode")
+    _configure_stub(monkeypatch, stub, mode="helpercode")
     rt = HelperCodeRuntime()
     with pytest.raises(RuntimeError_) as exc:
         rt.invoke_operation("user_message", {"message": "hi"})
     assert "missing_type" in str(exc.value)
 
 
-def test_opencode_mode_invalid_output_type_raises(monkeypatch, tmp_path):
+def test_helpercode_mode_invalid_output_type_raises(monkeypatch, tmp_path):
     """An otherwise well-formed response whose `type` is not in the
     allow-list for this operation must be rejected."""
     _clear_runtime_env(monkeypatch)
     stub = _write_stub(
-        tmp_path / "opencode",
+        tmp_path / "helpercode",
         textwrap.dedent(
             """
             import json
@@ -169,17 +169,17 @@ def test_opencode_mode_invalid_output_type_raises(monkeypatch, tmp_path):
             """
         ),
     )
-    _configure_stub(monkeypatch, stub, mode="opencode")
+    _configure_stub(monkeypatch, stub, mode="helpercode")
     rt = HelperCodeRuntime()
     with pytest.raises(RuntimeError_) as exc:
         rt.invoke_operation("generate_dashboard", {"intent": {}})
     assert "invalid output for 'generate_dashboard'" in str(exc.value)
 
 
-def test_opencode_mode_success_marks_runtime_used(monkeypatch, tmp_path):
+def test_helpercode_mode_success_marks_runtime_used(monkeypatch, tmp_path):
     _clear_runtime_env(monkeypatch)
     stub = _write_stub(
-        tmp_path / "opencode",
+        tmp_path / "helpercode",
         textwrap.dedent(
             """
             import json
@@ -187,11 +187,11 @@ def test_opencode_mode_success_marks_runtime_used(monkeypatch, tmp_path):
             """
         ),
     )
-    _configure_stub(monkeypatch, stub, mode="opencode")
+    _configure_stub(monkeypatch, stub, mode="helpercode")
     rt = HelperCodeRuntime()
     out = rt.invoke_operation("user_message", {"message": "hi"})
     assert out["type"] == "UserResponse"
-    assert out["runtime_used"] == "opencode"
+    assert out["runtime_used"] == "helpercode"
     assert out.get("fallback_reason") is None
 
 
@@ -203,7 +203,7 @@ def test_opencode_mode_success_marks_runtime_used(monkeypatch, tmp_path):
 def test_auto_mode_uses_real_on_success(monkeypatch, tmp_path):
     _clear_runtime_env(monkeypatch)
     stub = _write_stub(
-        tmp_path / "opencode",
+        tmp_path / "helpercode",
         textwrap.dedent(
             """
             import json
@@ -214,7 +214,7 @@ def test_auto_mode_uses_real_on_success(monkeypatch, tmp_path):
     _configure_stub(monkeypatch, stub, mode="auto")
     rt = HelperCodeRuntime()
     out = rt.invoke_operation("user_message", {"message": "hi"})
-    assert out["runtime_used"] == "opencode"
+    assert out["runtime_used"] == "helpercode"
     assert out["message"] == "real reply"
 
 
@@ -222,7 +222,7 @@ def test_auto_mode_falls_back_with_explicit_marker_on_missing_binary(monkeypatch
     _clear_runtime_env(monkeypatch)
     monkeypatch.setenv("HELPER_DASHBOARD_HELPERCODE", "auto")
     monkeypatch.setenv(
-        "HELPER_DASHBOARD_HELPERCODE_BIN", "/nonexistent/opencode-xyz-1234"
+        "HELPER_DASHBOARD_HELPERCODE_BIN", "/nonexistent/helpercode-xyz-1234"
     )
     monkeypatch.setenv("HELPER_DASHBOARD_HELPERCODE_CMD", json.dumps(["{bin}"]))
     rt = HelperCodeRuntime()
@@ -235,7 +235,7 @@ def test_auto_mode_falls_back_with_explicit_marker_on_missing_binary(monkeypatch
 
 def test_auto_mode_falls_back_on_non_json(monkeypatch, tmp_path):
     _clear_runtime_env(monkeypatch)
-    stub = _write_stub(tmp_path / "opencode", 'print("garbage")')
+    stub = _write_stub(tmp_path / "helpercode", 'print("garbage")')
     _configure_stub(monkeypatch, stub, mode="auto")
     rt = HelperCodeRuntime()
     out = rt.invoke_operation(
@@ -275,7 +275,7 @@ def test_developer_fix_requires_developer_flag(monkeypatch, tmp_path):
     the user-vs-developer gate lives."""
     _clear_runtime_env(monkeypatch)
     stub = _write_stub(
-        tmp_path / "opencode",
+        tmp_path / "helpercode",
         textwrap.dedent(
             """
             import json
@@ -288,7 +288,7 @@ def test_developer_fix_requires_developer_flag(monkeypatch, tmp_path):
             """
         ),
     )
-    _configure_stub(monkeypatch, stub, mode="opencode")
+    _configure_stub(monkeypatch, stub, mode="helpercode")
     rt = HelperCodeRuntime()
 
     with pytest.raises(RuntimeError_):
@@ -343,10 +343,10 @@ def test_subprocess_uses_shell_false_and_fixed_cwd(monkeypatch, tmp_path):
     user-supplied text into argv."""
     _clear_runtime_env(monkeypatch)
     stub = _write_stub(
-        tmp_path / "opencode",
+        tmp_path / "helpercode",
         'import json; print(json.dumps({"type":"UserResponse","message":"ok"}))',
     )
-    _configure_stub(monkeypatch, stub, mode="opencode")
+    _configure_stub(monkeypatch, stub, mode="helpercode")
 
     captured: dict = {}
     import app.helper.runtime as runtime_mod
@@ -383,7 +383,7 @@ def test_user_args_are_sent_on_stdin_not_argv(monkeypatch, tmp_path):
     assert where user data actually goes."""
     _clear_runtime_env(monkeypatch)
     stub = _write_stub(
-        tmp_path / "opencode",
+        tmp_path / "helpercode",
         textwrap.dedent(
             """
             import json, sys
@@ -398,7 +398,7 @@ def test_user_args_are_sent_on_stdin_not_argv(monkeypatch, tmp_path):
             """
         ),
     )
-    _configure_stub(monkeypatch, stub, mode="opencode")
+    _configure_stub(monkeypatch, stub, mode="helpercode")
     rt = HelperCodeRuntime()
     out = rt.invoke_operation(
         "user_message", {"message": "rm -rf / ; echo pwned"}
@@ -412,7 +412,7 @@ def test_agent_substitution_uses_allow_listed_value(monkeypatch, tmp_path):
     operation mapping, not from any caller-controlled field."""
     _clear_runtime_env(monkeypatch)
     stub = _write_stub(
-        tmp_path / "opencode",
+        tmp_path / "helpercode",
         textwrap.dedent(
             """
             import json, sys
@@ -433,7 +433,7 @@ def test_agent_substitution_uses_allow_listed_value(monkeypatch, tmp_path):
             """
         ),
     )
-    monkeypatch.setenv("HELPER_DASHBOARD_HELPERCODE", "opencode")
+    monkeypatch.setenv("HELPER_DASHBOARD_HELPERCODE", "helpercode")
     monkeypatch.setenv("HELPER_DASHBOARD_HELPERCODE_BIN", str(stub))
     monkeypatch.setenv(
         "HELPER_DASHBOARD_HELPERCODE_CMD",
@@ -457,10 +457,10 @@ def test_malformed_cmd_env_is_ignored(monkeypatch, tmp_path):
     default template rather than crashing or shell-evaluating."""
     _clear_runtime_env(monkeypatch)
     stub = _write_stub(
-        tmp_path / "opencode",
+        tmp_path / "helpercode",
         'import json; print(json.dumps({"type":"UserResponse","message":"ok"}))',
     )
-    monkeypatch.setenv("HELPER_DASHBOARD_HELPERCODE", "opencode")
+    monkeypatch.setenv("HELPER_DASHBOARD_HELPERCODE", "helpercode")
     monkeypatch.setenv("HELPER_DASHBOARD_HELPERCODE_BIN", str(stub))
     # A shell-injection attempt.
     monkeypatch.setenv(
@@ -485,7 +485,7 @@ def test_invalid_dashboard_spec_payload_rejected_by_orchestrator(monkeypatch, tm
     # Stub routes: the classifier returns DashboardIntent, the generator
     # returns a DashboardSpec with a forbidden field.
     stub = _write_stub(
-        tmp_path / "opencode",
+        tmp_path / "helpercode",
         textwrap.dedent(
             """
             import json, sys
@@ -523,7 +523,7 @@ def test_invalid_dashboard_spec_payload_rejected_by_orchestrator(monkeypatch, tm
             """
         ),
     )
-    _configure_stub(monkeypatch, stub, mode="opencode")
+    _configure_stub(monkeypatch, stub, mode="helpercode")
 
     from app.helper.orchestrator import Orchestrator
     orch = Orchestrator()
@@ -548,9 +548,9 @@ def test_invalid_patch_spec_payload_rejected(monkeypatch, tmp_path):
     )
     did = first["dashboard"]["dashboard_id"]
 
-    # Now switch to opencode with a stub that returns a bogus patch.
+    # Now switch to helpercode with a stub that returns a bogus patch.
     stub = _write_stub(
-        tmp_path / "opencode",
+        tmp_path / "helpercode",
         textwrap.dedent(
             """
             import json, sys
@@ -579,7 +579,7 @@ def test_invalid_patch_spec_payload_rejected(monkeypatch, tmp_path):
             """
         ),
     )
-    _configure_stub(monkeypatch, stub, mode="opencode")
+    _configure_stub(monkeypatch, stub, mode="helpercode")
     orch2 = Orchestrator()
     res = orch2.handle_user_message(
         session_id="s-patch",

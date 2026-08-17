@@ -327,7 +327,7 @@ class Orchestrator:
         # 1. Classify the user message with library context.
         try:
             _progress("Classifying request…", 25)
-            _progress("OpenCode: running user_message…", 30)
+            _progress("helperCode: running user_message…", 30)
             print("[orchestrator] invoking user_message classifier")
             intent = self._runtime.invoke_operation(
                 "user_message",
@@ -347,13 +347,13 @@ class Orchestrator:
                 f"runtime_used={intent.get('runtime_used')!r}"
             )
             _progress(
-                "OpenCode: user_message completed "
+                "helperCode: user_message completed "
                 f"({intent.get('runtime_used') or 'unknown runtime'})",
                 40,
             )
             _progress(f"Classified as {intent.get('type') or 'Unknown'}", 40)
         except RuntimeError_ as exc:
-            _progress(f"OpenCode error during user_message: {exc}", 100)
+            _progress(f"helperCode error during user_message: {exc}", 100)
             print(f"[orchestrator] classifier runtime error: {exc}")
             return self._runtime_error_response(str(exc))
 
@@ -364,7 +364,7 @@ class Orchestrator:
         # the rest.
         try:
             _progress("Running specialist agent…", 60)
-            _progress("OpenCode: running specialist operation…", 65)
+            _progress("helperCode: running specialist operation…", 65)
             print("[orchestrator] dispatch_with_retry:start")
             result, retry_outcome = self._dispatch_with_retry(
                 intent, current_dashboard=current_dashboard,
@@ -378,13 +378,13 @@ class Orchestrator:
                 f"retry_used={retry_outcome.attempts_used if retry_outcome else None}"
             )
             _progress(
-                "OpenCode: specialist operation completed "
+                "helperCode: specialist operation completed "
                 f"({result.get('runtime_used') if isinstance(result, dict) else 'unknown runtime'})",
                 80,
             )
             _progress("Specialist step completed", 80)
         except RuntimeError_ as exc:
-            _progress(f"OpenCode error during specialist step: {exc}", 100)
+            _progress(f"helperCode error during specialist step: {exc}", 100)
             print(f"[orchestrator] dispatch runtime error: {exc}")
             return self._runtime_error_response(str(exc))
         except Exception as exc:

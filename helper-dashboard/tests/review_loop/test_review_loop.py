@@ -92,8 +92,8 @@ def test_is_enabled_default_off_in_mock(monkeypatch):
     assert not is_enabled()
 
 
-def test_is_enabled_default_on_in_opencode(monkeypatch):
-    monkeypatch.setenv("HELPER_DASHBOARD_HELPERCODE", "opencode")
+def test_is_enabled_default_on_in_helpercode(monkeypatch):
+    monkeypatch.setenv("HELPER_DASHBOARD_HELPERCODE", "helpercode")
     monkeypatch.delenv("HELPER_DASHBOARD_PRE_OUTPUT_REVIEW", raising=False)
     assert is_enabled()
 
@@ -111,7 +111,7 @@ def test_is_enabled_env_forces_on(monkeypatch):
 
 
 def test_is_enabled_env_forces_off(monkeypatch):
-    monkeypatch.setenv("HELPER_DASHBOARD_HELPERCODE", "opencode")
+    monkeypatch.setenv("HELPER_DASHBOARD_HELPERCODE", "helpercode")
     monkeypatch.setenv("HELPER_DASHBOARD_PRE_OUTPUT_REVIEW", "0")
     assert not is_enabled()
 

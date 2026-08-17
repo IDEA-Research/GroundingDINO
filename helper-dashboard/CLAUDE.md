@@ -3,7 +3,7 @@
 Chat-to-dashboard system for Prometheus on a hospital Jetson AGX Orin, plus a
 **neonatal cerebral-oximetry (rSO₂) anomaly-detection subsystem** — patient-safety-
 critical: a missed real desaturation is worse than a false alarm. FastAPI backend
-(`backend/app/`), Next.js frontend (`frontend/`), in-app OpenCode agents (`.opencode/`).
+(`backend/app/`), Next.js frontend (`frontend/`), in-app helperCode agents (`.opencode/`).
 
 ## Rule precedence (read this first)
 
@@ -25,7 +25,7 @@ is not a real alerting surface.
 
 | | In-app product agents | Dev-time Claude agents |
 |---|---|---|
-| Who | Helper (user-facing) + Big guy (internal), small OpenCode models | You (Claude Code session) + subagents like `anomaly-builder` |
+| Who | Helper (user-facing) + Big guy (internal), small helperCode models | You (Claude Code session) + subagents like `anomaly-builder` |
 | Config | `.opencode/agent/*.md`, `opencode.json` | `.claude/agents/*.md` |
 | Invoked by | `backend/app/helper/runtime.py` operation allow-list | Claude Code Agent tool |
 | May edit repo code | Helper: never. Big guy: via dev-token `developer_fix`, or the gated background auto-fix (`helper/auto_fix.py`, SECURITY_BOUNDARIES §5b; user-approved 2026-07-06) | **Yes** — that's your job (LD-2) |

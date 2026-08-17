@@ -24,7 +24,7 @@ Scope:
 
 Runtime:
 - By default runs in `mock` mode with review OFF (fast, deterministic).
-- Set TIER2_LLM=opencode for a real-LLM verification via bin/helpercode.
+- Set TIER2_LLM=helpercode for a real-LLM verification via bin/helpercode.
 - Set TIER2_REVIEW=1 to exercise the review loop.
 
 Usage:
@@ -73,7 +73,7 @@ def main() -> int:
 
     os.environ["HELPER_DASHBOARD_HELPERCODE"] = mode
     os.environ["HELPER_DASHBOARD_PRE_OUTPUT_REVIEW"] = "1" if review else "0"
-    if mode == "opencode":
+    if mode == "helpercode":
         os.environ["HELPER_DASHBOARD_HELPERCODE_BIN"] = str(ROOT / "bin" / "helpercode")
         os.environ["HELPER_DASHBOARD_HELPERCODE_CMD"] = json.dumps(["{bin}"])
 
@@ -216,8 +216,8 @@ def main() -> int:
     # --- 8. unsupported widget request -> DeveloperTicket ---------
     # Mock heuristic never produces DeveloperTicket for this prompt
     # (it just treats topology as a non-match and returns UserResponse),
-    # so only run this assertion in opencode mode.
-    if mode == "opencode":
+    # so only run this assertion in helpercode mode.
+    if mode == "helpercode":
         status, body = _chat({
             "session_id": "t2-c",
             "message": "Draw me a network topology map and a flame graph",
@@ -233,7 +233,7 @@ def main() -> int:
             f"intent_type={body.get('intent_type')}",
         )
     else:
-        print("  SKIP  unsupported-request LLM test (needs TIER2_LLM=opencode)")
+        print("  SKIP  unsupported-request LLM test (needs TIER2_LLM=helpercode)")
 
     # --- 9. developer gate without token ---------------------------
     # Clear any dev token first.

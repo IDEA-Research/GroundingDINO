@@ -72,12 +72,12 @@ class ReviewOutcome:
 
 
 def is_enabled() -> bool:
-    """Feature flag. On by default in opencode/auto; off in mock."""
+    """Feature flag. On by default in helpercode/auto; off in mock."""
     raw = os.getenv("HELPER_DASHBOARD_PRE_OUTPUT_REVIEW")
     if raw is not None:
         return raw not in ("0", "", "false", "False", "no", "off")
     mode = (os.getenv("HELPER_DASHBOARD_HELPERCODE") or "mock").strip().lower()
-    return mode in {"opencode", "auto"}
+    return mode in {"helpercode", "auto"}
 
 
 class ReviewLoop:

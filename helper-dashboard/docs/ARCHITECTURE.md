@@ -25,7 +25,7 @@
 |        v              v           v                    |
 |  helper/orchestrator.py                                |
 |    - routing.py  (user msg -> Helper agent)            |
-|    - runtime.py  (OpenCode runtime wrapper)            |
+|    - runtime.py  (helperCode runtime wrapper)          |
 |    - memory.py   (session + helper memory)             |
 |    - debug_loop.py (validate -> render -> eval -> fix) |
 |                                                        |
@@ -48,7 +48,7 @@
                            |
                            v
               +--------------------------+
-              |  OpenCode runtime        |
+              |  helperCode runtime      |
               |   - helper-chat-agent    |
               |   - dashboard-spec-agent |
               |   - patch-agent          |
@@ -171,7 +171,7 @@ authoritative. Tier 3 is a stress/acceptance test.
   subprocess safety, output-contract validation.
 - `tests/review_loop/` — review loop + draft shadow fix.
 - `tests/saved_dashboards/` — library CRUD + save-prompt flow.
-- `tests/opencode_cli/` — CLI heuristic provider end-to-end.
+- `tests/helpercode_cli/` — CLI heuristic provider end-to-end.
 
 Run: `python3 -m pytest tests/ -q`.
 
@@ -186,7 +186,7 @@ JSON output shape.
 In-process FastAPI (TestClient) drive of the full orchestrator
 pipeline via real HTTP calls. The **primary reliable live
 verification**. Covers create/patch/save/library/developer-gate.
-Supports mock and opencode modes with review optionally on.
+Supports mock and helpercode modes with review optionally on.
 
 ### Tier 3 — `scripts/live_full_demo.py`
 

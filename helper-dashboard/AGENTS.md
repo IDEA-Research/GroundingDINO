@@ -7,7 +7,7 @@ their responsibilities, and the boundaries between them.
 
 ### Helper agents (user-facing)
 
-All Helper agents are **small OpenCode agents**. They are exposed to the
+All Helper agents are **small helperCode agents**. They are exposed to the
 user through the web chat UI. Helper is **not** a passive router — it
 is the author of widget instances. What Helper can and cannot do
 depends on *which kind of operation* the user is asking for (see
@@ -107,7 +107,7 @@ emits a `DeveloperTicket` for Big guy.
 
 #### 6. `big-guy-developer-agent`
 
-Big guy is the main OpenCode developer agent. It:
+Big guy is the main helperCode developer agent. It:
 
 - Receives `DeveloperTicket`s and direct developer instructions.
 - Can edit backend, frontend, and widget-toolkit code.
@@ -119,17 +119,19 @@ Big guy is the main OpenCode developer agent. It:
 ## Infrastructure actors
 
 ### Orchestrator (`backend/app/helper/orchestrator.py`)
-Takes a user message, calls `helper-chat-agent` via the OpenCode runtime,
+Takes a user message, calls `helper-chat-agent` via the helperCode runtime,
 dispatches the resulting intent to the correct specialist Helper agent, and
 returns the structured result plus a user-safe reply.
 
 ### Runtime (`backend/app/helper/runtime.py`)
 
-Thin wrapper around the OpenCode agent runtime. Three modes:
+Thin wrapper around the helperCode agent runtime (`bin/helpercode`,
+this project's own CLI, unrelated to the OpenCode CLI product).
+Three modes:
 
 - `mock` (default): in-process `MockHelperRuntime`. Lets the whole
   pipeline run without any external binary.
-- `opencode`: subprocess adapter calling the real OpenCode CLI.
+- `helpercode`: subprocess adapter calling the helperCode CLI.
   Binary and argv are configurable via env vars. **Does not silently
   fall back.** Missing binary, timeout, non-JSON output, or an
   output `type` not in the operation's allow-list raises

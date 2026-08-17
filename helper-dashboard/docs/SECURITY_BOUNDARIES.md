@@ -143,10 +143,10 @@ background scheduler in `backend/app/helper/auto_fix.py` runs Big guy
 (`developer_fix`, tool-using mode) against it. The chat turn is never
 blocked; the user's validated dashboard is delivered regardless.
 
-Boundaries (each fails closed, mirrored in `bin/opencode` as an
+Boundaries (each fails closed, mirrored in `bin/helpercode` as an
 independent trust layer):
 
-1. Enabled only in `opencode`/`auto` runtime modes by default;
+1. Enabled only in `helpercode`/`auto` runtime modes by default;
    `HELPER_DASHBOARD_AUTO_FIX=0` is the kill switch.
 2. Prompt-injection signature check over all user-influenced ticket
    text; daily quota (`HELPER_DASHBOARD_AUTO_FIX_DAILY_QUOTA`,
@@ -156,7 +156,7 @@ independent trust layer):
    `frontend/lib/spec-schema.ts`, `frontend/widget-toolkit/`, and the
    matching test dirs. The clinical anomaly files
    (`services/anomaly_*`, `prometheus/`, `alert_rule_spec.py`,
-   `api/anomaly.py`), the gates, the runtime, and `bin/opencode`
+   `api/anomaly.py`), the gates, the runtime, and `bin/helpercode`
    itself are denied at the tool layer AND byte-verified afterwards —
    any difference reverts the entire run no matter what the report
    claims.
@@ -209,31 +209,33 @@ was notified — tickets are automated diagnostic records, and nothing
 in the product waits on a person (LD-1/LD-2: no ticket-and-wait,
 no human interrupt in the user path).
 
-## 9. Runtime modes — no silent fallback in `opencode` mode
+## 9. Runtime modes — no silent fallback in `helpercode` mode
 
 `backend/app/helper/runtime.py` supports three modes via the
-`HELPER_DASHBOARD_OPENCODE` env var:
+`HELPER_DASHBOARD_HELPERCODE` env var:
 
 - `mock` (default) — in-process `MockHelperRuntime`. The deterministic
   stand-in used in CI and during bootstrap.
-- `opencode` — subprocess calls to the real OpenCode CLI. **Strict**:
+- `helpercode` — subprocess calls to the helperCode CLI
+  (`bin/helpercode`, this project's own CLI, unrelated to the
+  OpenCode CLI product). **Strict**:
   a missing binary, timeout, non-JSON output, or an output `type` not
   in the operation's allow-list raises `RuntimeError_` and the
   orchestrator surfaces a safe error to the user.
-- `auto` — optional development mode. Tries `opencode` first; on
+- `auto` — optional development mode. Tries `helpercode` first; on
   failure falls back to mock but the response dict is annotated with
   `runtime_used="mock_fallback"` and `fallback_reason`. Callers and
   the UI can see that a fallback happened.
 
-**Why `opencode` must not silently fall back.** If production silently
+**Why `helpercode` must not silently fall back.** If production silently
 returned mock output when the CLI failed, users would see plausible
 answers that come from a different runtime than the operator
 intended. Debugging would be near-impossible. Use `auto` only in
-development. Use `opencode` in CI and production.
+development. Use `helpercode` in CI and production.
 
 ## 10. Subprocess invocation is constrained
 
-When the runtime shells out to OpenCode:
+When the runtime shells out to the helperCode CLI:
 
 - `subprocess.run(shell=False)` — always.
 - cwd is pinned to the project root.
@@ -241,7 +243,7 @@ When the runtime shells out to OpenCode:
   `{bin}` and `{agent}` are substituted. `{agent}` comes from the
   operation allow-list — never from caller args.
 - User input goes on **stdin** as a JSON object, never on argv.
-- `HELPER_DASHBOARD_OPENCODE_TIMEOUT_SECONDS` bounds every call.
+- `HELPER_DASHBOARD_HELPERCODE_TIMEOUT_SECONDS` bounds every call.
 
 These invariants are covered by tests in
 `tests/helper_runtime/test_runtime_modes.py`.
@@ -272,7 +274,7 @@ invariants at a different integration depth:
   `test_helper_agent_md_configs_lock_permissions`, and the
   `security_boundaries/` suite are the authoritative safety proof.
 - **Tier 1** (`scripts/tier1_cli_check.py`) — real-model CLI
-  verification. Confirms that `bin/opencode` honors the output
+  verification. Confirms that `bin/helpercode` honors the output
   contract (only typed JSON, never raw code) when talking to a live
   LLM.
 - **Tier 2** (`scripts/tier2_backend_e2e.py`) — HTTP E2E. Confirms

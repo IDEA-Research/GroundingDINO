@@ -42,9 +42,12 @@ class ChatResponse(BaseModel):
     dashboard: dict[str, Any] | None = None
     patch: dict[str, Any] | None = None
     warnings: list[str] = []
-    # Runtime provenance — None in mock mode, "opencode" on real
-    # success, "mock_fallback" when auto mode fell back. The UI can
-    # use this for a "using fallback" badge.
+    # Runtime provenance — "helpercode" when the hand-rolled CLI
+    # (bin/helpercode) succeeded, "mock" in mock mode, "mock_fallback"
+    # when auto mode fell back, "heuristic" for the deterministic
+    # provider. "opencode" is RESERVED for the upcoming real OpenCode
+    # CLI devfix runtime. The UI can use this for a "using fallback"
+    # badge.
     runtime_used: str | None = None
     fallback_reason: str | None = None
     # Pre-output review transcript (empty when review is off).
