@@ -34,7 +34,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from ..prometheus.client import PrometheusClient
+from ..prometheus.client import PrometheusClient, PrometheusUnavailable
 from ..specs.anomaly_evaluation_report import (
     AlertEvent,
     AlertState,
@@ -135,13 +135,30 @@ class SystemMetricProvider:
         self.client = client or PrometheusClient()
         self.staleness_budget_s = float(staleness_budget_s)
 
+    def _query(self, promql: str) -> dict[str, Any]:
+        """Query the live client; an unreachable Prometheus fails CLOSED.
+
+        The client raises `PrometheusUnavailable` instead of fabricating a
+        fallback; map it to `source="unreachable"` with no data so the
+        existing source-flag branching gates to SIGNAL_LOST.
+        """
+        try:
+            return self.client.query(promql)
+        except PrometheusUnavailable as exc:
+            return {
+                "source": "unreachable",
+                "error": str(exc),
+                "data": {"result": []},
+            }
+
     def observe(self, rule: SystemAlertRuleSpec) -> tuple[float | None, DataStatus]:
         expr = rule.catalog_entry.promql  # hardcoded template, never user text
-        resp = self.client.query(expr)
+        resp = self._query(expr)
 
-        # Source-flag branching — copied from anomaly_data_provider: a mock
-        # fallback is reported honestly and the core refuses to alert on it.
-        src = str(resp.get("source", "mock"))
+        # Source-flag branching — copied from anomaly_data_provider: an
+        # unreachable Prometheus is reported honestly and the core refuses
+        # to alert on it.
+        src = str(resp.get("source", "unreachable"))
         reachable = src == "prometheus"
 
         value, _n = _instant_scalar(resp)
@@ -149,8 +166,8 @@ class SystemMetricProvider:
 
         sample_ts = float("-inf")
         if reachable and returns_data:
-            ts_resp = self.client.query(f"timestamp({FRESHNESS_PROBE_METRIC})")
-            if str(ts_resp.get("source", "mock")) == "prometheus":
+            ts_resp = self._query(f"timestamp({FRESHNESS_PROBE_METRIC})")
+            if str(ts_resp.get("source", "unreachable")) == "prometheus":
                 ts_val, ts_n = _instant_scalar(ts_resp)
                 if ts_val is not None and ts_n >= 1:
                     sample_ts = float(ts_val)

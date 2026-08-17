@@ -3,11 +3,16 @@
 import React from "react";
 
 import type { WidgetSpec } from "@/lib/spec-schema";
-import { useQueryData } from "@/lib/useQueryData";
+import type { WidgetData } from "@/lib/useQueryData";
 import { WidgetFrame } from "./WidgetFrame";
 
-export function TableWidget({ widget }: { widget: WidgetSpec }) {
-  const data = useQueryData(widget.query);
+export function TableWidget({
+  widget,
+  data,
+}: {
+  widget: WidgetSpec;
+  data: WidgetData;
+}) {
   const rowLimit = Number((widget.options as any)?.row_limit ?? 20);
   const rows = data.table.slice(0, rowLimit);
 
@@ -19,7 +24,7 @@ export function TableWidget({ widget }: { widget: WidgetSpec }) {
   );
 
   return (
-    <WidgetFrame widget={widget} badge={data.source === "mock" ? "mock" : null}>
+    <WidgetFrame widget={widget}>
       <div className="h-full overflow-auto">
         <table className="w-full text-left text-xs">
           <thead>

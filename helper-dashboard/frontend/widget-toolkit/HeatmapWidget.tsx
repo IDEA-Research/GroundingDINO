@@ -3,7 +3,7 @@
 import React from "react";
 
 import type { WidgetSpec } from "@/lib/spec-schema";
-import { useQueryData } from "@/lib/useQueryData";
+import type { WidgetData } from "@/lib/useQueryData";
 import { WidgetFrame } from "./WidgetFrame";
 
 // ---------------------------------------------------------------------------
@@ -87,8 +87,13 @@ function buildGrid(
 // Component
 // ---------------------------------------------------------------------------
 
-export function HeatmapWidget({ widget }: { widget: WidgetSpec }) {
-  const data = useQueryData(widget.query);
+export function HeatmapWidget({
+  widget,
+  data,
+}: {
+  widget: WidgetSpec;
+  data: WidgetData;
+}) {
   const opts = (widget.options ?? {}) as Record<string, unknown>;
   const decimals = typeof opts.decimals === "number" ? opts.decimals : 1;
   const xLabel = typeof opts.x_label === "string" ? opts.x_label : "";
@@ -112,7 +117,7 @@ export function HeatmapWidget({ widget }: { widget: WidgetSpec }) {
   const cellW = xLabels.length ? `${Math.floor(100 / xLabels.length)}%` : "40px";
 
   return (
-    <WidgetFrame widget={widget} badge={data.source === "mock" ? "mock" : null}>
+    <WidgetFrame widget={widget}>
       <div className="flex h-full flex-col overflow-auto text-[10px]">
         {/* Grid */}
         <div className="flex-1 overflow-auto">

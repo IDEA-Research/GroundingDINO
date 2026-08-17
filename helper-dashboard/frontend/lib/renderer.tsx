@@ -1,8 +1,17 @@
+"use client";
+
 // Safe, deterministic renderer: DashboardSpec -> React elements drawn
 // exclusively from widget-toolkit. Unknown widget types never render.
+//
+// Every query-driven widget is wrapped in QueryGate: the gate owns the
+// single fetch for the widget and renders the shared loading / NO-DATA /
+// ERROR states, so no widget can silently show a blank (or fabricated)
+// panel. Widgets themselves are purely presentational and receive the
+// already-fetched WidgetData.
 
 import type { DashboardSpec, WidgetSpec, WidgetType } from "./spec-schema";
 import { WIDGET_TYPES } from "./spec-schema";
+import { useQueryData, type WidgetData } from "./useQueryData";
 
 import { LineChartWidget } from "@/widget-toolkit/LineChartWidget";
 import { StatCardWidget } from "@/widget-toolkit/StatCardWidget";
@@ -13,6 +22,8 @@ import { PieChartWidget } from "@/widget-toolkit/PieChartWidget";
 import { BarChartWidget } from "@/widget-toolkit/BarChartWidget";
 import { HeatmapWidget } from "@/widget-toolkit/HeatmapWidget";
 import { DecisionFlowWidget } from "@/widget-toolkit/DecisionFlowWidget";
+import { DataStateNotice } from "@/widget-toolkit/DataStateNotice";
+import { WidgetFrame } from "@/widget-toolkit/WidgetFrame";
 
 export interface RenderProblem {
   widget_id: string;
@@ -23,25 +34,84 @@ export function isSupportedType(t: string): t is WidgetType {
   return (WIDGET_TYPES as string[]).includes(t);
 }
 
+// Runs the widget's query exactly once and gates rendering on its status.
+// `renderEmptyAsContent` lets a widget present "empty" itself when empty is
+// a meaningful GOOD state (alert_list: no firing alerts is calm, not grey).
+function QueryGate({
+  widget,
+  renderEmptyAsContent = false,
+  children,
+}: {
+  widget: WidgetSpec;
+  renderEmptyAsContent?: boolean;
+  children: (data: WidgetData) => JSX.Element;
+}) {
+  const data = useQueryData(widget.query);
+  const passThrough =
+    data.status === "ok" ||
+    (renderEmptyAsContent && data.status === "empty");
+  if (!passThrough) {
+    return (
+      <WidgetFrame widget={widget}>
+        <DataStateNotice data={data} promql={widget.query.promql} />
+      </WidgetFrame>
+    );
+  }
+  return children(data);
+}
+
 export function renderWidget(widget: WidgetSpec): JSX.Element | null {
   switch (widget.type) {
     case "line_chart":
-      return <LineChartWidget widget={widget} />;
+      return (
+        <QueryGate widget={widget}>
+          {(data) => <LineChartWidget widget={widget} data={data} />}
+        </QueryGate>
+      );
     case "stat_card":
-      return <StatCardWidget widget={widget} />;
+      return (
+        <QueryGate widget={widget}>
+          {(data) => <StatCardWidget widget={widget} data={data} />}
+        </QueryGate>
+      );
     case "gauge":
-      return <GaugeWidget widget={widget} />;
+      return (
+        <QueryGate widget={widget}>
+          {(data) => <GaugeWidget widget={widget} data={data} />}
+        </QueryGate>
+      );
     case "table":
-      return <TableWidget widget={widget} />;
+      return (
+        <QueryGate widget={widget}>
+          {(data) => <TableWidget widget={widget} data={data} />}
+        </QueryGate>
+      );
     case "alert_list":
-      return <AlertListWidget widget={widget} />;
+      return (
+        <QueryGate widget={widget} renderEmptyAsContent>
+          {(data) => <AlertListWidget widget={widget} data={data} />}
+        </QueryGate>
+      );
     case "pie_chart":
-      return <PieChartWidget widget={widget} />;
+      return (
+        <QueryGate widget={widget}>
+          {(data) => <PieChartWidget widget={widget} data={data} />}
+        </QueryGate>
+      );
     case "bar_chart":
-      return <BarChartWidget widget={widget} />;
+      return (
+        <QueryGate widget={widget}>
+          {(data) => <BarChartWidget widget={widget} data={data} />}
+        </QueryGate>
+      );
     case "heatmap":
-      return <HeatmapWidget widget={widget} />;
+      return (
+        <QueryGate widget={widget}>
+          {(data) => <HeatmapWidget widget={widget} data={data} />}
+        </QueryGate>
+      );
     case "decision_flow":
+      // Not query-driven: renders real alert events from the anomaly store.
       return <DecisionFlowWidget widget={widget} />;
     default:
       // Defense in depth — validator already rejected this. Never

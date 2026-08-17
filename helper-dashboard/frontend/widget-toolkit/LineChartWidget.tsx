@@ -12,18 +12,23 @@ import {
 } from "recharts";
 
 import type { WidgetSpec } from "@/lib/spec-schema";
-import { useQueryData } from "@/lib/useQueryData";
+import type { WidgetData } from "@/lib/useQueryData";
 import { WidgetFrame } from "./WidgetFrame";
 
-export function LineChartWidget({ widget }: { widget: WidgetSpec }) {
-  const data = useQueryData(widget.query);
+export function LineChartWidget({
+  widget,
+  data,
+}: {
+  widget: WidgetSpec;
+  data: WidgetData;
+}) {
   const rows = data.points.map((p) => ({
     t: new Date(p.t * 1000).toLocaleTimeString(),
     v: Number(p.v.toFixed(2)),
   }));
 
   return (
-    <WidgetFrame widget={widget} badge={data.source === "mock" ? "mock" : null}>
+    <WidgetFrame widget={widget}>
       <ResponsiveContainer width="100%" height="100%">
         <LineChart data={rows} margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
           <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />

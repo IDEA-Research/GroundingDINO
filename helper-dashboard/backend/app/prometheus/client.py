@@ -1,16 +1,17 @@
-"""Prometheus HTTP client with deterministic mock fallback.
+"""Prometheus HTTP client — honest failure, never fabricated data.
 
-In the MVP we avoid adding a hard dependency on `requests`. If
-`requests` is available we use it; otherwise we fall back to urllib.
-When Prometheus is unreachable, `query` returns structured mock data
-so the frontend still has something to render — clearly marked as
-mock data via the `source: mock` field on the response.
+In the MVP we avoid adding a hard dependency on `requests`, so the
+client is built on urllib. When Prometheus is unreachable or a query
+fails, `query`/`query_range` raise `PrometheusUnavailable` carrying the
+underlying reason; callers translate that into an explicit error state.
+There is NO mock fallback on this path: a clinical dashboard must never
+render synthetic values as real, and must never render silence — the
+API layer turns this error into a loud, visible failure instead.
 """
 
 from __future__ import annotations
 
 import json
-import math
 import os
 import time
 from typing import Any
@@ -21,6 +22,16 @@ from urllib import request as urllib_request
 
 PROM_URL = os.getenv("HELPER_DASHBOARD_PROM_URL", "http://localhost:9090")
 REQUEST_TIMEOUT = float(os.getenv("HELPER_DASHBOARD_PROM_TIMEOUT", "3.0"))
+
+
+class PrometheusUnavailable(Exception):
+    """Prometheus could not serve the query.
+
+    Raised by `query`/`query_range` instead of any data fallback; the
+    message carries the underlying reason (connection refused, timeout,
+    bad response, ...). API consumers translate this into an explicit
+    error response — never into fabricated data.
+    """
 
 
 class PrometheusClient:
@@ -48,25 +59,31 @@ class PrometheusClient:
     def query(self, promql: str) -> dict[str, Any]:
         """Run an instant query.
 
-        On failure, returns mock data with `source: mock`. On success,
-        returns the parsed Prometheus response with `source: prometheus`.
+        On success, returns the parsed Prometheus response with
+        `source: prometheus`. On failure, raises `PrometheusUnavailable`
+        — never a mock fallback.
         """
         try:
             data = self._query(promql)
-            data["source"] = "prometheus"
-            return data
-        except Exception:
-            return _mock_response(promql, mode="instant")
+        except Exception as exc:
+            raise PrometheusUnavailable(
+                f"instant query failed: {exc}"
+            ) from exc
+        data["source"] = "prometheus"
+        return data
 
     def query_range(
         self, promql: str, range_s: int = 3600, step_s: int = 30
     ) -> dict[str, Any]:
+        """Run a range query; raises `PrometheusUnavailable` on failure."""
         try:
             data = self._query_range(promql, range_s=range_s, step_s=step_s)
-            data["source"] = "prometheus"
-            return data
-        except Exception:
-            return _mock_response(promql, mode="range", range_s=range_s, step_s=step_s)
+        except Exception as exc:
+            raise PrometheusUnavailable(
+                f"range query failed: {exc}"
+            ) from exc
+        data["source"] = "prometheus"
+        return data
 
     # ------------------------------------------------------------
     def _query(self, promql: str) -> dict[str, Any]:
@@ -92,50 +109,3 @@ class PrometheusClient:
 
 class _Unreachable(Exception):
     pass
-
-
-# ------------------------------------------------------------
-# Mock response
-# ------------------------------------------------------------
-
-def _mock_response(
-    promql: str, *, mode: str, range_s: int = 3600, step_s: int = 30
-) -> dict[str, Any]:
-    """Deterministic mock generator keyed off the query string."""
-    now = int(time.time())
-    seed = sum(ord(c) for c in promql) % 97
-    if mode == "instant":
-        value = 40 + seed % 50
-        return {
-            "status": "success",
-            "source": "mock",
-            "data": {
-                "resultType": "vector",
-                "result": [
-                    {
-                        "metric": {"__name__": "mock", "query": promql[:64]},
-                        "value": [now, str(float(value))],
-                    }
-                ],
-            },
-        }
-    # range
-    n = max(1, range_s // max(step_s, 1))
-    points: list[list[Any]] = []
-    for i in range(n):
-        t = now - range_s + i * step_s
-        v = 50 + 20 * math.sin((i + seed) / 6.0)
-        points.append([t, f"{v:.4f}"])
-    return {
-        "status": "success",
-        "source": "mock",
-        "data": {
-            "resultType": "matrix",
-            "result": [
-                {
-                    "metric": {"__name__": "mock", "query": promql[:64]},
-                    "values": points,
-                }
-            ],
-        },
-    }

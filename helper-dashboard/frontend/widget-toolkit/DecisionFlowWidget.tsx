@@ -83,7 +83,7 @@ export function DecisionFlowWidget({ widget }: { widget: WidgetSpec }) {
   const [stepIdx, setStepIdx] = React.useState(0);
 
   // Load REAL alert events from the anomaly store (INC2/INC3). Never the
-  // AlertListWidget MOCK_ALERTS. Store-read failure degrades LOUDLY.
+  // dashboard query path. Store-read failure degrades LOUDLY.
   React.useEffect(() => {
     let cancelled = false;
     async function load() {

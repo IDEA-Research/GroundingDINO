@@ -3,7 +3,7 @@
 import React from "react";
 
 import type { WidgetSpec } from "@/lib/spec-schema";
-import { useQueryData } from "@/lib/useQueryData";
+import type { WidgetData } from "@/lib/useQueryData";
 import { WidgetFrame } from "./WidgetFrame";
 
 // Colour palette for slices — deterministic, no external deps.
@@ -109,8 +109,13 @@ function donutArcPath(
   ].join(" ");
 }
 
-export function PieChartWidget({ widget }: { widget: WidgetSpec }) {
-  const data = useQueryData(widget.query);
+export function PieChartWidget({
+  widget,
+  data,
+}: {
+  widget: WidgetSpec;
+  data: WidgetData;
+}) {
   const opts = (widget.options ?? {}) as Record<string, unknown>;
   const showLabels = opts.show_labels !== false;
   const showLegend = opts.show_legend !== false;
@@ -124,7 +129,7 @@ export function PieChartWidget({ widget }: { widget: WidgetSpec }) {
   const innerR = 48;
 
   return (
-    <WidgetFrame widget={widget} badge={data.source === "mock" ? "mock" : null}>
+    <WidgetFrame widget={widget}>
       <div className="flex h-full items-center justify-center gap-4">
         <svg viewBox="0 0 200 200" className="h-full max-h-48 w-auto flex-shrink-0">
           {slices.length === 0 ? (

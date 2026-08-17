@@ -13,7 +13,7 @@ import {
 } from "recharts";
 
 import type { WidgetSpec } from "@/lib/spec-schema";
-import { useQueryData } from "@/lib/useQueryData";
+import type { WidgetData } from "@/lib/useQueryData";
 import { WidgetFrame } from "./WidgetFrame";
 
 // Colour palette — same deterministic set used by PieChartWidget.
@@ -50,8 +50,13 @@ function buildRows(
   });
 }
 
-export function BarChartWidget({ widget }: { widget: WidgetSpec }) {
-  const data = useQueryData(widget.query);
+export function BarChartWidget({
+  widget,
+  data,
+}: {
+  widget: WidgetSpec;
+  data: WidgetData;
+}) {
   const opts = (widget.options ?? {}) as Record<string, unknown>;
   const horizontal = opts.horizontal === true;
   const showGrid = opts.show_grid !== false;
@@ -63,7 +68,7 @@ export function BarChartWidget({ widget }: { widget: WidgetSpec }) {
   const barColor = widget.encoding?.color || "#38bdf8";
 
   return (
-    <WidgetFrame widget={widget} badge={data.source === "mock" ? "mock" : null}>
+    <WidgetFrame widget={widget}>
       <ResponsiveContainer width="100%" height="100%">
         {horizontal ? (
           <BarChart

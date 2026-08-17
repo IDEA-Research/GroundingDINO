@@ -1,10 +1,13 @@
 """Tests for the widget-query endpoint (POST /api/dashboard/query).
 
-This endpoint is a new consumer of prometheus/client.py, so the key
-invariants are: (1) the `source` flag is passed through unscrubbed, so a
-mock fallback is never presented as real; (2) a widget pinned to
-source != "prometheus" never reaches the live client; (3) Prometheus
-vector/matrix results collapse into the renderer's WidgetData shape.
+No mock data, ever, on this path. The key invariants are: (1) a widget
+pinned to source != "prometheus" is rejected with HTTP 400 and never
+reaches the live client; (2) an unreachable Prometheus is HTTP 502 with
+the underlying reason — never fabricated data; (3) every success carries
+an explicit `data_status` ("ok" with series, "empty" with zero
+series/points) so the frontend can render a loud NO-DATA state; (4)
+Prometheus vector/matrix results collapse into the renderer's WidgetData
+shape. No test here touches a live Prometheus — the client is stubbed.
 """
 
 from __future__ import annotations
@@ -14,6 +17,7 @@ from fastapi.testclient import TestClient
 from app.api import dashboard as dashboard_api
 from app.api.dashboard import _parse_duration, _to_widget_data
 from app.main import app
+from app.prometheus.client import PrometheusUnavailable
 
 
 client = TestClient(app)
@@ -41,6 +45,7 @@ def test_instant_transform_sums_series_and_keeps_table():
     }
     out = _to_widget_data(resp, "instant")
     assert out["source"] == "prometheus"
+    assert out["data_status"] == "ok"
     assert out["points"] == []
     assert out["latest"] == 0.75  # summed across series
     assert len(out["table"]) == 2  # per-series rows preserved
@@ -59,18 +64,24 @@ def test_range_transform_sums_across_series_per_timestamp():
     }
     out = _to_widget_data(resp, "range")
     assert out["source"] == "prometheus"
+    assert out["data_status"] == "ok"
     assert out["points"] == [{"t": 1000, "v": 1.5}, {"t": 1030, "v": 2.5}]
     assert out["latest"] == 2.5
 
 
-def test_source_flag_passed_through_unscrubbed():
-    # A mock fallback from the client must surface as source="mock".
-    resp = {"source": "mock", "data": {"result": []}}
-    assert _to_widget_data(resp, "instant")["source"] == "mock"
-    assert _to_widget_data(resp, "range")["source"] == "mock"
+def test_zero_series_is_data_status_empty():
+    # A successful query with no series must say so EXPLICITLY — silent
+    # emptiness once hid an 11-day stale outage.
+    resp = {"source": "prometheus", "data": {"result": []}}
+    out_i = _to_widget_data(resp, "instant")
+    assert out_i["data_status"] == "empty"
+    assert out_i["latest"] is None and out_i["table"] == []
+    out_r = _to_widget_data(resp, "range")
+    assert out_r["data_status"] == "empty"
+    assert out_r["points"] == [] and out_r["latest"] is None
 
 
-def test_mock_pinned_widget_never_hits_live_client(monkeypatch):
+def test_mock_source_is_rejected_with_400(monkeypatch):
     called = {"n": 0}
 
     def _boom(*_a, **_k):  # pragma: no cover - must never run
@@ -84,11 +95,45 @@ def test_mock_pinned_widget_never_hits_live_client(monkeypatch):
         "/api/dashboard/query",
         json={"source": "mock", "promql": "anything", "query_type": "instant"},
     )
-    assert r.status_code == 200
-    body = r.json()
-    assert body["source"] == "mock"
-    assert body["points"] == [] and body["latest"] is None and body["table"] == []
+    assert r.status_code == 400
+    assert r.json()["detail"] == "mock data source is not allowed"
     assert called["n"] == 0
+
+
+def test_prometheus_down_is_502_with_reason(monkeypatch):
+    def _raise(*_a, **_k):
+        raise PrometheusUnavailable("instant query failed: connection refused")
+
+    monkeypatch.setattr(dashboard_api._prom, "query", _raise)
+
+    r = client.post(
+        "/api/dashboard/query",
+        json={"source": "prometheus", "promql": "up", "query_type": "instant"},
+    )
+    assert r.status_code == 502
+    detail = r.json()["detail"]
+    assert "Prometheus unavailable" in detail
+    assert "connection refused" in detail
+
+
+def test_prometheus_down_is_502_for_range_too(monkeypatch):
+    def _raise(*_a, **_k):
+        raise PrometheusUnavailable("range query failed: timed out")
+
+    monkeypatch.setattr(dashboard_api._prom, "query_range", _raise)
+
+    r = client.post(
+        "/api/dashboard/query",
+        json={
+            "source": "prometheus",
+            "promql": "up",
+            "query_type": "range",
+            "range": "1h",
+            "step": "30s",
+        },
+    )
+    assert r.status_code == 502
+    assert "timed out" in r.json()["detail"]
 
 
 def test_prometheus_query_transformed_via_endpoint(monkeypatch):
@@ -110,4 +155,25 @@ def test_prometheus_query_transformed_via_endpoint(monkeypatch):
     assert r.status_code == 200
     body = r.json()
     assert body["source"] == "prometheus"
+    assert body["data_status"] == "ok"
     assert body["latest"] == 0.42
+
+
+def test_empty_result_via_endpoint_reports_empty(monkeypatch):
+    def _fake_query(promql):
+        return {"source": "prometheus", "data": {"resultType": "vector", "result": []}}
+
+    monkeypatch.setattr(dashboard_api._prom, "query", _fake_query)
+
+    r = client.post(
+        "/api/dashboard/query",
+        json={
+            "source": "prometheus",
+            "promql": "nonexistent_metric_xyz",
+            "query_type": "instant",
+        },
+    )
+    assert r.status_code == 200
+    body = r.json()
+    assert body["data_status"] == "empty"
+    assert body["latest"] is None and body["table"] == []

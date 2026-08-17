@@ -7,7 +7,7 @@ from typing import Any
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
-from ..prometheus.client import PrometheusClient
+from ..prometheus.client import PrometheusClient, PrometheusUnavailable
 from ..services.dashboard_store import DashboardStore
 from ..services.spec_validator import SpecValidator, SpecValidationError
 from ..specs import DashboardSpec
@@ -71,24 +71,34 @@ class WidgetQueryRequest(BaseModel):
 def query_widget(req: WidgetQueryRequest) -> dict:
     """Run one widget's PromQL and return series data for the renderer.
 
-    This is a new consumer of ``prometheus/client.py``. Per the repo rule
-    (mirrored from ``services/anomaly_data_provider.py``) we read the
-    ``source`` flag on every response and pass it through **unscrubbed**:
-    a silent mock fallback stays labeled ``source:"mock"`` so the frontend
-    shows the mock badge and never renders synthetic data as real. A widget
-    whose spec pins ``source != "prometheus"`` is never sent to the live
-    client — the frontend keeps such widgets on its own mock path, and this
-    endpoint fails safe for them too.
+    No mock data, ever, on this path (fail closed):
+
+    - ``source != "prometheus"`` → HTTP 400. Mock data on a clinical
+      dashboard is dangerous; decision_flow specs already reject it at
+      validation and this endpoint refuses it at runtime too.
+    - Prometheus unreachable → HTTP 502 with the underlying reason, so
+      the frontend renders a loud error state instead of fabricated data.
+    - Success carries an explicit ``data_status``: ``"ok"`` when series
+      are present, ``"empty"`` when the query succeeded but returned no
+      data — the frontend renders an unmistakable NO-DATA state (silent
+      emptiness has already hidden an 11-day stale outage once).
     """
     if req.source != "prometheus":
-        return {"source": "mock", "points": [], "latest": None, "table": []}
+        raise HTTPException(
+            status_code=400, detail="mock data source is not allowed"
+        )
 
-    if req.query_type == "range":
-        range_s = _parse_duration(req.range) or 3600
-        step_s = _parse_duration(req.step) or 30
-        resp = _prom.query_range(req.promql, range_s=range_s, step_s=step_s)
-    else:
-        resp = _prom.query(req.promql)
+    try:
+        if req.query_type == "range":
+            range_s = _parse_duration(req.range) or 3600
+            step_s = _parse_duration(req.step) or 30
+            resp = _prom.query_range(req.promql, range_s=range_s, step_s=step_s)
+        else:
+            resp = _prom.query(req.promql)
+    except PrometheusUnavailable as exc:
+        raise HTTPException(
+            status_code=502, detail=f"Prometheus unavailable: {exc}"
+        ) from exc
 
     return _to_widget_data(resp, req.query_type)
 
@@ -98,10 +108,13 @@ def _to_widget_data(resp: dict[str, Any], query_type: str) -> dict[str, Any]:
 
     Multi-series results (e.g. ``... by (mode)``) are collapsed into a single
     summed series, since the current widgets render one line/value; the raw
-    per-series rows are preserved in ``table`` for instant queries. The
-    ``source`` flag is carried through verbatim.
+    per-series rows are preserved in ``table`` for instant queries.
+
+    ``data_status`` makes emptiness explicit: ``"ok"`` when at least one
+    usable sample exists, ``"empty"`` when the query succeeded but returned
+    no data. The frontend must render "empty" as a loud NO-DATA state.
     """
-    source = str(resp.get("source", "mock"))
+    source = str(resp.get("source", "prometheus"))
     result = ((resp.get("data") or {}).get("result")) or []
 
     if query_type != "range":
@@ -121,6 +134,7 @@ def _to_widget_data(resp: dict[str, Any], query_type: str) -> dict[str, Any]:
             table.append({"metric": series.get("metric", {}), "value": v})
         return {
             "source": source,
+            "data_status": "ok" if seen else "empty",
             "points": [],
             "latest": total if seen else None,
             "table": table,
@@ -141,6 +155,7 @@ def _to_widget_data(resp: dict[str, Any], query_type: str) -> dict[str, Any]:
     points = [{"t": ts, "v": bucket[ts]} for ts in sorted(bucket)]
     return {
         "source": source,
+        "data_status": "ok" if points else "empty",
         "points": points,
         "latest": points[-1]["v"] if points else None,
         "table": [],

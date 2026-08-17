@@ -10,7 +10,11 @@ import type {
 } from "./spec-schema";
 
 export interface WidgetQueryResponse {
-  source: "prometheus" | "mock";
+  source: "prometheus";
+  // Explicit emptiness: "ok" = series present, "empty" = the query
+  // succeeded but returned zero series/points. Errors never reach this
+  // shape — the backend answers 400/502 and postJSON throws.
+  data_status: "ok" | "empty";
   points: { t: number; v: number }[];
   latest: number | null;
   table: { metric: Record<string, string>; value: number }[];
@@ -98,8 +102,9 @@ export const api = {
   },
 
   // Execute one widget's PromQL against live Prometheus (backend proxies to
-  // :9090). The response carries a `source` flag ("prometheus" | "mock") that
-  // the renderer surfaces as a badge — a mock fallback is never shown as real.
+  // :9090). There is NO mock fallback: a mock source is rejected with 400,
+  // an unreachable Prometheus is a 502 (postJSON throws with the detail),
+  // and `data_status` distinguishes real data from an honest empty result.
   queryWidget(query: QuerySpec): Promise<WidgetQueryResponse> {
     return postJSON(`/dashboard/query`, query);
   },

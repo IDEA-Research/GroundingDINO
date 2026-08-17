@@ -344,3 +344,24 @@ def test_api_create_list_and_alerts():
 
         cat = client.get("/api/system-rules/catalog").json()
         assert {c["kind"] for c in cat["catalog"]} == set(SYSTEM_METRIC_CATALOG)
+
+
+def test_provider_unreachable_client_fails_closed():
+    """The live client raises PrometheusUnavailable instead of fabricating a
+    fallback; the provider maps it to source="unreachable" so the core gates
+    to SIGNAL_LOST — the exception never propagates into the loop."""
+    from app.prometheus.client import PrometheusUnavailable
+
+    class _RaisingClient:
+        def query(self, expr):
+            raise PrometheusUnavailable("instant query failed: connection refused")
+
+    provider = SystemMetricProvider(client=_RaisingClient())
+    value, status = provider.observe(_rule())
+    assert value is None
+    assert status.source == "unreachable"
+    assert status.reachable is False
+    assert status.returns_data is False
+    core = SystemThresholdCore(_rule(), staleness_budget_s=3600)
+    rpt = core.evaluate(now=1000.0, value=value, status=status)
+    assert rpt.state == AlertState.signal_lost

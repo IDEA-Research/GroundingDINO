@@ -251,3 +251,30 @@ def test_label_values_are_quote_escaped():
         "rso2_left", {"note": 'a"b\\c'}
     )
     assert sel == 'rso2_left{note="a\\"b\\\\c"}'
+
+
+# ---------------------------------------------------------------------------
+# Client failure — PrometheusUnavailable fails CLOSED, never propagates
+# ---------------------------------------------------------------------------
+
+
+def test_unreachable_client_fails_closed_not_raises():
+    """The live client raises PrometheusUnavailable instead of fabricating a
+    mock fallback; the provider maps that to an unreachable no-data status so
+    the core gates to SIGNAL_LOST — the exception never propagates into the
+    evaluator loop and no value is ever invented."""
+    from app.prometheus.client import PrometheusUnavailable
+
+    class RaisingClient:
+        def query(self, q):
+            raise PrometheusUnavailable("instant query failed: connection refused")
+
+    p = PrometheusDataProvider(RaisingClient(), scrape_interval_s=15.0)
+    obs = p.observe("rso2_left", now=NOW, labels=LABELS)
+    assert obs.value is None
+    assert obs.baseline is None
+    assert obs.status.reachable is False
+    assert obs.status.returns_data is False
+    assert obs.status.source == "unreachable"
+    assert obs.status.sample_ts == float("-inf")
+    assert obs.status.history_coverage_s == 0.0

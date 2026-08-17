@@ -14,12 +14,13 @@ Two providers ship here:
     run end-to-end automatically and the integration test can step it with an
     injected clock. It is DETERMINISTIC.
 
-  - `PrometheusDataProvider` reads the real `prometheus/client.py`. Crucially
-    it READS the `source` flag on the response (`"prometheus"` vs `"mock"`) —
-    the client currently WRITES that flag but nobody reads it, which is the
-    silent-mock-fallback hazard. Reading it here is what lets the core FAIL
-    CLOSED on fake data: a `source=="mock"` response yields
-    `DataStatus.source="mock"`, never a scrubbed-to-prometheus value.
+  - `PrometheusDataProvider` reads the real `prometheus/client.py`. The
+    client raises `PrometheusUnavailable` instead of ever fabricating a
+    fallback; the provider maps that to `source="unreachable"` with no
+    data, so the core FAILS CLOSED (SIGNAL_LOST) — it never evaluates
+    fake or absent data. It still READS the `source` flag on every
+    response as defence in depth: anything other than `"prometheus"` is
+    treated as unreachable, never scrubbed to look real.
 
 Neither provider makes a clinical decision — that is the core's job. They
 only report provenance + freshness honestly.
@@ -30,7 +31,7 @@ from __future__ import annotations
 import math
 from typing import Any, Protocol
 
-from ..prometheus.client import PrometheusClient
+from ..prometheus.client import PrometheusClient, PrometheusUnavailable
 from ..prometheus.neonatal_sim import NeonatalSim, Scenario
 from .anomaly_core import DataStatus
 
@@ -153,7 +154,8 @@ class PrometheusDataProvider:
     Load-bearing safety steps (each fails CLOSED when unavailable):
 
     - Reads the `source` flag on every response so the core refuses the
-      silent mock fallback.
+      not-really-live data (defence in depth; the client itself raises
+      `PrometheusUnavailable` rather than ever fabricating a fallback).
     - Selects the rule's exact series via its validated `labels` and reports
       a multi-series answer as `ambiguous` (an arbitrary first-pick could
       evaluate the WRONG PATIENT) — the core gates it to SIGNAL_LOST.
@@ -200,6 +202,23 @@ class PrometheusDataProvider:
         # for live wiring to catch frozen-publisher freshness failures.
         self.freshness_metric = freshness_metric
 
+    def _query(self, promql: str) -> dict[str, Any]:
+        """Query the live client; an unreachable Prometheus fails CLOSED.
+
+        The client raises `PrometheusUnavailable` instead of fabricating a
+        fallback. Map that onto the shape the source-flag branching already
+        fails closed on: `source != "prometheus"` and no data — the core
+        gates it to SIGNAL_LOST, never a fabricated evaluation.
+        """
+        try:
+            return self.client.query(promql)
+        except PrometheusUnavailable as exc:
+            return {
+                "source": "unreachable",
+                "error": str(exc),
+                "data": {"result": []},
+            }
+
     @staticmethod
     def _label_selector(metric: str, labels: dict[str, str] | None = None) -> str:
         # Metric names and label keys/values are already validated by
@@ -220,14 +239,15 @@ class PrometheusDataProvider:
         labels: dict[str, str] | None = None,
     ) -> Observation:
         sel = self._label_selector(metric, labels)
-        instant = self.client.query(sel)
-        baseline_resp = self.client.query(f"avg_over_time({sel}[{self._WINDOW}])")
+        instant = self._query(sel)
+        baseline_resp = self._query(f"avg_over_time({sel}[{self._WINDOW}])")
 
-        # READ the source flag — a mock fallback is reported honestly as
-        # source=="mock"; the core refuses to alert on it. A half-mock
-        # observation (real value, mock baseline) is not trustworthy either.
-        src = str(instant.get("source", "mock"))
-        base_src = str(baseline_resp.get("source", "mock"))
+        # READ the source flag — an unreachable Prometheus is reported
+        # honestly as source=="unreachable"; the core refuses to alert on
+        # it. A half-real observation (real value, unreachable baseline)
+        # is not trustworthy either.
+        src = str(instant.get("source", "unreachable"))
+        base_src = str(baseline_resp.get("source", "unreachable"))
         if src == "prometheus" and base_src != "prometheus":
             src = base_src
         reachable = src == "prometheus"
@@ -247,16 +267,16 @@ class PrometheusDataProvider:
         # on every scrape).
         sample_ts = float("-inf")
         if reachable and returns_data and not ambiguous:
-            ts_resp = self.client.query(f"timestamp({sel})")
-            if str(ts_resp.get("source", "mock")) == "prometheus":
+            ts_resp = self._query(f"timestamp({sel})")
+            if str(ts_resp.get("source", "unreachable")) == "prometheus":
                 ts_val, ts_n = _instant_scalar(ts_resp)
                 if ts_val is not None and ts_n == 1:
                     sample_ts = float(ts_val)
             if self.freshness_metric and sample_ts != float("-inf"):
                 hb_sel = self._label_selector(self.freshness_metric, labels)
-                hb_resp = self.client.query(hb_sel)
+                hb_resp = self._query(hb_sel)
                 hb_ts = float("-inf")
-                if str(hb_resp.get("source", "mock")) == "prometheus":
+                if str(hb_resp.get("source", "unreachable")) == "prometheus":
                     hb_val, hb_n = _instant_scalar(hb_resp)
                     # isfinite: a NaN heartbeat would poison min() into
                     # silently degrading to scrape-only freshness.
@@ -273,10 +293,10 @@ class PrometheusDataProvider:
         # core reports INSUFFICIENT_BASELINE rather than trusting a constant.
         coverage_s = 0.0
         if reachable and not ambiguous:
-            cnt_resp = self.client.query(
+            cnt_resp = self._query(
                 f"count_over_time({sel}[{self._WINDOW}])"
             )
-            if str(cnt_resp.get("source", "mock")) == "prometheus":
+            if str(cnt_resp.get("source", "unreachable")) == "prometheus":
                 cnt, cnt_n = _instant_scalar(cnt_resp)
                 if cnt is not None and cnt_n == 1:
                     coverage_s = min(

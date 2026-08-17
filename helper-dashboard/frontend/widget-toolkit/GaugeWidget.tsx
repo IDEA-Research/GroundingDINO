@@ -3,11 +3,16 @@
 import React from "react";
 
 import type { WidgetSpec } from "@/lib/spec-schema";
-import { useQueryData } from "@/lib/useQueryData";
+import type { WidgetData } from "@/lib/useQueryData";
 import { WidgetFrame } from "./WidgetFrame";
 
-export function GaugeWidget({ widget }: { widget: WidgetSpec }) {
-  const data = useQueryData(widget.query);
+export function GaugeWidget({
+  widget,
+  data,
+}: {
+  widget: WidgetSpec;
+  data: WidgetData;
+}) {
   const raw = data.latest ?? 0;
   const min = Number((widget.options as any)?.min ?? 0);
   const max = Number((widget.options as any)?.max ?? 100);
@@ -18,7 +23,7 @@ export function GaugeWidget({ widget }: { widget: WidgetSpec }) {
   const angle = -90 + 180 * pct; // half-circle gauge
 
   return (
-    <WidgetFrame widget={widget} badge={data.source === "mock" ? "mock" : null}>
+    <WidgetFrame widget={widget}>
       <div className="flex h-full items-center justify-center">
         <svg viewBox="-110 -100 220 120" className="h-full w-full max-h-40">
           <path

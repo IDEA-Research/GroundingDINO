@@ -115,7 +115,7 @@ export interface WidgetSpec {
 
 // Real alert event as read from the anomaly store (INC2/INC3). Mirrors the
 // backend AlertEvent. The decision_flow widget renders THESE, never the
-// AlertListWidget MOCK_ALERTS.
+// hardcoded widget list (mock data is gone from every path).
 export type AlertEventState =
   | "pending"
   | "firing"
