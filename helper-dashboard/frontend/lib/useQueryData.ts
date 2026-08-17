@@ -24,6 +24,9 @@ export interface WidgetData {
   points: SeriesPoint[]; // for line charts
   latest: number | null; // for stat / gauge
   table: { metric: Record<string, string>; value: number }[]; // for table/rows
+  // Number of series the backend collapsed (by MEAN) into this data.
+  // >1 → the renderer shows an "n series (averaged)" annotation.
+  nSeries: number;
   errorDetail: string | null; // set when status === "error"
 }
 
@@ -32,6 +35,7 @@ const LOADING: WidgetData = {
   points: [],
   latest: null,
   table: [],
+  nSeries: 0,
   errorDetail: null,
 };
 
@@ -53,6 +57,7 @@ export function useQueryData(query: QuerySpec): WidgetData {
         points: [],
         latest: null,
         table: [],
+        nSeries: 0,
         errorDetail: "mock data source is not allowed",
       });
       return;
@@ -69,6 +74,7 @@ export function useQueryData(query: QuerySpec): WidgetData {
             points: [],
             latest: null,
             table: [],
+            nSeries: 0,
             errorDetail: null,
           });
           return;
@@ -78,6 +84,7 @@ export function useQueryData(query: QuerySpec): WidgetData {
           points: resp.points ?? [],
           latest: resp.latest ?? null,
           table: resp.table ?? [],
+          nSeries: resp.n_series ?? 0,
           errorDetail: null,
         });
       })
@@ -88,6 +95,7 @@ export function useQueryData(query: QuerySpec): WidgetData {
           points: [],
           latest: null,
           table: [],
+          nSeries: 0,
           errorDetail: err instanceof Error ? err.message : String(err),
         });
       });

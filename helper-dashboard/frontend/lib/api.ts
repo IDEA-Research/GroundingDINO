@@ -18,6 +18,10 @@ export interface WidgetQueryResponse {
   points: { t: number; v: number }[];
   latest: number | null;
   table: { metric: Record<string, string>; value: number }[];
+  // How many series were collapsed (by MEAN) into the single rendered
+  // series. >1 means the value shown is an average — the renderer
+  // annotates it so nobody mistakes an averaged vital for a raw one.
+  n_series: number;
 }
 
 const API_BASE = "/api";

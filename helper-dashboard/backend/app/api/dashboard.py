@@ -106,9 +106,13 @@ def query_widget(req: WidgetQueryRequest) -> dict:
 def _to_widget_data(resp: dict[str, Any], query_type: str) -> dict[str, Any]:
     """Transform a Prometheus response into the renderer's WidgetData shape.
 
-    Multi-series results (e.g. ``... by (mode)``) are collapsed into a single
-    summed series, since the current widgets render one line/value; the raw
-    per-series rows are preserved in ``table`` for instant queries.
+    Multi-series results are collapsed into a single series by MEAN, and
+    ``n_series`` reports how many series were averaged so the frontend
+    can annotate. Mean, never sum: clinical gauges arrive as N parallel
+    series (free-text ``device_model`` label variants for one physical
+    device), and sum-collapse once rendered a heart rate of 163 bpm as
+    814 on a live dashboard. The raw per-series rows are preserved in
+    ``table`` for instant queries.
 
     ``data_status`` makes emptiness explicit: ``"ok"`` when at least one
     usable sample exists, ``"empty"`` when the query succeeded but returned
@@ -120,7 +124,6 @@ def _to_widget_data(resp: dict[str, Any], query_type: str) -> dict[str, Any]:
     if query_type != "range":
         table: list[dict[str, Any]] = []
         total = 0.0
-        seen = False
         for series in result:
             pair = series.get("value")
             if not pair or len(pair) < 2:
@@ -129,20 +132,26 @@ def _to_widget_data(resp: dict[str, Any], query_type: str) -> dict[str, Any]:
                 v = float(pair[1])
             except (TypeError, ValueError):
                 continue
-            seen = True
             total += v
             table.append({"metric": series.get("metric", {}), "value": v})
+        n_series = len(table)
         return {
             "source": source,
-            "data_status": "ok" if seen else "empty",
+            "data_status": "ok" if n_series else "empty",
             "points": [],
-            "latest": total if seen else None,
+            "latest": (total / n_series) if n_series else None,
             "table": table,
+            "n_series": n_series,
         }
 
-    # range → matrix: sum aligned samples across series into one line.
-    bucket: dict[int, float] = {}
+    # range → matrix: average aligned samples across series into one
+    # line. Each timestamp divides by the number of series that actually
+    # have a sample there (series can start/stop mid-window).
+    sums: dict[int, float] = {}
+    counts: dict[int, int] = {}
+    n_series = 0
     for series in result:
+        contributed = False
         for pair in series.get("values") or []:
             if not pair or len(pair) < 2:
                 continue
@@ -151,14 +160,21 @@ def _to_widget_data(resp: dict[str, Any], query_type: str) -> dict[str, Any]:
                 v = float(pair[1])
             except (TypeError, ValueError):
                 continue
-            bucket[ts] = bucket.get(ts, 0.0) + v
-    points = [{"t": ts, "v": bucket[ts]} for ts in sorted(bucket)]
+            contributed = True
+            sums[ts] = sums.get(ts, 0.0) + v
+            counts[ts] = counts.get(ts, 0) + 1
+        if contributed:
+            n_series += 1
+    points = [
+        {"t": ts, "v": sums[ts] / counts[ts]} for ts in sorted(sums)
+    ]
     return {
         "source": source,
         "data_status": "ok" if points else "empty",
         "points": points,
         "latest": points[-1]["v"] if points else None,
         "table": [],
+        "n_series": n_series,
     }
 
 
