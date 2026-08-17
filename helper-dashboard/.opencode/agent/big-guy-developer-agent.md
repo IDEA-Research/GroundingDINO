@@ -196,7 +196,7 @@ ALL tests must pass before you call `done`. If any test fails:
   `python3`. Pipes, redirects, and shell metacharacters in args are
   rejected.
 - Modify Pydantic constraints, the runtime allow-list, the gate
-  module, or anything in `bin/opencode`.
+  module, or anything in `bin/helpercode`.
 - Add npm packages, modify package.json, or touch lockfiles.
 - Touch git directly. No commits, no resets, no checkouts. M7's
   snapshot/rollback wrapper handles that around your run.

@@ -1,6 +1,6 @@
 """End-to-end live demo using real OpenCode CLI + Kimi K2.
 
-Starts backend in `opencode` mode with the real bin/opencode binary
+Starts backend in `opencode` mode with the real bin/helpercode binary
 and OPENROUTER_API_KEY loaded from .env. Drives a real Chromium via
 Playwright through the whole journey:
 
@@ -77,7 +77,7 @@ def start_backend():
         "PYTHONPATH": str(BACKEND_DIR),
         # Force opencode mode explicitly for this demo.
         "HELPER_DASHBOARD_OPENCODE": "opencode",
-        "HELPER_DASHBOARD_OPENCODE_BIN": str(ROOT / "bin" / "opencode"),
+        "HELPER_DASHBOARD_OPENCODE_BIN": str(ROOT / "bin" / "helpercode"),
         "HELPER_DASHBOARD_OPENCODE_CMD": json.dumps(["{bin}"]),
         "HELPER_DASHBOARD_PRE_OUTPUT_REVIEW": "0",
     }

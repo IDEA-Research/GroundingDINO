@@ -1,6 +1,6 @@
 """Tier 1 verification — CLI-only, real model.
 
-Invokes `bin/opencode` directly for each operation to confirm the
+Invokes `bin/helpercode` directly for each operation to confirm the
 configured LLM provider can produce valid JSON for every agent in
 the allow-list. Does NOT start the backend, frontend, or Playwright.
 
@@ -46,7 +46,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 BIN = Path(os.environ.get(
-    "HELPER_DASHBOARD_OPENCODE_BIN", str(ROOT / "bin" / "opencode")
+    "HELPER_DASHBOARD_OPENCODE_BIN", str(ROOT / "bin" / "helpercode")
 ))
 
 # Per-call timeout — Tier 1 is meant to be quick. If your model is
@@ -55,7 +55,7 @@ PER_CALL_TIMEOUT = int(os.environ.get("TIER1_TIMEOUT", "120"))
 
 
 def call(payload: dict, *, label: str) -> tuple[bool, dict | None, str, float]:
-    """Invoke bin/opencode. Returns (ok, parsed, stderr, elapsed)."""
+    """Invoke bin/helpercode. Returns (ok, parsed, stderr, elapsed)."""
     t0 = time.monotonic()
     try:
         proc = subprocess.run(

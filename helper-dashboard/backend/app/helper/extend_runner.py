@@ -1,6 +1,6 @@
 """Run the `rescue_extend` operation and surface the result.
 
-Thin wrapper around `OpenCodeRuntime.invoke_operation("rescue_extend",
+Thin wrapper around `HelperCodeRuntime.invoke_operation("rescue_extend",
 ...)` that exists so both the orchestrator's DeveloperTicket branch
 and the review_loop's `_run_rescue(kind="extend")` branch share the
 same invocation path, error handling, and audit trail.
@@ -36,7 +36,7 @@ from .extend_gate import (
 )
 from .extend_request import ExtendRequest as ParsedExtendRequest
 from .extend_snapshot import restore_from, take_snapshot
-from .runtime import OpenCodeRuntime, RuntimeError_
+from .runtime import HelperCodeRuntime, RuntimeError_
 
 
 # After a successful rescue_extend, these modules have stale class
@@ -90,7 +90,7 @@ class ExtendOutcome:
 
 
 class ExtendRunner:
-    def __init__(self, runtime: OpenCodeRuntime) -> None:
+    def __init__(self, runtime: HelperCodeRuntime) -> None:
         self._runtime = runtime
 
     # ------------------------------------------------------------

@@ -28,7 +28,7 @@ Gate layers (every one fails closed):
      `backend/app/storage/auto_fix_audit/<date>.jsonl`.
 
 The write scope is deliberately the render/product layer only, and is
-mirrored INDEPENDENTLY in `bin/opencode`'s tool-level allow-list (two
+mirrored INDEPENDENTLY in `bin/helpercode`'s tool-level allow-list (two
 trust boundaries, same philosophy as rescue_extend).
 
 Backend code changed by a successful run needs a backend restart to
@@ -55,7 +55,7 @@ from .runtime import RuntimeError_
 _REPO_ROOT = Path(__file__).resolve().parents[3]
 
 # ---------------------------------------------------------------------------
-# Write scope (mirrored independently in bin/opencode — keep in sync)
+# Write scope (mirrored independently in bin/helpercode — keep in sync)
 # ---------------------------------------------------------------------------
 
 _WRITABLE_FILES: tuple[str, ...] = (

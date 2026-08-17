@@ -79,7 +79,7 @@ OPERATIONS: dict[str, dict[str, str | None]] = {
     # shell here (all other paths keep him locked to JSON-only). Safety
     # is enforced by `extend_gate.py` (denylist, prompt-injection
     # check, daily quota, audit log) and the per-path write allowlist
-    # in `bin/opencode`. See docs/SECURITY_BOUNDARIES.md.
+    # in `bin/helpercode`. See docs/SECURITY_BOUNDARIES.md.
     "rescue_extend":      {"agent": "big-guy-developer-agent", "command": "rescue-extend"},
     "developer_fix":      {"agent": "big-guy-developer-agent", "command": "developer-fix"},
     # `author_alert_rule` turns an AlertRuleIntent into a SystemAlertRule
@@ -180,7 +180,7 @@ class RuntimeError_(Exception):
 # ---------------------------------------------------------------------------
 
 
-class _OpenCodeUnavailable(Exception):
+class _HelperCodeUnavailable(Exception):
     """Binary missing, not executable, or timed out. Structured error
     for the runtime wrapper to decide whether to raise or fall back."""
 
@@ -190,7 +190,7 @@ class _OpenCodeUnavailable(Exception):
         self.kind = kind
 
 
-class _OpenCodeInvalidOutput(Exception):
+class _HelperCodeInvalidOutput(Exception):
     """Binary ran but returned non-JSON, empty output, or a non-dict
     value, or a dict without a `type` field."""
 
@@ -229,7 +229,7 @@ def _trace_enabled() -> bool:
 def _trace(msg: str) -> None:
     if not _trace_enabled():
         return
-    line = f"[helper-dashboard][opencode-trace] {msg}"
+    line = f"[helper-dashboard][helpercode-trace] {msg}"
     print(line, file=sys.stderr)
     path = (os.getenv("OPENCODE_TRACE_FILE") or "").strip()
     if path:
@@ -247,8 +247,8 @@ def _safe_keys(d: dict[str, Any]) -> list[str]:
         return ["<unavailable>"]
 
 
-class RealOpenCodeRuntime:
-    """Subprocess adapter for the OpenCode CLI.
+class RealHelperCodeRuntime:
+    """Subprocess adapter for the helperCode CLI.
 
     Invariants:
 
@@ -273,8 +273,8 @@ class RealOpenCodeRuntime:
 
         cmd = _resolve_cmd(agent)
         if cmd is None:
-            raise _OpenCodeUnavailable(
-                "OpenCode binary not found or not executable",
+            raise _HelperCodeUnavailable(
+                "helperCode binary not found or not executable",
                 kind="binary_missing",
             )
 
@@ -308,9 +308,9 @@ class RealOpenCodeRuntime:
                 cwd=str(_PROJECT_ROOT),
             )
         except FileNotFoundError as exc:
-            raise _OpenCodeUnavailable(str(exc), kind="binary_missing") from exc
+            raise _HelperCodeUnavailable(str(exc), kind="binary_missing") from exc
         except subprocess.TimeoutExpired as exc:
-            raise _OpenCodeUnavailable(
+            raise _HelperCodeUnavailable(
                 f"timeout after {timeout}s", kind="timeout"
             ) from exc
 
@@ -345,10 +345,10 @@ class RealOpenCodeRuntime:
                 kind = f"killed_by_{sig_name.lower()}"
 
             _warn(
-                f"opencode subprocess {kind}: rc={proc.returncode} "
+                f"helpercode subprocess {kind}: rc={proc.returncode} "
                 f"sig={sig_name} stderr={stderr[:200]!r}"
             )
-            raise _OpenCodeInvalidOutput(
+            raise _HelperCodeInvalidOutput(
                 f"exit {proc.returncode}"
                 + (f" ({sig_name})" if sig_name else ""),
                 kind=kind,
@@ -356,13 +356,13 @@ class RealOpenCodeRuntime:
                 stdout=stdout,
             )
         if not stdout:
-            raise _OpenCodeInvalidOutput(
+            raise _HelperCodeInvalidOutput(
                 "empty stdout", kind="empty_output", stderr=stderr
             )
         try:
             result = json.loads(stdout)
         except json.JSONDecodeError as exc:
-            raise _OpenCodeInvalidOutput(
+            raise _HelperCodeInvalidOutput(
                 f"non-JSON stdout: {exc.msg}",
                 kind="non_json",
                 stdout=stdout,
@@ -370,7 +370,7 @@ class RealOpenCodeRuntime:
             ) from exc
 
         if not isinstance(result, dict) or "type" not in result:
-            raise _OpenCodeInvalidOutput(
+            raise _HelperCodeInvalidOutput(
                 "response is not a typed JSON object",
                 kind="missing_type",
                 stdout=stdout,
@@ -384,7 +384,7 @@ class RealOpenCodeRuntime:
 
 
 def _resolve_cmd(agent: str) -> list[str] | None:
-    bin_name = os.getenv("HELPER_DASHBOARD_OPENCODE_BIN", "opencode")
+    bin_name = os.getenv("HELPER_DASHBOARD_OPENCODE_BIN", "./bin/helpercode")
     raw_template = os.getenv("HELPER_DASHBOARD_OPENCODE_CMD")
 
     if raw_template:
@@ -454,7 +454,7 @@ def _warn(msg: str) -> None:
 # ---------------------------------------------------------------------------
 
 
-class OpenCodeRuntime:
+class HelperCodeRuntime:
     """Primary entry point for invoking agents.
 
     Callers use `invoke_operation(operation, args, *, developer=False)`.
@@ -464,7 +464,7 @@ class OpenCodeRuntime:
 
     def __init__(self) -> None:
         self._mock = MockHelperRuntime()
-        self._real = RealOpenCodeRuntime()
+        self._real = RealHelperCodeRuntime()
 
     # --- mode selection ---------------------------------------------
     @staticmethod
@@ -497,10 +497,10 @@ class OpenCodeRuntime:
         elif mode == "opencode":
             try:
                 result = self._real.invoke(operation, agent, args)
-            except (_OpenCodeUnavailable, _OpenCodeInvalidOutput) as exc:
+            except (_HelperCodeUnavailable, _HelperCodeInvalidOutput) as exc:
                 # Strict by design — no silent fallback.
                 raise RuntimeError_(
-                    f"opencode runtime failure ({exc.kind}): {exc}"
+                    f"helpercode runtime failure ({exc.kind}): {exc}"
                 ) from exc
             result.setdefault("runtime_used", "opencode")
 
@@ -508,7 +508,7 @@ class OpenCodeRuntime:
             try:
                 result = self._real.invoke(operation, agent, args)
                 result.setdefault("runtime_used", "opencode")
-            except (_OpenCodeUnavailable, _OpenCodeInvalidOutput) as exc:
+            except (_HelperCodeUnavailable, _HelperCodeInvalidOutput) as exc:
                 reason = f"{exc.kind}:{exc}"
                 _warn(f"auto mode: falling back to mock ({reason})")
                 result = self._mock.invoke(agent, args, operation=operation)
@@ -560,7 +560,7 @@ class OpenCodeRuntime:
 
 
 class MockHelperRuntime:
-    """Deterministic, in-process stand-in for the real OpenCode runtime.
+    """Deterministic, in-process stand-in for the real helperCode runtime.
 
     Mirrors the output shapes described in `.opencode/agent/*.md`.
     Never edits code, never hits the shell, never calls the network.
@@ -681,7 +681,7 @@ class MockHelperRuntime:
     # -- author_alert_rule (system-metric rule author) ------------------------
     def _author_alert_rule(self, args: dict[str, Any]) -> dict[str, Any]:
         """Deterministic SystemAlertRule author. Mirrors the JSON contract
-        in bin/opencode; the Python validator downstream is authoritative."""
+        in bin/helpercode; the Python validator downstream is authoritative."""
         intent = args.get("intent") or {}
         text = str(
             intent.get("request_text") or intent.get("summary") or ""

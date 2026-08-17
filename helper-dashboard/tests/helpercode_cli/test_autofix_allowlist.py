@@ -1,4 +1,4 @@
-"""bin/opencode auto-fix write allow-list.
+"""bin/helpercode auto-fix write allow-list.
 
 Loads the CLI as a module (main() is __main__-guarded) and checks the
 developer_fix path gate: the render/product layer is writable, the
@@ -14,7 +14,7 @@ from pathlib import Path
 import pytest
 
 
-_CLI = Path(__file__).resolve().parents[2] / "bin" / "opencode"
+_CLI = Path(__file__).resolve().parents[2] / "bin" / "helpercode"
 
 
 @pytest.fixture(scope="module")
@@ -61,7 +61,7 @@ def test_autofix_allows_render_layer(cli, rel):
     "backend/app/helper/extend_gate.py",
     "backend/app/helper/auto_fix.py",
     "backend/app/helper/runtime.py",
-    "bin/opencode",
+    "bin/helpercode",
     ".opencode/agent/big-guy-developer-agent.md",
     ".env",
     # Not in scope at all.

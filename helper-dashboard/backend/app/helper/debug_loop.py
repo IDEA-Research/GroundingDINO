@@ -16,11 +16,11 @@ from typing import Any
 
 from ..specs import BrowserEvaluationReport, DashboardSpec
 from ..specs.developer_ticket import DeveloperTicket, TicketSeverity
-from .runtime import OpenCodeRuntime
+from .runtime import HelperCodeRuntime
 
 
 class DebugLoop:
-    def __init__(self, runtime: OpenCodeRuntime) -> None:
+    def __init__(self, runtime: HelperCodeRuntime) -> None:
         self._rt = runtime
 
     def from_validation_errors(

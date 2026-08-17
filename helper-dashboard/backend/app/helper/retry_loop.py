@@ -1,6 +1,6 @@
 """Agent validation retry loop.
 
-Wraps `OpenCodeRuntime.invoke_operation` with a bounded
+Wraps `HelperCodeRuntime.invoke_operation` with a bounded
 validate-then-retry-with-feedback loop. Used only by the orchestrator
 for user-originated `generate_dashboard` / `patch_dashboard` (per
 Decision 1b + 2c — NOT inside the review loop, not inside runtime).
@@ -30,7 +30,7 @@ from typing import Any
 from ..services.patch_service import PatchApplicationError, PatchService
 from ..services.spec_validator import SpecValidationError, SpecValidator
 from ..specs import DashboardSpec, PatchSpec
-from .runtime import EXPECTED_OUTPUT_TYPES, OpenCodeRuntime, RuntimeError_
+from .runtime import EXPECTED_OUTPUT_TYPES, HelperCodeRuntime, RuntimeError_
 from .semantic_contracts import ContractCheck, SemanticContract
 
 
@@ -116,7 +116,7 @@ class AgentValidationRetryLoop:
 
     def __init__(
         self,
-        runtime: OpenCodeRuntime,
+        runtime: HelperCodeRuntime,
         *,
         validator: SpecValidator | None = None,
         patch_service: PatchService | None = None,

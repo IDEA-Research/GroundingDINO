@@ -1,6 +1,6 @@
 """Tier 1 — API observability scenario (CLI-only, real model).
 
-Invokes `bin/opencode` directly for each operation to confirm the
+Invokes `bin/helpercode` directly for each operation to confirm the
 configured LLM provider can produce a *usable* API observability
 dashboard, and that patch rephrasings semantically satisfy the user
 request (with bounded retry + feedback, mirroring the orchestrator's
@@ -40,7 +40,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 BIN = Path(os.environ.get(
-    "HELPER_DASHBOARD_OPENCODE_BIN", str(ROOT / "bin" / "opencode")
+    "HELPER_DASHBOARD_OPENCODE_BIN", str(ROOT / "bin" / "helpercode")
 ))
 PER_CALL_TIMEOUT = int(os.environ.get("TIER1_TIMEOUT", "180"))
 

@@ -1,23 +1,23 @@
 """Routing is now inlined in `orchestrator._dispatch`.
 
 This module is kept as a stable import path. New code should call
-`OpenCodeRuntime.invoke_operation` directly.
+`HelperCodeRuntime.invoke_operation` directly.
 """
 
 from __future__ import annotations
 
 from typing import Any
 
-from .runtime import OpenCodeRuntime
+from .runtime import HelperCodeRuntime
 
 
 class Routing:
-    """Deprecated thin shim around `OpenCodeRuntime.invoke_operation`.
+    """Deprecated thin shim around `HelperCodeRuntime.invoke_operation`.
 
     Kept for any external callers; the orchestrator no longer uses it.
     """
 
-    def __init__(self, runtime: OpenCodeRuntime):
+    def __init__(self, runtime: HelperCodeRuntime):
         self._rt = runtime
 
     def dispatch(

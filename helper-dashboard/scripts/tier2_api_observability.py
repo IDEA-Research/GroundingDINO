@@ -53,7 +53,7 @@ def main() -> int:
     os.environ["HELPER_DASHBOARD_PRE_OUTPUT_REVIEW"] = "0"
     if mode == "opencode":
         os.environ["HELPER_DASHBOARD_OPENCODE_BIN"] = str(
-            ROOT / "bin" / "opencode"
+            ROOT / "bin" / "helpercode"
         )
         os.environ["HELPER_DASHBOARD_OPENCODE_CMD"] = json.dumps(["{bin}"])
 

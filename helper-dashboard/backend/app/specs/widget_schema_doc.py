@@ -368,7 +368,7 @@ def _prometheus_query_section() -> str:
 
 
 # Map operation -> which envelope sections to inject. Keep this in
-# sync with bin/opencode's _SCHEMA_AWARE_OPERATIONS dispatch. Only
+# sync with bin/helpercode's _SCHEMA_AWARE_OPERATIONS dispatch. Only
 # include envelopes the LLM might actually *emit* for that operation.
 _OPERATION_ENVELOPES: dict[str, tuple[str, ...]] = {
     "user_message":        ("DeveloperTicket", "ClarificationRequest"),

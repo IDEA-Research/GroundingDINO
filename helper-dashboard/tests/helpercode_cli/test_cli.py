@@ -1,4 +1,4 @@
-"""Tests for bin/opencode CLI.
+"""Tests for bin/helpercode CLI.
 
 Exercises the subprocess protocol end-to-end using the heuristic
 provider (no OpenRouter key required).
@@ -12,11 +12,11 @@ import subprocess
 from pathlib import Path
 
 
-_CLI = Path(__file__).resolve().parents[2] / "bin" / "opencode"
+_CLI = Path(__file__).resolve().parents[2] / "bin" / "helpercode"
 
 
 def _run(payload: dict, *, env: dict | None = None) -> tuple[int, dict | None, str]:
-    """Invoke bin/opencode, return (rc, parsed_stdout_or_none, stderr)."""
+    """Invoke bin/helpercode, return (rc, parsed_stdout_or_none, stderr)."""
     proc_env = {
         **os.environ,
         "OPENCODE_LLM_PROVIDER": "heuristic",

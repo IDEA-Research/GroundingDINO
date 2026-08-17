@@ -122,7 +122,7 @@ def start_backend():
         **dotenv,
         "PYTHONPATH": str(BACKEND_DIR),
         "HELPER_DASHBOARD_OPENCODE": "opencode",
-        "HELPER_DASHBOARD_OPENCODE_BIN": str(ROOT / "bin" / "opencode"),
+        "HELPER_DASHBOARD_OPENCODE_BIN": str(ROOT / "bin" / "helpercode"),
         "HELPER_DASHBOARD_OPENCODE_CMD": json.dumps(["{bin}"]),
         "HELPER_DASHBOARD_PRE_OUTPUT_REVIEW": "1",
     }

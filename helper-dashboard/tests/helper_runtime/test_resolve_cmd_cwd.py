@@ -1,9 +1,9 @@
 """Regression test for the _resolve_cmd cwd-independence fix.
 
-Before the fix, `_resolve_cmd` did `os.path.exists("./bin/opencode")`
+Before the fix, `_resolve_cmd` did `os.path.exists("./bin/helpercode")`
 against the caller's cwd. When uvicorn launches from backend/, the
-relative path resolves to backend/bin/opencode (which doesn't exist)
-and the adapter raises `_OpenCodeUnavailable: binary_missing` even
+relative path resolves to backend/bin/helpercode (which doesn't exist)
+and the adapter raises `_HelperCodeUnavailable: binary_missing` even
 though the subprocess itself would run with cwd=_PROJECT_ROOT where
 the binary IS present.
 
@@ -22,7 +22,7 @@ import pytest
 from app.helper.runtime import _PROJECT_ROOT, _resolve_cmd
 
 
-BIN_EXPECTED_ABS = (_PROJECT_ROOT / "bin" / "opencode").resolve()
+BIN_EXPECTED_ABS = (_PROJECT_ROOT / "bin" / "helpercode").resolve()
 
 
 def test_resolve_cmd_finds_bin_when_cwd_is_backend(monkeypatch):
@@ -31,12 +31,12 @@ def test_resolve_cmd_finds_bin_when_cwd_is_backend(monkeypatch):
         f"precondition: {BIN_EXPECTED_ABS} must exist"
     )
 
-    monkeypatch.setenv("HELPER_DASHBOARD_OPENCODE_BIN", "./bin/opencode")
+    monkeypatch.setenv("HELPER_DASHBOARD_OPENCODE_BIN", "./bin/helpercode")
     monkeypatch.setenv("HELPER_DASHBOARD_OPENCODE_CMD", json.dumps(["{bin}"]))
-    # Move to a directory where "./bin/opencode" does NOT exist.
+    # Move to a directory where "./bin/helpercode" does NOT exist.
     monkeypatch.chdir(_PROJECT_ROOT / "backend")
-    assert not (Path.cwd() / "bin" / "opencode").exists(), (
-        "precondition: backend/bin/opencode must not exist"
+    assert not (Path.cwd() / "bin" / "helpercode").exists(), (
+        "precondition: backend/bin/helpercode must not exist"
     )
 
     cmd = _resolve_cmd("helper-chat-agent")
@@ -50,7 +50,7 @@ def test_resolve_cmd_finds_bin_when_cwd_is_backend(monkeypatch):
 
 
 def test_resolve_cmd_finds_bin_when_cwd_is_tmp(monkeypatch, tmp_path):
-    monkeypatch.setenv("HELPER_DASHBOARD_OPENCODE_BIN", "./bin/opencode")
+    monkeypatch.setenv("HELPER_DASHBOARD_OPENCODE_BIN", "./bin/helpercode")
     monkeypatch.setenv("HELPER_DASHBOARD_OPENCODE_CMD", json.dumps(["{bin}"]))
     monkeypatch.chdir(tmp_path)
     cmd = _resolve_cmd("helper-chat-agent")

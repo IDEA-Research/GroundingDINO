@@ -27,9 +27,9 @@ The widget toolkit is a **cache of pre-built widgets** so the agent
 codes less — it is NOT a fence on what can be built. Extend runs by
 default; there is no opt-in flag.
 
-When all safety gates pass, `bin/opencode` enters tool-using mode and
+When all safety gates pass, `bin/helpercode` enters tool-using mode and
 invokes Big guy with the OpenRouter function-calling protocol. The
-tools and their allow-lists are defined in `bin/opencode` under
+tools and their allow-lists are defined in `bin/helpercode` under
 `# === BEGIN __TOOL_USE__ ===`.
 
 See `big-guy-developer-agent.md` § Mode C for the actual agent
@@ -59,7 +59,7 @@ For `widget_type = <X>` (snake_case → `<XCamel>Widget` PascalCase):
     tests/spec_validation/test_extend_<X>.py
 
 Anything else is rejected by `_path_allowed_for_write` in
-`bin/opencode`.
+`bin/helpercode`.
 
 ## Shell allow-list
 

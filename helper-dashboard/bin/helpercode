@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Helper Dashboard OpenCode CLI.
+"""Helper Dashboard helperCode CLI.
 
 Implements the subprocess protocol that backend/app/helper/runtime.py
 expects in `opencode` mode:
@@ -59,7 +59,7 @@ def _on_signal(signum, frame):
         name = f"signal {signum}"
     elapsed = time.monotonic() - _START_TS
     sys.stderr.write(
-        f"[opencode] received {name} after {elapsed:.1f}s  pid={os.getpid()}  "
+        f"[helpercode] received {name} after {elapsed:.1f}s  pid={os.getpid()}  "
         f"ppid={os.getppid()}\n"
     )
     sys.stderr.flush()
@@ -76,7 +76,7 @@ for _sig in (_signal.SIGTERM, _signal.SIGINT, _signal.SIGHUP, _signal.SIGQUIT):
 
 
 _SELF = Path(__file__).resolve()
-# bin/opencode -> helper-dashboard/
+# bin/helpercode -> helper-dashboard/
 _ROOT = _SELF.parent.parent
 _AGENTS_DIR = _ROOT / ".opencode" / "agent"
 
@@ -87,7 +87,7 @@ _AGENTS_DIR = _ROOT / ".opencode" / "agent"
 # prompts so the model has the authoritative widget field shapes and
 # envelope schemas without re-deriving them from prompts (Fix 4 + A).
 #
-# The import is best-effort: bin/opencode runs as a standalone script and
+# The import is best-effort: bin/helpercode runs as a standalone script and
 # may be invoked before backend/ is on sys.path (e.g. inside CI for a
 # CLI smoke test). On import failure we silently fall back to no
 # injection — the agent prompts still work, just without the extra
@@ -241,7 +241,7 @@ def main() -> int:
 
 
 def _err(msg: str) -> None:
-    line = f"[opencode] {msg}"
+    line = f"[helpercode] {msg}"
     sys.stderr.write(line + "\n")
     _append_trace_file(line)
 
@@ -255,7 +255,7 @@ def _dbg(msg: str) -> None:
     if not _debug_enabled():
         return
     elapsed = time.monotonic() - _START_TS
-    line = f"[opencode][debug][{elapsed:.3f}s] {msg}"
+    line = f"[helpercode][debug][{elapsed:.3f}s] {msg}"
     sys.stderr.write(line + "\n")
     sys.stderr.flush()
     _append_trace_file(line)
@@ -1956,7 +1956,7 @@ def _openrouter_run_with_tools(operation: str, agent: str, args: dict) -> dict:
         if not widget_type:
             raise _ProviderError("rescue_extend missing extend.widget_type")
         # Belt-and-braces — Pydantic already validated this regex
-        # backend-side, but bin/opencode is a separate process and
+        # backend-side, but bin/helpercode is a separate process and
         # shouldn't trust args blindly.
         if not re.fullmatch(r"[a-z][a-z0-9_]{2,31}", widget_type):
             raise _ProviderError(

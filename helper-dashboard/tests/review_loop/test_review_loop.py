@@ -18,7 +18,7 @@ from app.helper.review_loop import (
     ReviewOutcome,
     is_enabled,
 )
-from app.helper.runtime import OpenCodeRuntime
+from app.helper.runtime import HelperCodeRuntime
 from app.services.browser_evaluator import BrowserEvaluator
 from app.services.spec_validator import SpecValidator
 from app.specs import DashboardSpec

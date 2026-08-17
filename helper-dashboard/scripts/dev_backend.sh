@@ -49,13 +49,13 @@ export HELPER_DASHBOARD_OPENCODE="$MODE"
 
 # --- 3. Runtime sanity checks ------------------------------------------
 if [ "$MODE" = "opencode" ] || [ "$MODE" = "auto" ]; then
-  BIN="${HELPER_DASHBOARD_OPENCODE_BIN:-./bin/opencode}"
+  BIN="${HELPER_DASHBOARD_OPENCODE_BIN:-./bin/helpercode}"
   if [ ! -x "$BIN" ]; then
-    echo "[dev] OpenCode binary not executable at $BIN" >&2
+    echo "[dev] helperCode binary not executable at $BIN" >&2
     exit 3
   fi
   if [ -z "${OPENROUTER_API_KEY:-}" ] && [ -z "${OPENAI_API_KEY:-}" ]; then
-    echo "[dev] no LLM API key set; bin/opencode will fail unless" \
+    echo "[dev] no LLM API key set; bin/helpercode will fail unless" \
          "OPENCODE_LLM_PROVIDER=heuristic."
   fi
 fi

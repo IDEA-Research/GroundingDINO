@@ -9,7 +9,7 @@ from pathlib import Path
 
 import pytest
 
-from app.helper.runtime import BIG_GUY, HELPER_AGENTS, OpenCodeRuntime, RuntimeError_
+from app.helper.runtime import BIG_GUY, HELPER_AGENTS, HelperCodeRuntime, RuntimeError_
 from app.services.spec_validator import SpecValidationError, SpecValidator
 
 
@@ -21,7 +21,7 @@ def test_big_guy_is_not_a_helper():
 
 
 def test_runtime_rejects_big_guy_as_helper():
-    rt = OpenCodeRuntime()
+    rt = HelperCodeRuntime()
     with pytest.raises(RuntimeError_):
         rt.invoke_helper(BIG_GUY, {"message": "hi"})
 

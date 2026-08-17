@@ -36,7 +36,7 @@ from .extend_runner import ExtendRunner
 from .memory import SessionMemory
 from .retry_loop import AgentValidationRetryLoop, RetryOutcome
 from .review_loop import ReviewLoop, ReviewOutcome, is_enabled as review_enabled
-from .runtime import OpenCodeRuntime, RuntimeError_
+from .runtime import HelperCodeRuntime, RuntimeError_
 from .semantic_contracts import (
     AnyValidPatchContract,
     contract_for_generate,
@@ -53,7 +53,7 @@ _PENDING_SAVE: dict[str, str] = {}
 
 class Orchestrator:
     def __init__(self) -> None:
-        self._runtime = OpenCodeRuntime()
+        self._runtime = HelperCodeRuntime()
         self._memory = SessionMemory()
         self._validator = SpecValidator()
         self._patch_service = PatchService(self._validator)

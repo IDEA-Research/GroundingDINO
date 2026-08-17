@@ -57,7 +57,7 @@ def _camel(widget_type: str) -> str:
 
 def _allowed_paths_for(widget_type: str) -> tuple[Path, ...]:
     """Six absolute paths the extend run is allowed to write — the
-    same list bin/opencode's `_extend_write_allowlist` returns, kept
+    same list bin/helpercode's `_extend_write_allowlist` returns, kept
     in sync via the same conventions (NOT a shared import — the two
     are deliberately independent trust boundaries)."""
     cam = _camel(widget_type)

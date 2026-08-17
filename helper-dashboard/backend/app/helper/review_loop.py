@@ -44,7 +44,7 @@ from ..specs import DashboardSpec, PatchSpec
 from ..specs.developer_ticket import DeveloperTicket
 from .extend_request import ExtendRequest as ParsedExtendRequest
 from .extend_runner import ExtendRunner
-from .runtime import OpenCodeRuntime, RuntimeError_
+from .runtime import HelperCodeRuntime, RuntimeError_
 
 
 HELPER_MAX_ATTEMPTS = 3
@@ -83,7 +83,7 @@ def is_enabled() -> bool:
 class ReviewLoop:
     def __init__(
         self,
-        runtime: OpenCodeRuntime,
+        runtime: HelperCodeRuntime,
         evaluator: BrowserEvaluator | None = None,
         validator: SpecValidator | None = None,
         patch_service: PatchService | None = None,

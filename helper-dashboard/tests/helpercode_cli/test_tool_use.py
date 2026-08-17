@@ -1,4 +1,4 @@
-"""Tests for the M3 tool-using mode in bin/opencode.
+"""Tests for the M3 tool-using mode in bin/helpercode.
 
 The script is loaded as a module so individual helpers (path
 allow-list, tool handlers, loop) can be exercised without spawning a
@@ -22,12 +22,12 @@ from unittest.mock import MagicMock
 import pytest
 
 
-_CLI_PATH = Path(__file__).resolve().parents[2] / "bin" / "opencode"
+_CLI_PATH = Path(__file__).resolve().parents[2] / "bin" / "helpercode"
 
 
 @pytest.fixture(scope="module")
 def opencode():
-    """Import bin/opencode as a Python module.
+    """Import bin/helpercode as a Python module.
 
     The file has no .py suffix, so we use SourceFileLoader directly
     (spec_from_file_location returns None for unknown suffixes).
@@ -426,7 +426,7 @@ class TestToolLoop:
 
 
 # ---------------------------------------------------------------------------
-# bin/opencode-level: rescue_extend in EXPECTED_TYPES / TOOL_USE_OPERATIONS
+# bin/helpercode-level: rescue_extend in EXPECTED_TYPES / TOOL_USE_OPERATIONS
 # ---------------------------------------------------------------------------
 
 

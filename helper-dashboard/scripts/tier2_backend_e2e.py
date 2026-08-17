@@ -24,7 +24,7 @@ Scope:
 
 Runtime:
 - By default runs in `mock` mode with review OFF (fast, deterministic).
-- Set TIER2_LLM=opencode for a real-LLM verification via bin/opencode.
+- Set TIER2_LLM=opencode for a real-LLM verification via bin/helpercode.
 - Set TIER2_REVIEW=1 to exercise the review loop.
 
 Usage:
@@ -74,7 +74,7 @@ def main() -> int:
     os.environ["HELPER_DASHBOARD_OPENCODE"] = mode
     os.environ["HELPER_DASHBOARD_PRE_OUTPUT_REVIEW"] = "1" if review else "0"
     if mode == "opencode":
-        os.environ["HELPER_DASHBOARD_OPENCODE_BIN"] = str(ROOT / "bin" / "opencode")
+        os.environ["HELPER_DASHBOARD_OPENCODE_BIN"] = str(ROOT / "bin" / "helpercode")
         os.environ["HELPER_DASHBOARD_OPENCODE_CMD"] = json.dumps(["{bin}"])
 
     _reset_storage()
