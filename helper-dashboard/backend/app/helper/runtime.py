@@ -384,6 +384,370 @@ class RealHelperCodeRuntime:
         return result
 
 
+# ---------------------------------------------------------------------------
+# DevFix adapter — real OpenCode CLI for `developer_fix` only
+# ---------------------------------------------------------------------------
+#
+# Behind HELPER_DASHBOARD_DEVFIX_RUNTIME=opencode-cli (default stays
+# "helpercode"), the ONE developer operation `developer_fix` is routed
+# to the real OpenCode CLI (1.18.4) instead of bin/helpercode. The run
+# happens inside a detached git worktree (see devfix_worktree.py); on
+# an honest `status: "resolved"` report the changes are copied back
+# through an independent allow-list, all-or-nothing. Everything else
+# (chat ops, rescue paths) stays on the hand-rolled CLI.
+
+from . import devfix_worktree as _devfix_worktree  # noqa: E402
+
+
+_DEVFIX_AGENT = "big-guy-developer-fix"
+_DEVFIX_DEFAULT_BIN = "/home/cluster/.nvm/versions/node/v20.20.2/bin/opencode"
+_DEVFIX_DEFAULT_MODEL = "openrouter/anthropic/claude-opus-4.6"
+_DEVFIX_DEFAULT_TIMEOUT_S = 600.0
+_DEVFIX_DEFAULT_HOME = "/home/cluster"
+_DEVFIX_MESSAGE = (
+    "Operation developer_fix. Read .devfix/payload.json for the "
+    "DeveloperTicket, make the minimal fix within your permissions, run "
+    "focused tests, and end your final message with the DeveloperReport "
+    "fenced json block."
+)
+
+
+def _devfix_mode() -> str:
+    """helpercode (default) | opencode-cli. Unknown values fall back to
+    helpercode (fail-safe: never route to the paid CLI by accident)."""
+    raw = (os.getenv("HELPER_DASHBOARD_DEVFIX_RUNTIME") or "helpercode").strip().lower()
+    if raw not in {"helpercode", "opencode-cli"}:
+        _warn(
+            f"unknown HELPER_DASHBOARD_DEVFIX_RUNTIME {raw!r}; "
+            "using 'helpercode'"
+        )
+        return "helpercode"
+    return raw
+
+
+def _resolve_devfix_bin() -> str:
+    return (
+        os.getenv("HELPER_DASHBOARD_DEVFIX_BIN") or _DEVFIX_DEFAULT_BIN
+    ).strip()
+
+
+def _resolve_devfix_model() -> str:
+    return (
+        os.getenv("HELPER_DASHBOARD_DEVFIX_MODEL") or _DEVFIX_DEFAULT_MODEL
+    ).strip()
+
+
+def _resolve_devfix_timeout() -> float:
+    raw = os.getenv("HELPER_DASHBOARD_DEVFIX_TIMEOUT_SECONDS")
+    if not raw:
+        return _DEVFIX_DEFAULT_TIMEOUT_S
+    try:
+        v = float(raw)
+        return v if v > 0 else _DEVFIX_DEFAULT_TIMEOUT_S
+    except ValueError:
+        return _DEVFIX_DEFAULT_TIMEOUT_S
+
+
+def _devfix_env(bin_path: str) -> dict[str, str]:
+    """Minimal child environment. Deliberately NOT inheriting
+    os.environ — no OPENROUTER_API_KEY (or anything else) leaks; the
+    CLI reads auth from $HOME/.local/share/opencode/auth.json."""
+    home = (
+        os.getenv("HELPER_DASHBOARD_DEVFIX_HOME") or _DEVFIX_DEFAULT_HOME
+    ).strip()
+    path_override = (os.getenv("HELPER_DASHBOARD_DEVFIX_PATH") or "").strip()
+    if path_override:
+        path = path_override
+    else:
+        parts = [
+            os.path.dirname(bin_path),          # nvm bin dir (not on default PATH)
+            os.path.dirname(sys.executable),    # python3 for test commands
+            f"{home}/.local/bin",
+            "/usr/local/bin",
+            "/usr/bin",
+            "/bin",
+        ]
+        seen: set[str] = set()
+        path = ":".join(
+            p for p in parts if p and not (p in seen or seen.add(p))
+        )
+    return {
+        "HOME": home,
+        "PATH": path,
+        "TERM": "dumb",
+        "LANG": "C.UTF-8",
+        "NO_COLOR": "1",
+    }
+
+
+def _devfix_parse_events(stdout: str) -> list[dict[str, Any]]:
+    """`--format json` emits one JSON object per line; non-JSON notice
+    lines may be interleaved — skip anything unparseable."""
+    events: list[dict[str, Any]] = []
+    for line in (stdout or "").splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            obj = json.loads(line)
+        except (json.JSONDecodeError, ValueError):
+            continue
+        if isinstance(obj, dict):
+            events.append(obj)
+    return events
+
+
+def _devfix_extract_report_text(events: list[dict[str, Any]]) -> str | None:
+    """The last "text" event carries the final assistant message (the
+    stream has NO terminal result event)."""
+    text: str | None = None
+    for ev in events:
+        if ev.get("type") != "text":
+            continue
+        part = ev.get("part")
+        if isinstance(part, dict) and isinstance(part.get("text"), str):
+            text = part["text"]
+    return text
+
+
+_DEVFIX_JSON_FENCE = re.compile(r"```json\s*\n(.*?)```", re.DOTALL)
+_DEVFIX_ANY_FENCE = re.compile(r"```[^\n`]*\n(.*?)```", re.DOTALL)
+
+
+def _devfix_extract_fenced_json(text: str) -> str:
+    """Last ```json fence; fallback: last bare ``` fence; fallback:
+    the whole text (caller json.loads-es and classifies)."""
+    matches = _DEVFIX_JSON_FENCE.findall(text)
+    if not matches:
+        matches = _DEVFIX_ANY_FENCE.findall(text)
+    return matches[-1].strip() if matches else text.strip()
+
+
+def _devfix_wrong_agent(events: list[dict[str, Any]]) -> str | None:
+    """Belt-and-braces for the silent subagent-fallback trap: if any
+    event metadata names a different agent, return that name."""
+    for ev in events:
+        part = ev.get("part")
+        candidates: list[Any] = [ev.get("agent")]
+        if isinstance(part, dict):
+            candidates.append(part.get("agent"))
+            meta = part.get("metadata")
+            if isinstance(meta, dict):
+                candidates.append(meta.get("agent"))
+        for cand in candidates:
+            if isinstance(cand, str) and cand and cand != _DEVFIX_AGENT:
+                return cand
+    return None
+
+
+class DevFixOpenCodeCLIRuntime:
+    """Subprocess adapter for the REAL OpenCode CLI, `developer_fix`
+    only.
+
+    Invariants:
+
+    - Only the `developer_fix` operation is accepted.
+    - The CLI runs inside a detached git worktree, never the live tree
+      (cwd + --dir = <worktree>/helper-dashboard).
+    - Agent is pinned to `big-guy-developer-fix` (mode: primary —
+      `run --agent` on a subagent silently falls back to build).
+    - NEVER passes --auto: headless permission "ask" auto-rejects,
+      which is the fail-closed behavior we want.
+    - Child env is minimal and explicit — no os.environ inheritance.
+    - Changes reach the main tree only via devfix_worktree.copy_back's
+      independent all-or-nothing allow-list, and only on an honest
+      `status: "resolved"` report.
+    - Raises the same exception types as RealHelperCodeRuntime so mode
+      dispatch and auto_fix keep working unchanged.
+    """
+
+    def invoke(self, operation: str, agent: str, args: dict[str, Any]) -> dict[str, Any]:
+        if operation != "developer_fix":
+            raise RuntimeError_(
+                f"DevFixOpenCodeCLIRuntime only handles 'developer_fix', "
+                f"got {operation!r}"
+            )
+        if agent != OPERATIONS[operation]["agent"]:
+            raise RuntimeError_(
+                f"operation/agent mismatch: {operation!r} -> "
+                f"{OPERATIONS[operation]['agent']!r} but caller passed {agent!r}"
+            )
+
+        bin_path = _resolve_devfix_bin()
+        if not os.path.isfile(bin_path) or not os.access(bin_path, os.X_OK):
+            raise _HelperCodeUnavailable(
+                f"OpenCode CLI not found or not executable: {bin_path}",
+                kind="binary_missing",
+            )
+
+        # Opportunistic cleanup of leftovers from crashed runs.
+        try:
+            _devfix_worktree.sweep_stale()
+        except Exception:  # pragma: no cover - defensive
+            pass
+
+        payload = {
+            "operation": operation,
+            "agent": agent,
+            "command": str(OPERATIONS[operation].get("command") or ""),
+            "args": args,
+        }
+        ticket_id = str(args.get("ticket_id") or "manual")
+
+        try:
+            handle = _devfix_worktree.create(ticket_id, payload=payload)
+        except _devfix_worktree.WorktreeError as exc:
+            raise _HelperCodeUnavailable(
+                f"worktree creation failed: {exc}", kind="binary_missing",
+            ) from exc
+
+        try:
+            return self._run_in_worktree(handle, operation)
+        finally:
+            try:
+                _devfix_worktree.remove(handle)
+            except Exception:  # pragma: no cover - defensive
+                _warn(f"devfix: failed to remove worktree {handle.worktree_root}")
+
+    # -- internals ---------------------------------------------------
+
+    def _run_in_worktree(
+        self, handle: "_devfix_worktree.WorktreeHandle", operation: str,
+    ) -> dict[str, Any]:
+        import signal
+
+        bin_path = _resolve_devfix_bin()
+        model = _resolve_devfix_model()
+        timeout = _resolve_devfix_timeout()
+        project_dir = str(handle.project_dir)
+
+        argv = [
+            bin_path, "run",
+            "--agent", _DEVFIX_AGENT,
+            "--format", "json",
+            "-m", model,
+            "--dir", project_dir,
+            "--print-logs", "--log-level", "WARN",
+            _DEVFIX_MESSAGE,
+        ]
+
+        t0 = time.monotonic()
+        _trace(
+            f"devfix:start ticket={handle.ticket_id!r} model={model!r} "
+            f"timeout={timeout}s wt={project_dir!r}"
+        )
+
+        try:
+            proc = subprocess.Popen(  # noqa: S603 - shell=False, fixed argv
+                argv,
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                start_new_session=True,
+                cwd=project_dir,
+                env=_devfix_env(bin_path),
+            )
+        except FileNotFoundError as exc:
+            raise _HelperCodeUnavailable(str(exc), kind="binary_missing") from exc
+
+        try:
+            stdout, stderr = proc.communicate(timeout=timeout)
+        except subprocess.TimeoutExpired:
+            try:
+                os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+            except Exception:  # pragma: no cover - already-dead race
+                pass
+            try:
+                proc.communicate(timeout=10)
+            except Exception:  # pragma: no cover - defensive
+                pass
+            raise _HelperCodeUnavailable(
+                f"timeout after {timeout}s", kind="timeout",
+            )
+
+        stdout = stdout or ""
+        stderr = (stderr or "").strip()
+        elapsed = time.monotonic() - t0
+        events = _devfix_parse_events(stdout)
+        _trace(
+            f"devfix:done rc={proc.returncode} elapsed={elapsed:.2f}s "
+            f"events={len(events)} stderr_len={len(stderr)}"
+        )
+
+        if proc.returncode != 0:
+            error_texts = " ".join(
+                json.dumps(ev) for ev in events if ev.get("type") == "error"
+            )
+            blob = f"{stderr} {error_texts}".lower()
+            kind = "nonzero_exit"
+            if ("credits exhausted" in blob or "http 402" in blob
+                    or "payment required" in blob or "status 402" in blob):
+                kind = "credits_exhausted"
+            elif ("rejected the api key" in blob or "http 401" in blob
+                    or "unauthorized" in blob or "invalid api key" in blob):
+                kind = "bad_api_key"
+            elif ("rate-limited" in blob or "rate limit" in blob
+                    or "http 429" in blob or "status 429" in blob):
+                kind = "rate_limited"
+            raise _HelperCodeInvalidOutput(
+                f"opencode exit {proc.returncode}",
+                kind=kind,
+                stderr=stderr,
+                stdout=stdout,
+            )
+
+        text = _devfix_extract_report_text(events)
+        if text is None:
+            raise _HelperCodeInvalidOutput(
+                "no text event in opencode output",
+                kind="empty_output",
+                stderr=stderr,
+                stdout=stdout,
+            )
+
+        wrong_agent = _devfix_wrong_agent(events)
+        if wrong_agent is not None:
+            raise _HelperCodeInvalidOutput(
+                f"opencode ran agent {wrong_agent!r} instead of "
+                f"{_DEVFIX_AGENT!r} — likely silent subagent fallback "
+                "(the agent file must be mode: primary)",
+                kind="missing_type",
+                stderr=stderr,
+                stdout=stdout,
+            )
+
+        candidate = _devfix_extract_fenced_json(text)
+        try:
+            report = json.loads(candidate)
+        except json.JSONDecodeError as exc:
+            raise _HelperCodeInvalidOutput(
+                f"no parseable DeveloperReport JSON in final message: {exc.msg}",
+                kind="non_json",
+                stdout=text,
+                stderr=stderr,
+            ) from exc
+
+        if not isinstance(report, dict) or "type" not in report:
+            raise _HelperCodeInvalidOutput(
+                "DeveloperReport is not a typed JSON object",
+                kind="missing_type",
+                stdout=text,
+                stderr=stderr,
+            )
+
+        if report.get("status") == "resolved":
+            try:
+                applied = _devfix_worktree.copy_back(handle)
+            except _devfix_worktree.CopyBackViolation as exc:
+                raise RuntimeError_(str(exc)) from exc
+            _trace(f"devfix:copied_back {applied!r}")
+        # Non-resolved statuses: nothing is copied at all.
+
+        report["runtime_used"] = "opencode"
+        return report
+
+
 def _resolve_cmd(agent: str) -> list[str] | None:
     bin_name = os.getenv("HELPER_DASHBOARD_HELPERCODE_BIN", "./bin/helpercode")
     raw_template = os.getenv("HELPER_DASHBOARD_HELPERCODE_CMD")
@@ -466,11 +830,21 @@ class HelperCodeRuntime:
     def __init__(self) -> None:
         self._mock = MockHelperRuntime()
         self._real = RealHelperCodeRuntime()
+        self._devfix = DevFixOpenCodeCLIRuntime()
 
     # --- mode selection ---------------------------------------------
     @staticmethod
     def _mode() -> str:
         return (os.getenv("HELPER_DASHBOARD_HELPERCODE") or "mock").strip().lower()
+
+    def _backend_for(self, operation: str):
+        """Real-CLI selector for the non-mock branches: developer_fix
+        goes to the real OpenCode CLI iff the operator flipped
+        HELPER_DASHBOARD_DEVFIX_RUNTIME=opencode-cli; everything else
+        (and the default) stays on bin/helpercode."""
+        if operation in DEVELOPER_OPERATIONS and _devfix_mode() == "opencode-cli":
+            return self._devfix
+        return self._real
 
     # --- primary API ------------------------------------------------
     def invoke_operation(
@@ -497,7 +871,7 @@ class HelperCodeRuntime:
 
         elif mode == "helpercode":
             try:
-                result = self._real.invoke(operation, agent, args)
+                result = self._backend_for(operation).invoke(operation, agent, args)
             except (_HelperCodeUnavailable, _HelperCodeInvalidOutput) as exc:
                 # Strict by design — no silent fallback.
                 raise RuntimeError_(
@@ -507,7 +881,7 @@ class HelperCodeRuntime:
 
         elif mode == "auto":
             try:
-                result = self._real.invoke(operation, agent, args)
+                result = self._backend_for(operation).invoke(operation, agent, args)
                 result.setdefault("runtime_used", "helpercode")
             except (_HelperCodeUnavailable, _HelperCodeInvalidOutput) as exc:
                 reason = f"{exc.kind}:{exc}"

@@ -26,11 +26,26 @@ def test_runtime_rejects_big_guy_as_helper():
         rt.invoke_helper(BIG_GUY, {"message": "hi"})
 
 
+def _agent_frontmatter(name: str) -> str:
+    text = (REPO_ROOT / ".opencode" / "agent" / f"{name}.md").read_text()
+    assert text.startswith("---"), f"{name}.md missing frontmatter"
+    _, frontmatter, _ = text.split("---", 2)
+    return frontmatter
+
+
 def test_opencode_json_marks_big_guy_internal():
+    """517ec41 moved agent permissions from opencode.json's
+    non-standard keys into official .opencode/agent/*.md frontmatter;
+    opencode.json is now minimal. The INVARIANT is unchanged: Big guy
+    is internal (hidden) and the only agent with edit access; Helper
+    agents can never edit or shell."""
     cfg = json.loads((REPO_ROOT / "opencode.json").read_text())
-    big = cfg["agents"]["big-guy-developer-agent"]
-    assert big.get("internal") is True
-    assert big["permissions"]["edit"] is True
+    assert "agents" not in cfg  # the old non-standard key must not return
+
+    big = _agent_frontmatter("big-guy-developer-agent")
+    assert "hidden: true" in big
+    assert "edit: allow" in big
+
     for name in (
         "helper-chat-agent",
         "dashboard-spec-agent",
@@ -38,15 +53,29 @@ def test_opencode_json_marks_big_guy_internal():
         "prometheus-agent",
         "browser-eval-agent",
     ):
-        perms = cfg["agents"][name]["permissions"]
-        assert perms["edit"] is False
-        assert perms["shell"] is False
+        fm = _agent_frontmatter(name)
+        assert "edit: deny" in fm, f"{name}: edit must be deny"
+        assert "bash: deny" in fm, f"{name}: bash must be deny"
+        assert "edit: allow" not in fm
+        assert "bash: allow" not in fm
 
 
 def test_developer_fix_is_developer_only():
-    cfg = json.loads((REPO_ROOT / "opencode.json").read_text())
-    assert "developer-fix" in cfg["boundaries"]["developer_only"]
-    assert "developer-fix" not in cfg["boundaries"]["user_can_invoke"]
+    """The command boundary lives in .opencode/PROJECT.md prose and is
+    ENFORCED by the runtime gate: developer_fix is never user-facing
+    and raises without developer=True."""
+    from app.helper.runtime import DEVELOPER_OPERATIONS, USER_OPERATIONS
+
+    assert "developer_fix" in DEVELOPER_OPERATIONS
+    assert "developer_fix" not in USER_OPERATIONS
+
+    project = (REPO_ROOT / ".opencode" / "PROJECT.md").read_text()
+    assert "Developer-only: developer-fix" in project
+
+    rt = HelperCodeRuntime()
+    with pytest.raises(RuntimeError_) as exc:
+        rt.invoke_operation("developer_fix", {"instruction": "x"})
+    assert "developer-only" in str(exc.value)
 
 
 def test_dashboardspec_rejects_raw_html():

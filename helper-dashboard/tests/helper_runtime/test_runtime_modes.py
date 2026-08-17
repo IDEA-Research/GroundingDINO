@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import stat
 import textwrap
 from pathlib import Path
@@ -49,6 +50,10 @@ def _clear_runtime_env(monkeypatch):
         "HELPER_DASHBOARD_HELPERCODE_BIN",
         "HELPER_DASHBOARD_HELPERCODE_CMD",
         "HELPER_DASHBOARD_HELPERCODE_TIMEOUT_SECONDS",
+        "HELPER_DASHBOARD_DEVFIX_RUNTIME",
+        "HELPER_DASHBOARD_DEVFIX_BIN",
+        "HELPER_DASHBOARD_DEVFIX_MODEL",
+        "HELPER_DASHBOARD_DEVFIX_TIMEOUT_SECONDS",
     ):
         monkeypatch.delenv(k, raising=False)
 
@@ -597,38 +602,220 @@ def test_invalid_patch_spec_payload_rejected(monkeypatch, tmp_path):
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
+def _frontmatter(path: Path) -> str:
+    text = path.read_text()
+    assert text.startswith("---"), f"{path.name} missing frontmatter"
+    _, frontmatter, _ = text.split("---", 2)
+    return frontmatter
+
+
 def test_helper_agent_md_configs_lock_permissions():
     """Primary enforcement of Helper permissions is the agent .md
-    frontmatter (and opencode.json). This test reads each Helper
-    agent file and asserts edit/shell/webfetch are all false."""
+    frontmatter, in the official OpenCode schema (since 517ec41):
+    `permission.edit: deny` and `permission.bash: deny`. The INTENT is
+    unchanged — user-facing agents can never edit code or run shell."""
     for agent_name in HELPER_AGENTS:
         path = _REPO_ROOT / ".opencode" / "agent" / f"{agent_name}.md"
-        text = path.read_text()
-        # The frontmatter lives between the first two `---` fences.
-        assert text.startswith("---"), f"{agent_name}.md missing frontmatter"
-        _, frontmatter, _ = text.split("---", 2)
-        for key in ("edit", "shell", "webfetch"):
-            # Accept either `edit: false` or `  edit: false` indentation.
-            assert (
-                f"{key}: false" in frontmatter
-            ), f"{agent_name}: expected `{key}: false` in frontmatter"
+        frontmatter = _frontmatter(path)
+        assert "permission:" in frontmatter, (
+            f"{agent_name}: expected a `permission:` block"
+        )
+        for key in ("edit", "bash"):
+            assert re.search(rf"^\s+{key}:\s*deny\s*$", frontmatter, re.M), (
+                f"{agent_name}: expected `{key}: deny` in frontmatter"
+            )
+            assert f"{key}: allow" not in frontmatter, (
+                f"{agent_name}: `{key}: allow` must never appear"
+            )
 
 
 def test_big_guy_md_marks_internal_only():
-    path = _REPO_ROOT / ".opencode" / "agent" / f"{BIG_GUY}.md"
-    text = path.read_text()
-    assert "internal: true" in text
-    # Big guy is allowed to have edit/shell — but he's not a Helper.
-    assert "edit: true" in text
-    assert "shell: true" in text
+    """Big guy (hand-rolled CLI flavor) is a hidden subagent with edit
+    access — official schema keys since 517ec41 (`hidden: true`
+    replaced the non-standard `internal: true`)."""
+    frontmatter = _frontmatter(_REPO_ROOT / ".opencode" / "agent" / f"{BIG_GUY}.md")
+    assert "hidden: true" in frontmatter
+    assert "mode: subagent" in frontmatter
+    # Big guy is allowed edit (+ gated bash) — but he's not a Helper.
+    assert "edit: allow" in frontmatter
+    assert re.search(r"^\s+bash:\s*(ask|allow)\s*$", frontmatter, re.M)
+
+
+def test_big_guy_devfix_md_is_primary_with_default_deny():
+    """The real-OpenCode devfix agent MUST be `mode: primary`
+    (`run --agent` on a subagent silently falls back to the default
+    build agent) and its edit/bash pattern records MUST lead with the
+    catch-all deny (matching is last-match-wins, so `"*": deny` first
+    means everything not explicitly allowed is denied)."""
+    frontmatter = _frontmatter(
+        _REPO_ROOT / ".opencode" / "agent" / "big-guy-developer-fix.md"
+    )
+    assert re.search(r"^mode:\s*primary\s*$", frontmatter, re.M)
+    assert "mode: subagent" not in frontmatter
+    assert "hidden: true" in frontmatter
+    lines = [ln.rstrip() for ln in frontmatter.splitlines()]
+    for record in ("edit", "bash"):
+        idx = lines.index(f"  {record}:")
+        assert lines[idx + 1].strip() == '"*": deny', (
+            f"permission.{record} must have the catch-all deny FIRST, "
+            f"got {lines[idx + 1]!r}"
+        )
+    # Headless safety net: webfetch/websearch/external_directory/task
+    # stay hard-denied for this agent.
+    for key in ("webfetch", "websearch", "external_directory", "task"):
+        assert re.search(rf"^\s+{key}:\s*deny\s*$", frontmatter, re.M), (
+            f"expected `{key}: deny`"
+        )
 
 
 def test_opencode_json_locks_helper_permissions_and_gates_developer_fix():
+    """Since 517ec41, opencode.json is minimal ($schema + instructions);
+    per-agent permissions live in .opencode/agent/*.md and the command
+    boundary is prose in .opencode/PROJECT.md + the runtime gate. This
+    locks the layout so the old non-standard keys never come back."""
     cfg = json.loads((_REPO_ROOT / "opencode.json").read_text())
-    for agent_name in HELPER_AGENTS:
-        perms = cfg["agents"][agent_name]["permissions"]
-        assert perms["edit"] is False
-        assert perms["shell"] is False
-    assert cfg["agents"][BIG_GUY].get("internal") is True
-    assert "developer-fix" in cfg["boundaries"]["developer_only"]
-    assert "developer-fix" not in cfg["boundaries"]["user_can_invoke"]
+    assert cfg.get("$schema") == "https://opencode.ai/config.json"
+    assert ".opencode/PROJECT.md" in cfg.get("instructions", [])
+    assert "agents" not in cfg
+    assert "boundaries" not in cfg
+
+    project = (_REPO_ROOT / ".opencode" / "PROJECT.md").read_text()
+    assert "Developer-only: developer-fix" in project
+
+    # The developer gate itself is enforced in the runtime.
+    assert "developer_fix" in DEVELOPER_OPERATIONS
+    rt = HelperCodeRuntime()
+    with pytest.raises(RuntimeError_) as exc:
+        rt.invoke_operation("developer_fix", {"instruction": "x"})
+    assert "developer-only" in str(exc.value)
+
+
+# ---------------------------------------------------------------------------
+# DevFix routing: HELPER_DASHBOARD_DEVFIX_RUNTIME switches ONLY
+# developer_fix between bin/helpercode and the real OpenCode CLI
+# ---------------------------------------------------------------------------
+
+
+_DEVFIX_SENTINEL = {
+    "type": "DeveloperReport",
+    "report_id": "sentinel",
+    "status": "rejected",
+    "summary": "sentinel report from the devfix runtime stub",
+    "runtime_used": "opencode",
+}
+
+
+def test_devfix_routing_opencode_cli_switch(monkeypatch, tmp_path):
+    """With HELPER_DASHBOARD_DEVFIX_RUNTIME=opencode-cli, developer_fix
+    goes to the DevFix runtime while chat ops still hit _real."""
+    _clear_runtime_env(monkeypatch)
+    monkeypatch.setenv("HELPER_DASHBOARD_DEVFIX_RUNTIME", "opencode-cli")
+    stub = _write_stub(
+        tmp_path / "helpercode",
+        'import json; print(json.dumps({"type": "UserResponse", "message": "hi"}))',
+    )
+    _configure_stub(monkeypatch, stub, mode="helpercode")
+
+    rt = HelperCodeRuntime()
+    devfix_calls: list[tuple[str, str]] = []
+
+    def fake_devfix_invoke(operation, agent, args):
+        devfix_calls.append((operation, agent))
+        return dict(_DEVFIX_SENTINEL)
+
+    monkeypatch.setattr(rt._devfix, "invoke", fake_devfix_invoke)
+
+    out = rt.invoke_operation(
+        "developer_fix", {"instruction": "fix it"}, developer=True,
+    )
+    assert out["runtime_used"] == "opencode"
+    assert out["report_id"] == "sentinel"
+    assert devfix_calls == [("developer_fix", "big-guy-developer-agent")]
+
+    # Chat op still goes through the hand-rolled CLI stub.
+    chat = rt.invoke_operation("user_message", {"message": "hi"})
+    assert chat["runtime_used"] == "helpercode"
+    assert devfix_calls == [("developer_fix", "big-guy-developer-agent")]
+
+
+def test_devfix_routing_default_stays_on_helpercode(monkeypatch, tmp_path):
+    """With default env (no HELPER_DASHBOARD_DEVFIX_RUNTIME), the old
+    behavior is byte-identical: developer_fix hits _real."""
+    _clear_runtime_env(monkeypatch)
+    stub = _write_stub(
+        tmp_path / "helpercode",
+        textwrap.dedent(
+            """
+            import json
+            print(json.dumps({
+                "type": "DeveloperReport",
+                "report_id": "from-real",
+                "status": "rejected",
+                "summary": "hand-rolled CLI answered",
+            }))
+            """
+        ),
+    )
+    _configure_stub(monkeypatch, stub, mode="helpercode")
+
+    rt = HelperCodeRuntime()
+
+    def _boom(operation, agent, args):  # pragma: no cover - must not run
+        raise AssertionError("devfix runtime must not be used by default")
+
+    monkeypatch.setattr(rt._devfix, "invoke", _boom)
+
+    out = rt.invoke_operation(
+        "developer_fix", {"instruction": "fix it"}, developer=True,
+    )
+    assert out["report_id"] == "from-real"
+    assert out["runtime_used"] == "helpercode"
+
+
+def test_devfix_routing_unknown_value_falls_back_to_helpercode(monkeypatch, tmp_path):
+    """A typo'd switch value must fail safe (helpercode), never route
+    to the paid CLI."""
+    _clear_runtime_env(monkeypatch)
+    monkeypatch.setenv("HELPER_DASHBOARD_DEVFIX_RUNTIME", "opencode")  # wrong value
+    stub = _write_stub(
+        tmp_path / "helpercode",
+        textwrap.dedent(
+            """
+            import json
+            print(json.dumps({
+                "type": "DeveloperReport",
+                "report_id": "from-real",
+                "status": "rejected",
+                "summary": "hand-rolled CLI answered",
+            }))
+            """
+        ),
+    )
+    _configure_stub(monkeypatch, stub, mode="helpercode")
+    rt = HelperCodeRuntime()
+
+    def _boom(operation, agent, args):  # pragma: no cover - must not run
+        raise AssertionError("unknown switch value must not reach devfix")
+
+    monkeypatch.setattr(rt._devfix, "invoke", _boom)
+    out = rt.invoke_operation(
+        "developer_fix", {"instruction": "fix it"}, developer=True,
+    )
+    assert out["runtime_used"] == "helpercode"
+
+
+def test_devfix_routing_mock_mode_ignores_switch(monkeypatch):
+    """mock mode stays fully offline even with the switch flipped."""
+    _clear_runtime_env(monkeypatch)
+    monkeypatch.setenv("HELPER_DASHBOARD_HELPERCODE", "mock")
+    monkeypatch.setenv("HELPER_DASHBOARD_DEVFIX_RUNTIME", "opencode-cli")
+    rt = HelperCodeRuntime()
+
+    def _boom(operation, agent, args):  # pragma: no cover - must not run
+        raise AssertionError("mock mode must never reach devfix")
+
+    monkeypatch.setattr(rt._devfix, "invoke", _boom)
+    out = rt.invoke_operation(
+        "developer_fix", {"instruction": "fix it"}, developer=True,
+    )
+    assert out["runtime_used"] == "mock"
