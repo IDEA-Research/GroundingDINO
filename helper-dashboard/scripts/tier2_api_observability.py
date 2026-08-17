@@ -49,13 +49,13 @@ def fmt(ok: bool) -> str:
 
 def main() -> int:
     mode = os.environ.get("TIER2_LLM", "mock").strip().lower()
-    os.environ["HELPER_DASHBOARD_OPENCODE"] = mode
+    os.environ["HELPER_DASHBOARD_HELPERCODE"] = mode
     os.environ["HELPER_DASHBOARD_PRE_OUTPUT_REVIEW"] = "0"
     if mode == "opencode":
-        os.environ["HELPER_DASHBOARD_OPENCODE_BIN"] = str(
+        os.environ["HELPER_DASHBOARD_HELPERCODE_BIN"] = str(
             ROOT / "bin" / "helpercode"
         )
-        os.environ["HELPER_DASHBOARD_OPENCODE_CMD"] = json.dumps(["{bin}"])
+        os.environ["HELPER_DASHBOARD_HELPERCODE_CMD"] = json.dumps(["{bin}"])
 
     _reset_storage()
 

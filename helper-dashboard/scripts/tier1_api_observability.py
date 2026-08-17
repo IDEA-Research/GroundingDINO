@@ -22,7 +22,7 @@ Usage:
     cd helper-dashboard
     set -a; source .env; set +a
     python3 scripts/tier1_api_observability.py
-    OPENCODE_LLM_PROVIDER=heuristic python3 scripts/tier1_api_observability.py
+    HELPERCODE_LLM_PROVIDER=heuristic python3 scripts/tier1_api_observability.py
 
 Exit code: 0 if every check passes (possibly with retry WARNs);
            1 otherwise.
@@ -40,7 +40,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 BIN = Path(os.environ.get(
-    "HELPER_DASHBOARD_OPENCODE_BIN", str(ROOT / "bin" / "helpercode")
+    "HELPER_DASHBOARD_HELPERCODE_BIN", str(ROOT / "bin" / "helpercode")
 ))
 PER_CALL_TIMEOUT = int(os.environ.get("TIER1_TIMEOUT", "180"))
 
@@ -103,7 +103,7 @@ def main() -> int:
     )
 
     max_attempts = resolve_max_attempts()
-    provider = os.environ.get("OPENCODE_LLM_PROVIDER", "openrouter")
+    provider = os.environ.get("HELPERCODE_LLM_PROVIDER", "openrouter")
 
     print("Tier 1 — API observability scenario")
     print(f"  bin:          {BIN}")

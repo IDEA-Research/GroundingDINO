@@ -19,7 +19,7 @@ def _run(payload: dict, *, env: dict | None = None) -> tuple[int, dict | None, s
     """Invoke bin/helpercode, return (rc, parsed_stdout_or_none, stderr)."""
     proc_env = {
         **os.environ,
-        "OPENCODE_LLM_PROVIDER": "heuristic",
+        "HELPERCODE_LLM_PROVIDER": "heuristic",
     }
     if env:
         proc_env.update(env)
@@ -213,7 +213,7 @@ def test_cli_rejects_missing_api_key_in_openrouter_mode(tmp_path):
             "args": {"message": "hi"},
         },
         env={
-            "OPENCODE_LLM_PROVIDER": "openrouter",
+            "HELPERCODE_LLM_PROVIDER": "openrouter",
             "OPENROUTER_API_KEY": "",
         },
     )

@@ -7,7 +7,7 @@ and the adapter raises `_HelperCodeUnavailable: binary_missing` even
 though the subprocess itself would run with cwd=_PROJECT_ROOT where
 the binary IS present.
 
-After the fix: relative paths in HELPER_DASHBOARD_OPENCODE_BIN are
+After the fix: relative paths in HELPER_DASHBOARD_HELPERCODE_BIN are
 resolved against _PROJECT_ROOT regardless of the caller's cwd.
 """
 
@@ -31,8 +31,8 @@ def test_resolve_cmd_finds_bin_when_cwd_is_backend(monkeypatch):
         f"precondition: {BIN_EXPECTED_ABS} must exist"
     )
 
-    monkeypatch.setenv("HELPER_DASHBOARD_OPENCODE_BIN", "./bin/helpercode")
-    monkeypatch.setenv("HELPER_DASHBOARD_OPENCODE_CMD", json.dumps(["{bin}"]))
+    monkeypatch.setenv("HELPER_DASHBOARD_HELPERCODE_BIN", "./bin/helpercode")
+    monkeypatch.setenv("HELPER_DASHBOARD_HELPERCODE_CMD", json.dumps(["{bin}"]))
     # Move to a directory where "./bin/helpercode" does NOT exist.
     monkeypatch.chdir(_PROJECT_ROOT / "backend")
     assert not (Path.cwd() / "bin" / "helpercode").exists(), (
@@ -50,8 +50,8 @@ def test_resolve_cmd_finds_bin_when_cwd_is_backend(monkeypatch):
 
 
 def test_resolve_cmd_finds_bin_when_cwd_is_tmp(monkeypatch, tmp_path):
-    monkeypatch.setenv("HELPER_DASHBOARD_OPENCODE_BIN", "./bin/helpercode")
-    monkeypatch.setenv("HELPER_DASHBOARD_OPENCODE_CMD", json.dumps(["{bin}"]))
+    monkeypatch.setenv("HELPER_DASHBOARD_HELPERCODE_BIN", "./bin/helpercode")
+    monkeypatch.setenv("HELPER_DASHBOARD_HELPERCODE_CMD", json.dumps(["{bin}"]))
     monkeypatch.chdir(tmp_path)
     cmd = _resolve_cmd("helper-chat-agent")
     assert cmd is not None
@@ -63,9 +63,9 @@ def test_resolve_cmd_rejects_missing_relative_bin(monkeypatch, tmp_path):
     still return None — we're not loosening validation, we're just
     resolving the path against the right root."""
     monkeypatch.setenv(
-        "HELPER_DASHBOARD_OPENCODE_BIN", "./bin/nonexistent-xyz",
+        "HELPER_DASHBOARD_HELPERCODE_BIN", "./bin/nonexistent-xyz",
     )
-    monkeypatch.setenv("HELPER_DASHBOARD_OPENCODE_CMD", json.dumps(["{bin}"]))
+    monkeypatch.setenv("HELPER_DASHBOARD_HELPERCODE_CMD", json.dumps(["{bin}"]))
     monkeypatch.chdir(tmp_path)
     cmd = _resolve_cmd("helper-chat-agent")
     assert cmd is None
@@ -74,9 +74,9 @@ def test_resolve_cmd_rejects_missing_relative_bin(monkeypatch, tmp_path):
 def test_resolve_cmd_accepts_absolute_bin(monkeypatch, tmp_path):
     """Absolute paths should still work unchanged."""
     monkeypatch.setenv(
-        "HELPER_DASHBOARD_OPENCODE_BIN", str(BIN_EXPECTED_ABS),
+        "HELPER_DASHBOARD_HELPERCODE_BIN", str(BIN_EXPECTED_ABS),
     )
-    monkeypatch.setenv("HELPER_DASHBOARD_OPENCODE_CMD", json.dumps(["{bin}"]))
+    monkeypatch.setenv("HELPER_DASHBOARD_HELPERCODE_CMD", json.dumps(["{bin}"]))
     monkeypatch.chdir(tmp_path)
     cmd = _resolve_cmd("helper-chat-agent")
     assert cmd is not None
@@ -89,11 +89,11 @@ def test_resolve_cmd_bare_name_uses_path(monkeypatch, tmp_path):
     stub = tmp_path / "fake-opencode-test"
     stub.write_text("#!/bin/sh\nexit 0\n")
     stub.chmod(0o755)
-    monkeypatch.setenv("HELPER_DASHBOARD_OPENCODE_BIN", "fake-opencode-test")
+    monkeypatch.setenv("HELPER_DASHBOARD_HELPERCODE_BIN", "fake-opencode-test")
     monkeypatch.setenv(
         "PATH", f"{tmp_path}:{os.environ.get('PATH', '')}"
     )
-    monkeypatch.setenv("HELPER_DASHBOARD_OPENCODE_CMD", json.dumps(["{bin}"]))
+    monkeypatch.setenv("HELPER_DASHBOARD_HELPERCODE_CMD", json.dumps(["{bin}"]))
     cmd = _resolve_cmd("helper-chat-agent")
     assert cmd is not None
     assert cmd[0] == "fake-opencode-test"  # unresolved; shutil.which confirmed it

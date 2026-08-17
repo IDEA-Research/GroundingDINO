@@ -124,7 +124,7 @@ def _audit_lines(audit_dir: Path) -> list[dict]:
 
 def test_disabled_in_mock_mode(monkeypatch):
     monkeypatch.delenv("HELPER_DASHBOARD_AUTO_FIX", raising=False)
-    monkeypatch.delenv("HELPER_DASHBOARD_OPENCODE", raising=False)
+    monkeypatch.delenv("HELPER_DASHBOARD_HELPERCODE", raising=False)
     assert auto_fix.is_enabled() is False
     assert auto_fix.schedule_auto_fix(
         _ticket(), runtime=_Runtime(), store=_Store(),
@@ -133,12 +133,12 @@ def test_disabled_in_mock_mode(monkeypatch):
 
 def test_enabled_in_opencode_mode(monkeypatch):
     monkeypatch.delenv("HELPER_DASHBOARD_AUTO_FIX", raising=False)
-    monkeypatch.setenv("HELPER_DASHBOARD_OPENCODE", "opencode")
+    monkeypatch.setenv("HELPER_DASHBOARD_HELPERCODE", "opencode")
     assert auto_fix.is_enabled() is True
 
 
 def test_kill_switch_overrides_mode(monkeypatch):
-    monkeypatch.setenv("HELPER_DASHBOARD_OPENCODE", "opencode")
+    monkeypatch.setenv("HELPER_DASHBOARD_HELPERCODE", "opencode")
     monkeypatch.setenv("HELPER_DASHBOARD_AUTO_FIX", "0")
     assert auto_fix.is_enabled() is False
 

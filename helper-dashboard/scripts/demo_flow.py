@@ -267,9 +267,9 @@ def run_opencode_mode(tmpdir: Path):
 
     # Activate opencode mode. The real OpenCode CLI isn't installed in
     # this sandbox, so we configure the adapter to use our stub.
-    os.environ["HELPER_DASHBOARD_OPENCODE"] = "opencode"
-    os.environ["HELPER_DASHBOARD_OPENCODE_BIN"] = str(stub)
-    os.environ["HELPER_DASHBOARD_OPENCODE_CMD"] = json.dumps(["{bin}"])
+    os.environ["HELPER_DASHBOARD_HELPERCODE"] = "opencode"
+    os.environ["HELPER_DASHBOARD_HELPERCODE_BIN"] = str(stub)
+    os.environ["HELPER_DASHBOARD_HELPERCODE_CMD"] = json.dumps(["{bin}"])
     # Fresh orchestrator so it reads the new env.
     from importlib import reload
     import app.helper.orchestrator as orch_mod
@@ -308,7 +308,7 @@ def run_opencode_mode(tmpdir: Path):
     )
 
     sub("Failure case: opencode mode must not silently fall back")
-    os.environ["HELPER_DASHBOARD_OPENCODE_BIN"] = "/nonexistent/no-such-binary"
+    os.environ["HELPER_DASHBOARD_HELPERCODE_BIN"] = "/nonexistent/no-such-binary"
     reload(orch_mod)
     orch2 = orch_mod.Orchestrator()
     r = orch2.handle_user_message(
@@ -331,9 +331,9 @@ def run_auto_mode(tmpdir: Path):
     bad_stub = tmpdir / "opencode-bad"
     write_stub(bad_stub, 'print("this is not json")')
 
-    os.environ["HELPER_DASHBOARD_OPENCODE"] = "auto"
-    os.environ["HELPER_DASHBOARD_OPENCODE_BIN"] = str(bad_stub)
-    os.environ["HELPER_DASHBOARD_OPENCODE_CMD"] = json.dumps(["{bin}"])
+    os.environ["HELPER_DASHBOARD_HELPERCODE"] = "auto"
+    os.environ["HELPER_DASHBOARD_HELPERCODE_BIN"] = str(bad_stub)
+    os.environ["HELPER_DASHBOARD_HELPERCODE_CMD"] = json.dumps(["{bin}"])
 
     from importlib import reload
     import app.helper.orchestrator as orch_mod

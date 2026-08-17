@@ -4,7 +4,7 @@
 #
 # Usage: ./scripts/dev.sh [--mode mock|opencode|auto]
 #
-# Default mode: whatever is in .env (HELPER_DASHBOARD_OPENCODE), or
+# Default mode: whatever is in .env (HELPER_DASHBOARD_HELPERCODE), or
 # `mock` if unset.
 
 set -euo pipefail
@@ -14,9 +14,9 @@ ROOT="$(pwd)"
 BACKEND_PORT="${HELPER_DASHBOARD_BACKEND_PORT:-8010}"
 mkdir -p "$ROOT/logs"
 
-export HELPER_DASHBOARD_OPENCODE_TRACE="${HELPER_DASHBOARD_OPENCODE_TRACE:-1}"
-export OPENCODE_DEBUG="${OPENCODE_DEBUG:-1}"
-export OPENCODE_TRACE_FILE="${OPENCODE_TRACE_FILE:-$ROOT/logs/opencode-trace.log}"
+export HELPER_DASHBOARD_HELPERCODE_TRACE="${HELPER_DASHBOARD_HELPERCODE_TRACE:-1}"
+export HELPERCODE_DEBUG="${HELPERCODE_DEBUG:-1}"
+export HELPERCODE_TRACE_FILE="${HELPERCODE_TRACE_FILE:-$ROOT/logs/helpercode-trace.log}"
 
 # --- 1. Load .env if present ------------------------------------------
 if [ -f .env ]; then
@@ -28,7 +28,7 @@ if [ -f .env ]; then
 fi
 
 # --- 2. CLI overrides --------------------------------------------------
-MODE="${HELPER_DASHBOARD_OPENCODE:-mock}"
+MODE="${HELPER_DASHBOARD_HELPERCODE:-mock}"
 while [ $# -gt 0 ]; do
   case "$1" in
     --mode)
@@ -45,18 +45,18 @@ while [ $# -gt 0 ]; do
       ;;
   esac
 done
-export HELPER_DASHBOARD_OPENCODE="$MODE"
+export HELPER_DASHBOARD_HELPERCODE="$MODE"
 
 # --- 3. Runtime sanity checks ------------------------------------------
 if [ "$MODE" = "opencode" ] || [ "$MODE" = "auto" ]; then
-  BIN="${HELPER_DASHBOARD_OPENCODE_BIN:-./bin/helpercode}"
+  BIN="${HELPER_DASHBOARD_HELPERCODE_BIN:-./bin/helpercode}"
   if [ ! -x "$BIN" ]; then
     echo "[dev] helperCode binary not executable at $BIN" >&2
     exit 3
   fi
   if [ -z "${OPENROUTER_API_KEY:-}" ] && [ -z "${OPENAI_API_KEY:-}" ]; then
     echo "[dev] no LLM API key set; bin/helpercode will fail unless" \
-         "OPENCODE_LLM_PROVIDER=heuristic."
+         "HELPERCODE_LLM_PROVIDER=heuristic."
   fi
 fi
 

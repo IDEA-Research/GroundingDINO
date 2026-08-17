@@ -45,19 +45,19 @@ def _write_stub(path: Path, script: str) -> Path:
 
 def _clear_runtime_env(monkeypatch):
     for k in (
-        "HELPER_DASHBOARD_OPENCODE",
-        "HELPER_DASHBOARD_OPENCODE_BIN",
-        "HELPER_DASHBOARD_OPENCODE_CMD",
-        "HELPER_DASHBOARD_OPENCODE_TIMEOUT_SECONDS",
+        "HELPER_DASHBOARD_HELPERCODE",
+        "HELPER_DASHBOARD_HELPERCODE_BIN",
+        "HELPER_DASHBOARD_HELPERCODE_CMD",
+        "HELPER_DASHBOARD_HELPERCODE_TIMEOUT_SECONDS",
     ):
         monkeypatch.delenv(k, raising=False)
 
 
 def _configure_stub(monkeypatch, stub_path: Path, *, mode: str = "opencode"):
-    monkeypatch.setenv("HELPER_DASHBOARD_OPENCODE", mode)
-    monkeypatch.setenv("HELPER_DASHBOARD_OPENCODE_BIN", str(stub_path))
+    monkeypatch.setenv("HELPER_DASHBOARD_HELPERCODE", mode)
+    monkeypatch.setenv("HELPER_DASHBOARD_HELPERCODE_BIN", str(stub_path))
     # Simplest possible argv: just the binary, nothing else.
-    monkeypatch.setenv("HELPER_DASHBOARD_OPENCODE_CMD", json.dumps(["{bin}"]))
+    monkeypatch.setenv("HELPER_DASHBOARD_HELPERCODE_CMD", json.dumps(["{bin}"]))
 
 
 # ---------------------------------------------------------------------------
@@ -78,7 +78,7 @@ def test_mock_is_default(monkeypatch):
 
 def test_mock_mode_explicit(monkeypatch):
     _clear_runtime_env(monkeypatch)
-    monkeypatch.setenv("HELPER_DASHBOARD_OPENCODE", "mock")
+    monkeypatch.setenv("HELPER_DASHBOARD_HELPERCODE", "mock")
     rt = HelperCodeRuntime()
     out = rt.invoke_operation("user_message", {"message": "hi"})
     assert out["runtime_used"] == "mock"
@@ -86,11 +86,11 @@ def test_mock_mode_explicit(monkeypatch):
 
 def test_unknown_mode_is_refused(monkeypatch):
     _clear_runtime_env(monkeypatch)
-    monkeypatch.setenv("HELPER_DASHBOARD_OPENCODE", "magic")
+    monkeypatch.setenv("HELPER_DASHBOARD_HELPERCODE", "magic")
     rt = HelperCodeRuntime()
     with pytest.raises(RuntimeError_) as exc:
         rt.invoke_operation("user_message", {"message": "hi"})
-    assert "unknown HELPER_DASHBOARD_OPENCODE mode" in str(exc.value)
+    assert "unknown HELPER_DASHBOARD_HELPERCODE mode" in str(exc.value)
 
 
 # ---------------------------------------------------------------------------
@@ -100,11 +100,11 @@ def test_unknown_mode_is_refused(monkeypatch):
 
 def test_opencode_mode_missing_binary_raises(monkeypatch):
     _clear_runtime_env(monkeypatch)
-    monkeypatch.setenv("HELPER_DASHBOARD_OPENCODE", "opencode")
+    monkeypatch.setenv("HELPER_DASHBOARD_HELPERCODE", "opencode")
     monkeypatch.setenv(
-        "HELPER_DASHBOARD_OPENCODE_BIN", "/nonexistent/opencode-xyz-1234"
+        "HELPER_DASHBOARD_HELPERCODE_BIN", "/nonexistent/opencode-xyz-1234"
     )
-    monkeypatch.setenv("HELPER_DASHBOARD_OPENCODE_CMD", json.dumps(["{bin}"]))
+    monkeypatch.setenv("HELPER_DASHBOARD_HELPERCODE_CMD", json.dumps(["{bin}"]))
     rt = HelperCodeRuntime()
     with pytest.raises(RuntimeError_) as exc:
         rt.invoke_operation("user_message", {"message": "hi"})
@@ -220,11 +220,11 @@ def test_auto_mode_uses_real_on_success(monkeypatch, tmp_path):
 
 def test_auto_mode_falls_back_with_explicit_marker_on_missing_binary(monkeypatch):
     _clear_runtime_env(monkeypatch)
-    monkeypatch.setenv("HELPER_DASHBOARD_OPENCODE", "auto")
+    monkeypatch.setenv("HELPER_DASHBOARD_HELPERCODE", "auto")
     monkeypatch.setenv(
-        "HELPER_DASHBOARD_OPENCODE_BIN", "/nonexistent/opencode-xyz-1234"
+        "HELPER_DASHBOARD_HELPERCODE_BIN", "/nonexistent/opencode-xyz-1234"
     )
-    monkeypatch.setenv("HELPER_DASHBOARD_OPENCODE_CMD", json.dumps(["{bin}"]))
+    monkeypatch.setenv("HELPER_DASHBOARD_HELPERCODE_CMD", json.dumps(["{bin}"]))
     rt = HelperCodeRuntime()
     out = rt.invoke_operation("user_message", {"message": "Show me a CPU dashboard"})
     assert out["runtime_used"] == "mock_fallback"
@@ -433,10 +433,10 @@ def test_agent_substitution_uses_allow_listed_value(monkeypatch, tmp_path):
             """
         ),
     )
-    monkeypatch.setenv("HELPER_DASHBOARD_OPENCODE", "opencode")
-    monkeypatch.setenv("HELPER_DASHBOARD_OPENCODE_BIN", str(stub))
+    monkeypatch.setenv("HELPER_DASHBOARD_HELPERCODE", "opencode")
+    monkeypatch.setenv("HELPER_DASHBOARD_HELPERCODE_BIN", str(stub))
     monkeypatch.setenv(
-        "HELPER_DASHBOARD_OPENCODE_CMD",
+        "HELPER_DASHBOARD_HELPERCODE_CMD",
         json.dumps(["{bin}", "--agent", "{agent}"]),
     )
     rt = HelperCodeRuntime()
@@ -452,7 +452,7 @@ def test_agent_substitution_uses_allow_listed_value(monkeypatch, tmp_path):
 
 
 def test_malformed_cmd_env_is_ignored(monkeypatch, tmp_path):
-    """If the operator sets HELPER_DASHBOARD_OPENCODE_CMD to something
+    """If the operator sets HELPER_DASHBOARD_HELPERCODE_CMD to something
     that isn't a JSON array of strings, we log and fall back to the
     default template rather than crashing or shell-evaluating."""
     _clear_runtime_env(monkeypatch)
@@ -460,11 +460,11 @@ def test_malformed_cmd_env_is_ignored(monkeypatch, tmp_path):
         tmp_path / "opencode",
         'import json; print(json.dumps({"type":"UserResponse","message":"ok"}))',
     )
-    monkeypatch.setenv("HELPER_DASHBOARD_OPENCODE", "opencode")
-    monkeypatch.setenv("HELPER_DASHBOARD_OPENCODE_BIN", str(stub))
+    monkeypatch.setenv("HELPER_DASHBOARD_HELPERCODE", "opencode")
+    monkeypatch.setenv("HELPER_DASHBOARD_HELPERCODE_BIN", str(stub))
     # A shell-injection attempt.
     monkeypatch.setenv(
-        "HELPER_DASHBOARD_OPENCODE_CMD", "rm -rf / ; echo pwned"
+        "HELPER_DASHBOARD_HELPERCODE_CMD", "rm -rf / ; echo pwned"
     )
     rt = HelperCodeRuntime()
     out = rt.invoke_operation("user_message", {"message": "hi"})

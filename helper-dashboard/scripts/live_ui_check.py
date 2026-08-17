@@ -57,7 +57,7 @@ def wait_healthy(url, tries=30):
 
 
 def main():
-    env = {**os.environ, "HELPER_DASHBOARD_OPENCODE": "mock",
+    env = {**os.environ, "HELPER_DASHBOARD_HELPERCODE": "mock",
            "PYTHONPATH": str(BACKEND_DIR)}
     backend = subprocess.Popen(
         [sys.executable, "-m", "uvicorn", "app.main:app",

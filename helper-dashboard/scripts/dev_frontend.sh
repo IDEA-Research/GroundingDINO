@@ -4,7 +4,7 @@
 #
 # Usage: ./scripts/dev_frontend.sh [--mode mock|opencode|auto] [--debug]
 #
-# Default mode: whatever is in .env (HELPER_DASHBOARD_OPENCODE), or
+# Default mode: whatever is in .env (HELPER_DASHBOARD_HELPERCODE), or
 # `mock` if unset.
 
 set -euo pipefail
@@ -22,7 +22,7 @@ if [ -f .env ]; then
 fi
 
 # --- 2. CLI overrides --------------------------------------------------
-MODE="${HELPER_DASHBOARD_OPENCODE:-mock}"
+MODE="${HELPER_DASHBOARD_HELPERCODE:-mock}"
 FRONTEND_DEBUG=0
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -44,18 +44,18 @@ while [ $# -gt 0 ]; do
       ;;
   esac
 done
-export HELPER_DASHBOARD_OPENCODE="$MODE"
+export HELPER_DASHBOARD_HELPERCODE="$MODE"
 
 # --- 3. Runtime sanity checks ------------------------------------------
 if [ "$MODE" = "opencode" ] || [ "$MODE" = "auto" ]; then
-  BIN="${HELPER_DASHBOARD_OPENCODE_BIN:-./bin/helpercode}"
+  BIN="${HELPER_DASHBOARD_HELPERCODE_BIN:-./bin/helpercode}"
   if [ ! -x "$BIN" ]; then
     echo "[dev] helperCode binary not executable at $BIN" >&2
     exit 3
   fi
   if [ -z "${OPENROUTER_API_KEY:-}" ] && [ -z "${OPENAI_API_KEY:-}" ]; then
     echo "[dev] no LLM API key set; bin/helpercode will fail unless" \
-         "OPENCODE_LLM_PROVIDER=heuristic."
+         "HELPERCODE_LLM_PROVIDER=heuristic."
   fi
 fi
 

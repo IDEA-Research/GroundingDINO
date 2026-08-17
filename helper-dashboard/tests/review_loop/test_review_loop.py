@@ -87,31 +87,31 @@ class _StubRuntime:
 
 
 def test_is_enabled_default_off_in_mock(monkeypatch):
-    monkeypatch.delenv("HELPER_DASHBOARD_OPENCODE", raising=False)
+    monkeypatch.delenv("HELPER_DASHBOARD_HELPERCODE", raising=False)
     monkeypatch.delenv("HELPER_DASHBOARD_PRE_OUTPUT_REVIEW", raising=False)
     assert not is_enabled()
 
 
 def test_is_enabled_default_on_in_opencode(monkeypatch):
-    monkeypatch.setenv("HELPER_DASHBOARD_OPENCODE", "opencode")
+    monkeypatch.setenv("HELPER_DASHBOARD_HELPERCODE", "opencode")
     monkeypatch.delenv("HELPER_DASHBOARD_PRE_OUTPUT_REVIEW", raising=False)
     assert is_enabled()
 
 
 def test_is_enabled_default_on_in_auto(monkeypatch):
-    monkeypatch.setenv("HELPER_DASHBOARD_OPENCODE", "auto")
+    monkeypatch.setenv("HELPER_DASHBOARD_HELPERCODE", "auto")
     monkeypatch.delenv("HELPER_DASHBOARD_PRE_OUTPUT_REVIEW", raising=False)
     assert is_enabled()
 
 
 def test_is_enabled_env_forces_on(monkeypatch):
-    monkeypatch.setenv("HELPER_DASHBOARD_OPENCODE", "mock")
+    monkeypatch.setenv("HELPER_DASHBOARD_HELPERCODE", "mock")
     monkeypatch.setenv("HELPER_DASHBOARD_PRE_OUTPUT_REVIEW", "1")
     assert is_enabled()
 
 
 def test_is_enabled_env_forces_off(monkeypatch):
-    monkeypatch.setenv("HELPER_DASHBOARD_OPENCODE", "opencode")
+    monkeypatch.setenv("HELPER_DASHBOARD_HELPERCODE", "opencode")
     monkeypatch.setenv("HELPER_DASHBOARD_PRE_OUTPUT_REVIEW", "0")
     assert not is_enabled()
 

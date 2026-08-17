@@ -107,7 +107,7 @@ def is_enabled() -> bool:
     raw = os.getenv("HELPER_DASHBOARD_AUTO_FIX")
     if raw is not None:
         return raw not in ("0", "", "false", "False", "no", "off")
-    mode = (os.getenv("HELPER_DASHBOARD_OPENCODE") or "mock").strip().lower()
+    mode = (os.getenv("HELPER_DASHBOARD_HELPERCODE") or "mock").strip().lower()
     return mode in {"opencode", "auto"}
 
 

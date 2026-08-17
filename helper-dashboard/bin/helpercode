@@ -10,16 +10,16 @@ expects in `opencode` mode:
     exit 0 on success, non-zero on any error.
 
 Provider dispatch:
-- OPENCODE_LLM_PROVIDER=openrouter (default): POST to openrouter.ai
+- HELPERCODE_LLM_PROVIDER=openrouter (default): POST to openrouter.ai
   with the agent's `.md` prompt as system message and the stdin args
   as the user message.
-- OPENCODE_LLM_PROVIDER=heuristic: deterministic rules identical to
+- HELPERCODE_LLM_PROVIDER=heuristic: deterministic rules identical to
   MockHelperRuntime. Useful for CI and local dev without a key.
 
 Models:
-- OPENCODE_HELPER_MODEL (default moonshotai/kimi-k2-thinking) for
+- HELPERCODE_HELPER_MODEL (default moonshotai/kimi-k2-thinking) for
   user-facing Helper agents.
-- OPENCODE_BIG_GUY_MODEL (default moonshotai/kimi-k2-thinking) for
+- HELPERCODE_BIG_GUY_MODEL (default moonshotai/kimi-k2-thinking) for
   big-guy-developer-agent in both rescue_review and developer_fix.
 
 Safety: This is a one-shot subprocess. The LLM never gets tool access
@@ -189,7 +189,7 @@ def main() -> int:
         f"args_keys={_safe_arg_keys(args)!r}"
     )
 
-    provider = os.getenv("OPENCODE_LLM_PROVIDER", "openrouter").strip().lower()
+    provider = os.getenv("HELPERCODE_LLM_PROVIDER", "openrouter").strip().lower()
     if provider in ("", "auto"):
         provider = "openrouter" if os.getenv("OPENROUTER_API_KEY") else "heuristic"
     _dbg(f"provider:selected provider={provider!r}")
@@ -211,7 +211,7 @@ def main() -> int:
             else:
                 result = _openrouter_run(operation, agent, args)
         else:
-            _err(f"unknown OPENCODE_LLM_PROVIDER: {provider!r}")
+            _err(f"unknown HELPERCODE_LLM_PROVIDER: {provider!r}")
             return 3
     except _ProviderError as exc:
         _err(f"provider error: {exc}")
@@ -247,7 +247,7 @@ def _err(msg: str) -> None:
 
 
 def _debug_enabled() -> bool:
-    return (os.getenv("OPENCODE_DEBUG", "").strip().lower()
+    return (os.getenv("HELPERCODE_DEBUG", "").strip().lower()
             in {"1", "true", "yes", "on"})
 
 
@@ -262,7 +262,7 @@ def _dbg(msg: str) -> None:
 
 
 def _append_trace_file(line: str) -> None:
-    path = (os.getenv("OPENCODE_TRACE_FILE") or "").strip()
+    path = (os.getenv("HELPERCODE_TRACE_FILE") or "").strip()
     if not path:
         return
     try:
@@ -317,7 +317,7 @@ def _openrouter_run(operation: str, agent: str, args: dict) -> dict:
         "X-Title": "Helper Dashboard",
     }
 
-    timeout = float(os.getenv("OPENCODE_HTTP_TIMEOUT", "60"))
+    timeout = float(os.getenv("HELPERCODE_HTTP_TIMEOUT", "60"))
     req = urllib.request.Request(
         _OPENROUTER_URL,
         data=json.dumps(body).encode("utf-8"),
@@ -368,8 +368,8 @@ def _openrouter_run(operation: str, agent: str, args: dict) -> dict:
 
 def _pick_model(operation: str) -> str:
     if operation in BIG_GUY_OPERATIONS:
-        return os.getenv("OPENCODE_BIG_GUY_MODEL", "moonshotai/kimi-k2-thinking")
-    return os.getenv("OPENCODE_HELPER_MODEL", "moonshotai/kimi-k2-thinking")
+        return os.getenv("HELPERCODE_BIG_GUY_MODEL", "moonshotai/kimi-k2-thinking")
+    return os.getenv("HELPERCODE_HELPER_MODEL", "moonshotai/kimi-k2-thinking")
 
 
 def _build_system_prompt(operation: str, agent: str, model: str) -> str:
@@ -1981,7 +1981,7 @@ def _openrouter_run_with_tools(operation: str, agent: str, args: dict) -> dict:
         "HTTP-Referer": "https://helper-dashboard.local/",
         "X-Title": f"Helper Dashboard ({operation})",
     }
-    timeout = float(os.getenv("OPENCODE_HTTP_TIMEOUT", "120"))
+    timeout = float(os.getenv("HELPERCODE_HTTP_TIMEOUT", "120"))
 
     _dbg(
         f"tool_loop:start operation={operation!r} "

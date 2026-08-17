@@ -64,18 +64,18 @@ def main() -> int:
     # Isolate: never use residual env the user had before.
     for k in (
         "HELPER_DASHBOARD_PRE_OUTPUT_REVIEW",
-        "HELPER_DASHBOARD_OPENCODE_TIMEOUT_SECONDS",
+        "HELPER_DASHBOARD_HELPERCODE_TIMEOUT_SECONDS",
     ):
         os.environ.pop(k, None)
 
     mode = os.environ.get("TIER2_LLM", "mock").strip().lower()
     review = os.environ.get("TIER2_REVIEW", "0") == "1"
 
-    os.environ["HELPER_DASHBOARD_OPENCODE"] = mode
+    os.environ["HELPER_DASHBOARD_HELPERCODE"] = mode
     os.environ["HELPER_DASHBOARD_PRE_OUTPUT_REVIEW"] = "1" if review else "0"
     if mode == "opencode":
-        os.environ["HELPER_DASHBOARD_OPENCODE_BIN"] = str(ROOT / "bin" / "helpercode")
-        os.environ["HELPER_DASHBOARD_OPENCODE_CMD"] = json.dumps(["{bin}"])
+        os.environ["HELPER_DASHBOARD_HELPERCODE_BIN"] = str(ROOT / "bin" / "helpercode")
+        os.environ["HELPER_DASHBOARD_HELPERCODE_CMD"] = json.dumps(["{bin}"])
 
     _reset_storage()
 

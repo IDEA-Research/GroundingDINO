@@ -1,6 +1,6 @@
 """Live UI <-> backend round-trip in OPENCODE mode.
 
-Starts the FastAPI backend with HELPER_DASHBOARD_OPENCODE=opencode
+Starts the FastAPI backend with HELPER_DASHBOARD_HELPERCODE=opencode
 and a realistic stub `opencode` binary on disk (the real CLI isn't
 installed in this sandbox). Demonstrates:
 
@@ -208,9 +208,9 @@ def main():
     # -------------------------------------------------------------------
     banner("PART A — opencode mode SUCCESS (stub plays the real CLI)")
     backend = start_backend({
-        "HELPER_DASHBOARD_OPENCODE": "opencode",
-        "HELPER_DASHBOARD_OPENCODE_BIN": str(stub),
-        "HELPER_DASHBOARD_OPENCODE_CMD": json.dumps(["{bin}"]),
+        "HELPER_DASHBOARD_HELPERCODE": "opencode",
+        "HELPER_DASHBOARD_HELPERCODE_BIN": str(stub),
+        "HELPER_DASHBOARD_HELPERCODE_CMD": json.dumps(["{bin}"]),
     })
     try:
         assert wait_healthy(), "backend never came up"
@@ -257,9 +257,9 @@ def main():
     # -------------------------------------------------------------------
     banner("PART B — opencode mode FAILURE (binary missing). NO FALLBACK.")
     backend = start_backend({
-        "HELPER_DASHBOARD_OPENCODE": "opencode",
-        "HELPER_DASHBOARD_OPENCODE_BIN": "/nonexistent/opencode-xyz",
-        "HELPER_DASHBOARD_OPENCODE_CMD": json.dumps(["{bin}"]),
+        "HELPER_DASHBOARD_HELPERCODE": "opencode",
+        "HELPER_DASHBOARD_HELPERCODE_BIN": "/nonexistent/opencode-xyz",
+        "HELPER_DASHBOARD_HELPERCODE_CMD": json.dumps(["{bin}"]),
     })
     try:
         assert wait_healthy(), "backend never came up"
@@ -288,9 +288,9 @@ def main():
     # -------------------------------------------------------------------
     banner("PART C — auto mode FAILURE → fallback with explicit marker")
     backend = start_backend({
-        "HELPER_DASHBOARD_OPENCODE": "auto",
-        "HELPER_DASHBOARD_OPENCODE_BIN": "/nonexistent/opencode-xyz",
-        "HELPER_DASHBOARD_OPENCODE_CMD": json.dumps(["{bin}"]),
+        "HELPER_DASHBOARD_HELPERCODE": "auto",
+        "HELPER_DASHBOARD_HELPERCODE_BIN": "/nonexistent/opencode-xyz",
+        "HELPER_DASHBOARD_HELPERCODE_CMD": json.dumps(["{bin}"]),
     })
     try:
         assert wait_healthy(), "backend never came up"

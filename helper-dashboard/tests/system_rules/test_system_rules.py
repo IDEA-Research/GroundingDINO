@@ -261,7 +261,7 @@ def test_provider_reports_mock_source_honestly(monkeypatch):
 
 
 def test_chat_creates_shadow_rule_end_to_end(monkeypatch):
-    monkeypatch.delenv("HELPER_DASHBOARD_OPENCODE", raising=False)
+    monkeypatch.delenv("HELPER_DASHBOARD_HELPERCODE", raising=False)
     monkeypatch.delenv("HELPER_DASHBOARD_PRE_OUTPUT_REVIEW", raising=False)
 
     from app.helper.orchestrator import Orchestrator
@@ -288,7 +288,7 @@ def test_chat_creates_shadow_rule_end_to_end(monkeypatch):
 
 
 def test_chat_disk_below_variant(monkeypatch):
-    monkeypatch.delenv("HELPER_DASHBOARD_OPENCODE", raising=False)
+    monkeypatch.delenv("HELPER_DASHBOARD_HELPERCODE", raising=False)
     monkeypatch.delenv("HELPER_DASHBOARD_PRE_OUTPUT_REVIEW", raising=False)
 
     from app.helper.orchestrator import Orchestrator

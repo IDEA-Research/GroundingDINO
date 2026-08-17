@@ -28,8 +28,8 @@ Usage:
     python3 scripts/tier1_cli_check.py
 
 Env overrides:
-    OPENCODE_LLM_PROVIDER=heuristic   # test without a key
-    HELPER_DASHBOARD_OPENCODE_BIN     # alternate binary
+    HELPERCODE_LLM_PROVIDER=heuristic   # test without a key
+    HELPER_DASHBOARD_HELPERCODE_BIN     # alternate binary
 
 Exit code: 0 if all checks pass, non-zero otherwise.
 """
@@ -46,7 +46,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 BIN = Path(os.environ.get(
-    "HELPER_DASHBOARD_OPENCODE_BIN", str(ROOT / "bin" / "helpercode")
+    "HELPER_DASHBOARD_HELPERCODE_BIN", str(ROOT / "bin" / "helpercode")
 ))
 
 # Per-call timeout — Tier 1 is meant to be quick. If your model is
@@ -101,7 +101,7 @@ def main() -> int:
         print(f"ERR: bin not found at {BIN}")
         return 2
 
-    provider = os.environ.get("OPENCODE_LLM_PROVIDER", "openrouter")
+    provider = os.environ.get("HELPERCODE_LLM_PROVIDER", "openrouter")
     print(f"Tier 1 CLI verification")
     print(f"  bin:      {BIN}")
     print(f"  provider: {provider}")

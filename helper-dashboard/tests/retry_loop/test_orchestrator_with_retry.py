@@ -126,7 +126,7 @@ def _valid_latency_update() -> dict:
 
 def test_generate_accepts_on_first_attempt(monkeypatch):
     _reset_storage()
-    monkeypatch.delenv("HELPER_DASHBOARD_OPENCODE", raising=False)
+    monkeypatch.delenv("HELPER_DASHBOARD_HELPERCODE", raising=False)
     monkeypatch.delenv("HELPER_DASHBOARD_PRE_OUTPUT_REVIEW", raising=False)
     monkeypatch.setenv("HELPER_AGENT_MAX_ATTEMPTS", "3")
 
@@ -154,7 +154,7 @@ def test_generate_accepts_on_first_attempt(monkeypatch):
 
 def test_generate_retry_accepts_on_second_attempt(monkeypatch):
     _reset_storage()
-    monkeypatch.delenv("HELPER_DASHBOARD_OPENCODE", raising=False)
+    monkeypatch.delenv("HELPER_DASHBOARD_HELPERCODE", raising=False)
     monkeypatch.delenv("HELPER_DASHBOARD_PRE_OUTPUT_REVIEW", raising=False)
     monkeypatch.setenv("HELPER_AGENT_MAX_ATTEMPTS", "3")
 
@@ -187,7 +187,7 @@ def test_generate_retry_accepts_on_second_attempt(monkeypatch):
 
 def test_generate_all_attempts_fail_files_ticket(monkeypatch):
     _reset_storage()
-    monkeypatch.delenv("HELPER_DASHBOARD_OPENCODE", raising=False)
+    monkeypatch.delenv("HELPER_DASHBOARD_HELPERCODE", raising=False)
     monkeypatch.delenv("HELPER_DASHBOARD_PRE_OUTPUT_REVIEW", raising=False)
     monkeypatch.setenv("HELPER_AGENT_MAX_ATTEMPTS", "2")
 
@@ -224,7 +224,7 @@ def test_generate_all_attempts_fail_files_ticket(monkeypatch):
 
 def test_patch_all_attempts_fail_files_ticket(monkeypatch):
     _reset_storage()
-    monkeypatch.delenv("HELPER_DASHBOARD_OPENCODE", raising=False)
+    monkeypatch.delenv("HELPER_DASHBOARD_HELPERCODE", raising=False)
     monkeypatch.delenv("HELPER_DASHBOARD_PRE_OUTPUT_REVIEW", raising=False)
     monkeypatch.setenv("HELPER_AGENT_MAX_ATTEMPTS", "2")
 
@@ -283,7 +283,7 @@ def test_patch_all_attempts_fail_files_ticket(monkeypatch):
 
 def test_patch_retry_accepts_on_second_attempt(monkeypatch):
     _reset_storage()
-    monkeypatch.delenv("HELPER_DASHBOARD_OPENCODE", raising=False)
+    monkeypatch.delenv("HELPER_DASHBOARD_HELPERCODE", raising=False)
     monkeypatch.delenv("HELPER_DASHBOARD_PRE_OUTPUT_REVIEW", raising=False)
     monkeypatch.setenv("HELPER_AGENT_MAX_ATTEMPTS", "3")
 
@@ -365,7 +365,7 @@ def test_review_ticket_outcome_still_delivers_dashboard(monkeypatch):
     an honest caveat; the reply must never claim a team was
     notified."""
     _reset_storage()
-    monkeypatch.delenv("HELPER_DASHBOARD_OPENCODE", raising=False)
+    monkeypatch.delenv("HELPER_DASHBOARD_HELPERCODE", raising=False)
     # Force pre-output review ON (off by default in mock mode).
     monkeypatch.setenv("HELPER_DASHBOARD_PRE_OUTPUT_REVIEW", "1")
     monkeypatch.setenv("HELPER_AGENT_MAX_ATTEMPTS", "2")
@@ -430,7 +430,7 @@ def test_review_ticket_outcome_schedules_auto_fix(monkeypatch):
     fix has started. (auto_fix itself is stubbed — its internals are
     covered in tests/auto_fix/.)"""
     _reset_storage()
-    monkeypatch.delenv("HELPER_DASHBOARD_OPENCODE", raising=False)
+    monkeypatch.delenv("HELPER_DASHBOARD_HELPERCODE", raising=False)
     monkeypatch.setenv("HELPER_DASHBOARD_PRE_OUTPUT_REVIEW", "1")
     monkeypatch.setenv("HELPER_AGENT_MAX_ATTEMPTS", "2")
 

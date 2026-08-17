@@ -126,7 +126,7 @@ def _valid_dashboard_spec() -> dict:
 
 def test_extend_ticket_triggers_redispatch_and_succeeds(monkeypatch):
     _reset_storage()
-    monkeypatch.delenv("HELPER_DASHBOARD_OPENCODE", raising=False)
+    monkeypatch.delenv("HELPER_DASHBOARD_HELPERCODE", raising=False)
     monkeypatch.delenv("HELPER_DASHBOARD_PRE_OUTPUT_REVIEW", raising=False)
     monkeypatch.setenv("HELPER_AGENT_MAX_ATTEMPTS", "2")
 
@@ -175,7 +175,7 @@ def test_safety_gate_refusal_yields_honest_reply(monkeypatch):
     the reply should name the widget the user asked for and the gate
     reason — never say it's "not in the toolkit"."""
     _reset_storage()
-    monkeypatch.delenv("HELPER_DASHBOARD_OPENCODE", raising=False)
+    monkeypatch.delenv("HELPER_DASHBOARD_HELPERCODE", raising=False)
     monkeypatch.delenv("HELPER_DASHBOARD_PRE_OUTPUT_REVIEW", raising=False)
     monkeypatch.setenv("HELPER_AGENT_MAX_ATTEMPTS", "2")
 
@@ -210,7 +210,7 @@ def test_safety_gate_refusal_yields_honest_reply(monkeypatch):
 
 def test_extend_failure_falls_through_to_ticket_reply(monkeypatch):
     _reset_storage()
-    monkeypatch.delenv("HELPER_DASHBOARD_OPENCODE", raising=False)
+    monkeypatch.delenv("HELPER_DASHBOARD_HELPERCODE", raising=False)
     monkeypatch.delenv("HELPER_DASHBOARD_PRE_OUTPUT_REVIEW", raising=False)
     monkeypatch.setenv("HELPER_AGENT_MAX_ATTEMPTS", "2")
 
@@ -247,7 +247,7 @@ def test_extend_failure_falls_through_to_ticket_reply(monkeypatch):
 
 def test_non_extend_ticket_does_not_trigger_extend(monkeypatch):
     _reset_storage()
-    monkeypatch.delenv("HELPER_DASHBOARD_OPENCODE", raising=False)
+    monkeypatch.delenv("HELPER_DASHBOARD_HELPERCODE", raising=False)
     monkeypatch.delenv("HELPER_DASHBOARD_PRE_OUTPUT_REVIEW", raising=False)
     monkeypatch.setenv("HELPER_AGENT_MAX_ATTEMPTS", "2")
 
@@ -279,7 +279,7 @@ def test_extend_does_not_recurse_on_second_extend_ticket(monkeypatch):
     a different widget type, say), the orchestrator must not extend
     again — it returns the ticket as a normal DeveloperTicket reply."""
     _reset_storage()
-    monkeypatch.delenv("HELPER_DASHBOARD_OPENCODE", raising=False)
+    monkeypatch.delenv("HELPER_DASHBOARD_HELPERCODE", raising=False)
     monkeypatch.delenv("HELPER_DASHBOARD_PRE_OUTPUT_REVIEW", raising=False)
     monkeypatch.setenv("HELPER_AGENT_MAX_ATTEMPTS", "2")
 

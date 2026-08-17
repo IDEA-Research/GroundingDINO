@@ -100,7 +100,7 @@ def _chat_post_and_wait(client, payload: dict, timeout_s: float = 10.0) -> dict:
 def test_api_save_list_delete(monkeypatch):
     _reset_storage()
     monkeypatch.delenv("HELPER_DASHBOARD_PRE_OUTPUT_REVIEW", raising=False)
-    monkeypatch.delenv("HELPER_DASHBOARD_OPENCODE", raising=False)
+    monkeypatch.delenv("HELPER_DASHBOARD_HELPERCODE", raising=False)
     client = TestClient(app)
 
     # Build a dashboard via chat (async job pattern).
@@ -153,7 +153,7 @@ def test_api_save_dashboard_not_found():
 def test_orchestrator_save_prompt_yes(monkeypatch):
     _reset_storage()
     monkeypatch.delenv("HELPER_DASHBOARD_PRE_OUTPUT_REVIEW", raising=False)
-    monkeypatch.delenv("HELPER_DASHBOARD_OPENCODE", raising=False)
+    monkeypatch.delenv("HELPER_DASHBOARD_HELPERCODE", raising=False)
     o = Orchestrator()
 
     r1 = o.handle_user_message(
@@ -173,7 +173,7 @@ def test_orchestrator_save_prompt_yes(monkeypatch):
 def test_orchestrator_save_prompt_no(monkeypatch):
     _reset_storage()
     monkeypatch.delenv("HELPER_DASHBOARD_PRE_OUTPUT_REVIEW", raising=False)
-    monkeypatch.delenv("HELPER_DASHBOARD_OPENCODE", raising=False)
+    monkeypatch.delenv("HELPER_DASHBOARD_HELPERCODE", raising=False)
     o = Orchestrator()
 
     r1 = o.handle_user_message(
@@ -192,7 +192,7 @@ def test_orchestrator_save_prompt_falls_through_on_next_request(monkeypatch):
     built."""
     _reset_storage()
     monkeypatch.delenv("HELPER_DASHBOARD_PRE_OUTPUT_REVIEW", raising=False)
-    monkeypatch.delenv("HELPER_DASHBOARD_OPENCODE", raising=False)
+    monkeypatch.delenv("HELPER_DASHBOARD_HELPERCODE", raising=False)
     o = Orchestrator()
     o.handle_user_message(session_id="sp-3", message="Show me a CPU dashboard")
     # Second message is a full new dashboard request — should NOT be

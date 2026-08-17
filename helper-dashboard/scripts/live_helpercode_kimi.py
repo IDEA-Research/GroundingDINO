@@ -76,9 +76,9 @@ def start_backend():
         **dotenv,
         "PYTHONPATH": str(BACKEND_DIR),
         # Force opencode mode explicitly for this demo.
-        "HELPER_DASHBOARD_OPENCODE": "opencode",
-        "HELPER_DASHBOARD_OPENCODE_BIN": str(ROOT / "bin" / "helpercode"),
-        "HELPER_DASHBOARD_OPENCODE_CMD": json.dumps(["{bin}"]),
+        "HELPER_DASHBOARD_HELPERCODE": "opencode",
+        "HELPER_DASHBOARD_HELPERCODE_BIN": str(ROOT / "bin" / "helpercode"),
+        "HELPER_DASHBOARD_HELPERCODE_CMD": json.dumps(["{bin}"]),
         "HELPER_DASHBOARD_PRE_OUTPUT_REVIEW": "0",
     }
     return subprocess.Popen(

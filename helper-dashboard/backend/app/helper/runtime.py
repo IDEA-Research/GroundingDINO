@@ -22,7 +22,7 @@ enforcement point; see `docs/SECURITY_BOUNDARIES.md`):
 - Pydantic schemas reject unsafe output.
 - `/api/developer/*` endpoints are the only channel into Big guy.
 
-Modes (selected by `HELPER_DASHBOARD_OPENCODE`):
+Modes (selected by `HELPER_DASHBOARD_HELPERCODE`):
 
 - `mock` (default): always use `MockHelperRuntime`.
 - `opencode`: must use the subprocess adapter. If the CLI is missing,
@@ -210,7 +210,7 @@ class _HelperCodeInvalidOutput(Exception):
 _PROJECT_ROOT = Path(__file__).resolve().parents[3]
 
 # Default subprocess argv. The operator may override via
-# `HELPER_DASHBOARD_OPENCODE_CMD` (a JSON array of strings). Only
+# `HELPER_DASHBOARD_HELPERCODE_CMD` (a JSON array of strings). Only
 # `{bin}` and `{agent}` are substituted, and `{agent}` is always one
 # of our allow-listed values.
 _DEFAULT_CMD_TEMPLATE: list[str] = ["{bin}", "run", "--agent", "{agent}", "--json"]
@@ -222,7 +222,7 @@ _ALLOWED_AGENTS: frozenset[str] = frozenset(OPERATIONS[op]["agent"] for op in OP
 
 
 def _trace_enabled() -> bool:
-    return (os.getenv("HELPER_DASHBOARD_OPENCODE_TRACE", "").strip().lower()
+    return (os.getenv("HELPER_DASHBOARD_HELPERCODE_TRACE", "").strip().lower()
             in {"1", "true", "yes", "on"})
 
 
@@ -231,7 +231,7 @@ def _trace(msg: str) -> None:
         return
     line = f"[helper-dashboard][helpercode-trace] {msg}"
     print(line, file=sys.stderr)
-    path = (os.getenv("OPENCODE_TRACE_FILE") or "").strip()
+    path = (os.getenv("HELPERCODE_TRACE_FILE") or "").strip()
     if path:
         try:
             with open(path, "a", encoding="utf-8") as f:
@@ -384,8 +384,8 @@ class RealHelperCodeRuntime:
 
 
 def _resolve_cmd(agent: str) -> list[str] | None:
-    bin_name = os.getenv("HELPER_DASHBOARD_OPENCODE_BIN", "./bin/helpercode")
-    raw_template = os.getenv("HELPER_DASHBOARD_OPENCODE_CMD")
+    bin_name = os.getenv("HELPER_DASHBOARD_HELPERCODE_BIN", "./bin/helpercode")
+    raw_template = os.getenv("HELPER_DASHBOARD_HELPERCODE_CMD")
 
     if raw_template:
         try:
@@ -398,7 +398,7 @@ def _resolve_cmd(agent: str) -> list[str] | None:
                 raise ValueError("template must be a non-empty JSON array of strings")
         except Exception as exc:
             _warn(
-                f"HELPER_DASHBOARD_OPENCODE_CMD is invalid ({exc}); "
+                f"HELPER_DASHBOARD_HELPERCODE_CMD is invalid ({exc}); "
                 "using default template."
             )
             template = list(_DEFAULT_CMD_TEMPLATE)
@@ -435,7 +435,7 @@ def _resolve_cmd(agent: str) -> list[str] | None:
 
 
 def _resolve_timeout() -> float:
-    raw = os.getenv("HELPER_DASHBOARD_OPENCODE_TIMEOUT_SECONDS")
+    raw = os.getenv("HELPER_DASHBOARD_HELPERCODE_TIMEOUT_SECONDS")
     if not raw:
         return _DEFAULT_TIMEOUT_S
     try:
@@ -469,7 +469,7 @@ class HelperCodeRuntime:
     # --- mode selection ---------------------------------------------
     @staticmethod
     def _mode() -> str:
-        return (os.getenv("HELPER_DASHBOARD_OPENCODE") or "mock").strip().lower()
+        return (os.getenv("HELPER_DASHBOARD_HELPERCODE") or "mock").strip().lower()
 
     # --- primary API ------------------------------------------------
     def invoke_operation(
@@ -518,7 +518,7 @@ class HelperCodeRuntime:
 
         else:
             raise RuntimeError_(
-                f"unknown HELPER_DASHBOARD_OPENCODE mode: {mode!r} "
+                f"unknown HELPER_DASHBOARD_HELPERCODE mode: {mode!r} "
                 "(expected 'mock', 'opencode', or 'auto')"
             )
 

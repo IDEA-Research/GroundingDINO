@@ -58,7 +58,7 @@ def wait_http(url, tries=40):
 
 def start_backend():
     env = {**os.environ,
-           "HELPER_DASHBOARD_OPENCODE": "mock",
+           "HELPER_DASHBOARD_HELPERCODE": "mock",
            "PYTHONPATH": str(BACKEND_DIR)}
     return subprocess.Popen(
         [sys.executable, "-m", "uvicorn", "app.main:app",
