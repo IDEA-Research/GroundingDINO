@@ -21,23 +21,23 @@ function chipFor(status: DevfixRunStatus): { label: string; cls: string } {
   switch (status) {
     case "running":
       return {
-        label: "running",
-        cls: "animate-pulse border-amber-500/60 bg-amber-500/10 text-amber-300",
+        label: "執行中",
+        cls: "animate-pulse border-alarm-med/60 bg-alarm-med/10 text-alarm-med",
       };
     case "resolved":
       return {
-        label: "resolved",
-        cls: "border-emerald-500/60 bg-emerald-500/10 text-emerald-300",
+        label: "已解決",
+        cls: "border-ok/60 bg-ok/10 text-ok",
       };
     case "needs_context":
       return {
-        label: "needs context",
-        cls: "border-slate-500/60 bg-slate-500/10 text-slate-300",
+        label: "需要更多資訊",
+        cls: "border-edge-strong bg-surface-3 text-ink-dim",
       };
     default: // rejected | failed
       return {
-        label: status,
-        cls: "border-red-500/60 bg-red-500/10 text-red-300",
+        label: status === "rejected" ? "遭拒" : "失敗",
+        cls: "border-alarm-high/60 bg-alarm-high/10 text-alarm-high",
       };
   }
 }
@@ -45,16 +45,16 @@ function chipFor(status: DevfixRunStatus): { label: string; cls: string } {
 function dotFor(status: DevfixRunStatus | null): string {
   switch (status) {
     case "running":
-      return "bg-amber-400 animate-pulse";
+      return "bg-alarm-med animate-pulse";
     case "resolved":
-      return "bg-emerald-500";
+      return "bg-ok";
     case "needs_context":
-      return "bg-slate-500";
+      return "bg-ink-faint";
     case "rejected":
     case "failed":
-      return "bg-red-500";
+      return "bg-alarm-high";
     default:
-      return "bg-slate-600";
+      return "bg-edge-strong";
   }
 }
 
@@ -155,10 +155,10 @@ export function DevFixMonitor() {
     return (
       <div className="fixed bottom-3 right-3 z-50">
         <div
-          className="flex items-center gap-1.5 rounded-full border border-slate-800 bg-slate-900/80 px-2.5 py-1 text-[10px] text-slate-500"
+          className="flex items-center gap-1.5 rounded-full border border-edge bg-surface/90 px-2.5 py-1 text-2xs text-ink-faint"
           title="Big Guy 待命中 — 尚無 devfix 紀錄"
         >
-          <span className="h-1.5 w-1.5 rounded-full bg-slate-600" />
+          <span className="h-1.5 w-1.5 rounded-full bg-edge-strong" />
           Big Guy
         </div>
       </div>
@@ -170,7 +170,7 @@ export function DevFixMonitor() {
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="fixed bottom-3 right-3 z-50 flex items-center gap-1.5 rounded-full border border-slate-700 bg-slate-900/90 px-2.5 py-1 text-[10px] text-slate-400 hover:border-slate-500 hover:text-slate-200"
+        className="fixed bottom-3 right-3 z-50 flex items-center gap-1.5 rounded-full border border-edge-strong bg-surface/95 px-2.5 py-1 text-2xs text-ink-dim hover:border-ink-faint hover:text-ink"
         title={`Big Guy · ${display.ticket_id} · ${display.status}`}
       >
         <span
@@ -184,37 +184,37 @@ export function DevFixMonitor() {
   const chip = chipFor(display.status);
 
   return (
-    <div className="fixed bottom-3 right-3 z-50 flex max-h-[60vh] w-[30rem] max-w-[calc(100vw-1.5rem)] flex-col overflow-hidden rounded-lg border border-slate-700 bg-slate-950/95 shadow-xl shadow-black/50">
-      <div className="flex items-center gap-2 border-b border-slate-800 bg-slate-900/80 px-3 py-2">
-        <span className="min-w-0 truncate text-xs font-semibold text-slate-200">
-          🔧 {isRunning ? "Big Guy 工作中" : "Big Guy"} · {display.ticket_id} ·{" "}
+    <div className="fixed bottom-3 right-3 z-50 flex max-h-[60vh] w-[30rem] max-w-[calc(100vw-1.5rem)] flex-col overflow-hidden rounded-lg border border-edge-strong bg-canvas/95 shadow-xl shadow-black/50">
+      <div className="flex items-center gap-2 border-b border-edge bg-surface-2/80 px-3 py-2">
+        <span className="min-w-0 truncate text-xs font-semibold text-ink">
+          {isRunning ? "Big Guy 工作中" : "Big Guy"} · {display.ticket_id} ·{" "}
           {elapsedLabel(display)}
         </span>
         <span
-          className={`shrink-0 whitespace-nowrap rounded-full border px-1.5 py-0.5 text-[10px] ${chip.cls}`}
+          className={`shrink-0 whitespace-nowrap rounded-full border px-1.5 py-0.5 text-2xs ${chip.cls}`}
         >
           {chip.label}
         </span>
         <button
           type="button"
           onClick={() => setOpen(false)}
-          className="ml-auto shrink-0 rounded px-1.5 text-xs text-slate-500 hover:bg-slate-800 hover:text-slate-200"
+          className="ml-auto shrink-0 rounded px-1.5 text-xs text-ink-faint hover:bg-surface-3 hover:text-ink"
           title="收合"
         >
           —
         </button>
       </div>
       {display.instruction_preview ? (
-        <div className="truncate border-b border-slate-800 px-3 py-1.5 text-[10px] text-slate-500">
+        <div className="truncate border-b border-edge px-3 py-1.5 text-xs text-ink-faint">
           {display.instruction_preview}
         </div>
       ) : null}
       <div
         ref={scrollRef}
-        className="min-h-[6rem] flex-1 overflow-y-auto px-3 py-2 font-mono text-[11px] leading-relaxed text-slate-300"
+        className="min-h-[6rem] flex-1 overflow-y-auto px-3 py-2 font-mono text-xs leading-relaxed text-ink-dim"
       >
         {lines.length === 0 ? (
-          <div className="text-slate-600">等待日誌輸出… / waiting for log…</div>
+          <div className="text-ink-faint">等待日誌輸出…</div>
         ) : (
           lines.map((line, i) => (
             <div key={i} className="whitespace-pre-wrap break-words">

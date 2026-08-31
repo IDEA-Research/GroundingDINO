@@ -66,7 +66,7 @@ function QueryGate({
         {children(data)}
         <div
           data-annotation="n-series"
-          className="pointer-events-none absolute bottom-1 right-2 rounded bg-slate-800/80 px-1.5 py-0.5 text-[10px] text-slate-400"
+          className="pointer-events-none absolute bottom-1 right-2 rounded bg-surface-3/90 px-1.5 py-0.5 text-2xs text-ink-dim"
           title="Multiple Prometheus series were averaged into this value"
         >
           {data.nSeries} series (averaged)

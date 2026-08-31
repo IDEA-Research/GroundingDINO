@@ -2,23 +2,10 @@
 
 import React from "react";
 
+import { CHART_COLORS, seriesColor } from "@/lib/chart-theme";
 import type { WidgetSpec } from "@/lib/spec-schema";
 import type { WidgetData } from "@/lib/useQueryData";
 import { WidgetFrame } from "./WidgetFrame";
-
-// Colour palette for slices — deterministic, no external deps.
-const PALETTE = [
-  "#38bdf8", // sky-400
-  "#f472b6", // pink-400
-  "#a78bfa", // violet-400
-  "#34d399", // emerald-400
-  "#fbbf24", // amber-400
-  "#fb923c", // orange-400
-  "#60a5fa", // blue-400
-  "#e879f9", // fuchsia-400
-  "#2dd4bf", // teal-400
-  "#f87171", // red-400
-];
 
 interface Slice {
   label: string;
@@ -51,7 +38,7 @@ function buildSlices(
       pct,
       startAngle,
       endAngle,
-      color: PALETTE[i % PALETTE.length],
+      color: seriesColor(i),
     };
   });
 }
@@ -129,7 +116,7 @@ export function PieChartWidget({
   const innerR = 48;
 
   return (
-    <WidgetFrame widget={widget}>
+    <WidgetFrame widget={widget} unit={widget.encoding?.unit}>
       <div className="flex h-full items-center justify-center gap-4">
         <svg viewBox="0 0 200 200" className="h-full max-h-48 w-auto flex-shrink-0">
           {slices.length === 0 ? (
@@ -137,10 +124,10 @@ export function PieChartWidget({
               x={cx}
               y={cy}
               textAnchor="middle"
-              fill="#64748b"
+              fill={CHART_COLORS.inkFaint}
               fontSize={14}
             >
-              no data
+              尚無資料
             </text>
           ) : (
             slices.map((s, i) => (
@@ -152,7 +139,7 @@ export function PieChartWidget({
                     : arcPath(cx, cy, outerR, s.startAngle, s.endAngle)
                 }
                 fill={s.color}
-                stroke="#0f172a"
+                stroke={CHART_COLORS.surface}
                 strokeWidth={1}
               >
                 <title>
@@ -175,8 +162,8 @@ export function PieChartWidget({
                     y={pos.y}
                     textAnchor="middle"
                     dominantBaseline="central"
-                    fill="#e2e8f0"
-                    fontSize={10}
+                    fill={CHART_COLORS.ink}
+                    fontSize={12}
                     fontWeight={600}
                   >
                     {(s.pct * 100).toFixed(0)}%
@@ -192,7 +179,7 @@ export function PieChartWidget({
                   className="inline-block h-2.5 w-2.5 flex-shrink-0 rounded-sm"
                   style={{ backgroundColor: s.color }}
                 />
-                <span className="text-slate-300 truncate max-w-[120px]">
+                <span className="max-w-[120px] truncate text-ink-dim">
                   {s.label}
                 </span>
               </div>

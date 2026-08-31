@@ -36,7 +36,7 @@ export default function DashboardByIdPage({
     return (
       <div
         data-dashboard-state="error"
-        className="flex h-screen items-center justify-center text-rose-300"
+        className="flex h-screen items-center justify-center text-alarm-high"
       >
         {error}
       </div>

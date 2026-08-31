@@ -209,6 +209,16 @@ export interface ChatResponse {
   save_prompt_for: string | null;
 }
 
+// Chat request body sent to POST /api/chat/message (enqueue). Contract
+// C2: current_dashboard_id names the dashboard the user is LOOKING at,
+// so the backend re-points session memory before classification and
+// patches apply to the visible dashboard.
+export interface ChatRequest {
+  session_id: string;
+  message: string;
+  current_dashboard_id?: string | null;
+}
+
 export interface ChatEnqueueResponse {
   job_id: string;
   status: string;
@@ -244,6 +254,29 @@ export interface SavedDashboardSummary {
   widget_types: string[];
   promqls: string[];
   used_count: number;
+}
+
+// Full saved-library entry as returned by GET /api/saved_dashboards/{id}.
+// Mirrors the backend SavedDashboard model (spec is the snapshot taken
+// at save time).
+export interface SavedDashboardEntry {
+  saved_id: string;
+  name: string;
+  description: string;
+  tags: string[];
+  spec: DashboardSpec;
+  summary: Record<string, unknown>;
+  created_at: string;
+  used_count: number;
+}
+
+// Response of POST /api/saved_dashboards/{saved_id}/load (contract C3).
+// `dashboard` is a persisted CLONE of the saved snapshot under a fresh
+// dashboard_id — render and patch the clone, never the snapshot.
+export interface LoadSavedResponse {
+  saved_id: string;
+  name: string;
+  dashboard: DashboardSpec;
 }
 
 export interface BrowserEvaluationReport {

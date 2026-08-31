@@ -2,17 +2,112 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ---------------------------------------------------------------------------
+ * Clinical dark theme — bedside-monitor visual grammar.
+ *
+ * Near-black canvas, low-luminance chrome, high-luminance data. Vital colors
+ * follow the ICU/OR convention (HR = monitor green, SpO2 = cyan, cerebral
+ * rSO2 = violet). Pure red and amber are reserved EXCLUSIVELY for alarm
+ * priorities per IEC 60601-1-8 (red = high, amber = medium) — the chart
+ * palette never uses them.
+ *
+ * Tokens are raw R G B triplets so Tailwind opacity modifiers work
+ * (rgb(var(--x) / <alpha-value>)). The hex mirror for SVG/Recharts lives in
+ * frontend/lib/chart-theme.ts — KEEP THE TWO IN SYNC.
+ * ------------------------------------------------------------------------- */
+
+:root {
+  /* background tiers (near-black, faint blue cast) */
+  --canvas: 5 8 12; /* #05080c page ground */
+  --surface: 10 15 22; /* #0a0f16 card */
+  --surface-2: 16 23 33; /* #101721 raised / hover */
+  --surface-3: 23 32 45; /* #17202d chips, inputs */
+
+  /* lines */
+  --edge: 28 38 53; /* #1c2635 subtle border */
+  --edge-strong: 42 55 74; /* #2a374a emphasized border */
+  --grid: 20 28 40; /* #141c28 chart gridlines */
+
+  /* text tiers */
+  --ink: 232 238 246; /* #e8eef6 primary */
+  --ink-dim: 148 163 180; /* #94a3b4 secondary */
+  --ink-faint: 95 108 126; /* #5f6c7e labels / tertiary */
+
+  /* vital colors (bedside-monitor convention) */
+  --vital-hr: 0 224 122; /* #00e07a heart rate — monitor green */
+  --vital-spo2: 34 211 238; /* #22d3ee SpO2 — cyan */
+  --vital-rso2: 167 139 250; /* #a78bfa cerebral rSO2 — violet */
+
+  /* alarm colors — IEC 60601-1-8. Red/amber appear NOWHERE else. */
+  --alarm-high: 255 69 84; /* #ff4554 high priority */
+  --alarm-med: 255 176 32; /* #ffb020 medium priority */
+  --alarm-info: 124 147 178; /* #7c93b2 informational, blue-gray */
+
+  /* good/normal status (backend up, gate passed, resolved) */
+  --ok: 52 211 153; /* #34d399 */
+
+  /* chart palette — NO red, NO yellow/amber/orange */
+  --chart-1: 0 224 122; /* green (HR) */
+  --chart-2: 34 211 238; /* cyan (SpO2) */
+  --chart-3: 167 139 250; /* violet (rSO2) */
+  --chart-4: 96 165 250; /* #60a5fa blue */
+  --chart-5: 45 212 191; /* #2dd4bf teal */
+  --chart-6: 244 114 182; /* #f472b6 pink */
+  --chart-7: 216 140 240; /* #d88cf0 orchid */
+  --chart-8: 143 160 196; /* #8fa0c4 slate blue */
+
+  /* focus ring */
+  --ring: 56 189 248; /* #38bdf8 */
+
+  --font-sans: Inter, "Noto Sans TC", "PingFang TC", "Microsoft JhengHei",
+    system-ui, -apple-system, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas,
+    "Courier New", monospace;
+}
+
 html,
 body {
-  background: #0b1220;
-  color: #e2e8f0;
+  background: rgb(var(--canvas));
+  color: rgb(var(--ink));
   height: 100%;
   margin: 0;
   padding: 0;
-  font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+  font-family: var(--font-sans);
 }
 
 #__next,
 body > div {
   height: 100%;
+}
+
+/* Visible, consistent keyboard focus. */
+:focus-visible {
+  outline: 2px solid rgb(var(--ring) / 0.8);
+  outline-offset: 1px;
+}
+
+/* Dominant stat-card numeral — readable at 3 meters. */
+.stat-numeral {
+  font-size: clamp(2.5rem, 6vw, 4.5rem);
+  line-height: 1;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Quiet dark scrollbars so chrome stays low-luminance. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgb(var(--edge-strong)) transparent;
+}
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+*::-webkit-scrollbar-thumb {
+  background: rgb(var(--edge-strong));
+  border-radius: 4px;
+}
+*::-webkit-scrollbar-track {
+  background: transparent;
 }

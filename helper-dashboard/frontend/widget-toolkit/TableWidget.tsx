@@ -24,11 +24,11 @@ export function TableWidget({
   );
 
   return (
-    <WidgetFrame widget={widget}>
+    <WidgetFrame widget={widget} unit={widget.encoding?.unit}>
       <div className="h-full overflow-auto">
         <table className="w-full text-left text-xs">
           <thead>
-            <tr className="border-b border-slate-800 text-slate-400">
+            <tr className="border-b border-edge text-ink-faint">
               {columns.map((c) => (
                 <th key={c} className="px-2 py-1 font-medium">
                   {c}
@@ -39,13 +39,13 @@ export function TableWidget({
           </thead>
           <tbody>
             {rows.map((r, i) => (
-              <tr key={i} className="border-b border-slate-900 hover:bg-slate-900/40">
+              <tr key={i} className="border-b border-edge/60 hover:bg-surface-2/60">
                 {columns.map((c) => (
-                  <td key={c} className="px-2 py-1 text-slate-200">
+                  <td key={c} className="px-2 py-1 text-ink-dim">
                     {r.metric[c] ?? ""}
                   </td>
                 ))}
-                <td className="px-2 py-1 tabular-nums text-slate-100">
+                <td className="px-2 py-1 font-mono tabular-nums text-ink">
                   {r.value.toFixed(2)}
                 </td>
               </tr>
@@ -54,9 +54,9 @@ export function TableWidget({
               <tr>
                 <td
                   colSpan={columns.length + 1}
-                  className="px-2 py-4 text-center text-slate-500"
+                  className="px-2 py-4 text-center text-ink-faint"
                 >
-                  no rows
+                  沒有資料列
                 </td>
               </tr>
             ) : null}

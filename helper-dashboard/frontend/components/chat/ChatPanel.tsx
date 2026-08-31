@@ -48,26 +48,29 @@ export function ChatPanel({
 
   const dotColor =
     backend.status === "up"
-      ? "bg-emerald-400"
+      ? "bg-ok"
       : backend.status === "down"
-        ? "bg-rose-500"
-        : "bg-amber-400";
+        ? "bg-alarm-high"
+        : "bg-alarm-med";
   const dotLabel =
     backend.status === "up"
-      ? "backend up"
+      ? "後端連線正常"
       : backend.status === "down"
-        ? `backend unreachable${backend.httpCode ? ` (HTTP ${backend.httpCode})` : ""}`
-        : "checking backend…";
+        ? `後端無法連線${backend.httpCode ? ` (HTTP ${backend.httpCode})` : ""}`
+        : "檢查後端連線中…";
 
   return (
-    <div className="flex h-full flex-col bg-panel">
-      <div className="flex items-center justify-between border-b border-slate-800 px-3 py-2">
-        <div className="text-sm font-semibold">Helper</div>
+    <div className="flex h-full flex-col bg-canvas">
+      <div className="flex items-center justify-between border-b border-edge px-3 py-2">
+        <div className="text-sm font-semibold text-ink">Helper</div>
         <div
           title={dotLabel}
-          className="flex items-center gap-1.5 text-[10px] text-slate-400"
+          className="flex items-center gap-1.5 text-xs text-ink-faint"
         >
-          <span className={`inline-block h-2 w-2 rounded-full ${dotColor}`} />
+          <span
+            data-backend-status={backend.status}
+            className={`inline-block h-2 w-2 rounded-full ${dotColor}`}
+          />
           <span className="hidden md:inline">{dotLabel}</span>
         </div>
       </div>
@@ -76,19 +79,19 @@ export function ChatPanel({
         className="flex-1 space-y-2 overflow-y-auto p-3"
       >
         {messages.length === 0 ? (
-          <div className="rounded bg-slate-900/60 p-3 text-sm text-slate-300">
-            Hi — tell me what dashboard you'd like. Example: "Show me a CPU
-            and memory dashboard for my nodes."
+          <div className="rounded-lg border border-edge bg-surface-2/60 p-3 text-sm text-ink-dim">
+            嗨 — 告訴我你想要的儀表板。例如:「幫我建立新生兒 HR 與 SpO2
+            監控儀表板」。
           </div>
         ) : null}
         {messages.map((m) => (
           <div
             key={m.id}
             className={
-              "max-w-[85%] rounded-lg px-3 py-2 text-sm " +
+              "max-w-[85%] rounded-lg border px-3 py-2 text-sm " +
               (m.from === "user"
-                ? "ml-auto bg-sky-700 text-white"
-                : "bg-slate-800 text-slate-100")
+                ? "ml-auto border-chart-4/30 bg-chart-4/15 text-ink"
+                : "border-edge bg-surface-2 text-ink")
             }
           >
             <div className="whitespace-pre-wrap">{m.text}</div>
@@ -100,7 +103,7 @@ export function ChatPanel({
                     key={i}
                     type="button"
                     onClick={() => onQuickReply(q)}
-                    className="block w-full rounded border border-slate-600 bg-slate-900 px-2 py-1 text-left text-xs text-slate-200 hover:bg-slate-700"
+                    className="block w-full rounded border border-edge-strong bg-surface px-2 py-1 text-left text-xs text-ink-dim hover:bg-surface-3 hover:text-ink"
                   >
                     {q}
                   </button>
@@ -109,37 +112,37 @@ export function ChatPanel({
             ) : null}
 
             {m.savePromptFor ? (
-              <div className="mt-2 flex flex-wrap gap-1.5">
-                <span className="text-[10px] uppercase tracking-wide text-slate-400">
-                  save as
+              <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                <span className="text-2xs uppercase tracking-wide text-ink-faint">
+                  另存為
                 </span>
                 <SaveQuick onPick={(name) => onQuickReply(name)} />
                 <button
                   type="button"
                   onClick={() => onQuickReply("no")}
-                  className="rounded bg-slate-700 px-2 py-0.5 text-[11px] text-slate-100 hover:bg-slate-600"
+                  className="rounded border border-edge-strong bg-surface-3 px-2 py-0.5 text-xs text-ink-dim hover:bg-surface-2 hover:text-ink"
                 >
-                  skip
+                  略過
                 </button>
               </div>
             ) : null}
 
             {m.meta ? (
-              <div className="mt-1 text-[10px] uppercase tracking-wide text-slate-300/70">
+              <div className="mt-1 font-mono text-2xs uppercase tracking-wide text-ink-faint">
                 {m.meta}
               </div>
             ) : null}
           </div>
         ))}
         {busy ? (
-          <div className="max-w-[85%] rounded-lg bg-slate-800 px-3 py-2 text-xs italic text-slate-400">
-            {busyMessage || "Helper is thinking…"}
+          <div className="max-w-[85%] rounded-lg border border-edge bg-surface-2 px-3 py-2 text-xs italic text-ink-faint">
+            {busyMessage || "Helper 思考中…"}
           </div>
         ) : null}
       </div>
       <form
         onSubmit={submit}
-        className="flex gap-2 border-t border-slate-800 p-2"
+        className="flex gap-2 border-t border-edge p-2"
       >
         <input
           value={text}
@@ -147,17 +150,17 @@ export function ChatPanel({
           disabled={busy}
           placeholder={
             backend.status === "down"
-              ? "Backend unreachable — waiting for reconnect…"
-              : "Ask Helper for a dashboard or a change…"
+              ? "後端無法連線 — 等待重新連線…"
+              : "輸入訊息…"
           }
-          className="flex-1 rounded bg-slate-900 px-3 py-2 text-sm text-slate-100 outline-none placeholder:text-slate-500 focus:ring-1 focus:ring-sky-500"
+          className="flex-1 rounded-md border border-edge bg-surface-2 px-3 py-2 text-sm text-ink outline-none placeholder:text-ink-faint focus:ring-1 focus:ring-ring"
         />
         <button
           type="submit"
           disabled={busy || !text.trim() || backend.status === "down"}
-          className="rounded bg-sky-600 px-3 py-2 text-sm font-medium text-white disabled:opacity-40"
+          className="rounded-md border border-vital-spo2/40 bg-vital-spo2/15 px-3 py-2 text-sm font-medium text-vital-spo2 hover:bg-vital-spo2/25 disabled:opacity-40"
         >
-          Send
+          傳送
         </button>
       </form>
     </div>
@@ -177,14 +180,14 @@ function SaveQuick({ onPick }: { onPick: (name: string) => void }) {
       <input
         value={v}
         onChange={(e) => setV(e.target.value)}
-        placeholder="name…"
-        className="rounded bg-slate-900 px-2 py-0.5 text-[11px] text-slate-100 outline-none placeholder:text-slate-500"
+        placeholder="名稱…"
+        className="rounded border border-edge bg-surface px-2 py-0.5 text-xs text-ink outline-none placeholder:text-ink-faint focus:ring-1 focus:ring-ring"
       />
       <button
         type="submit"
-        className="rounded bg-emerald-600 px-2 py-0.5 text-[11px] font-medium text-white hover:bg-emerald-500"
+        className="rounded border border-ok/40 bg-ok/15 px-2 py-0.5 text-xs font-medium text-ok hover:bg-ok/25"
       >
-        save
+        儲存
       </button>
     </form>
   );

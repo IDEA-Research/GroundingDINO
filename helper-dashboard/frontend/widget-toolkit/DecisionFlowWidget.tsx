@@ -32,17 +32,17 @@ type GateState =
 function nodeKindBadge(kind: FlowNode["kind"]): { text: string; cls: string } {
   switch (kind) {
     case "data_integrity_gate":
-      return { text: "gate", cls: "bg-sky-800 text-sky-100" };
+      return { text: "gate", cls: "bg-chart-4/15 text-chart-4" };
     case "decision":
-      return { text: "decision", cls: "bg-indigo-800 text-indigo-100" };
+      return { text: "decision", cls: "bg-chart-3/15 text-chart-3" };
     case "action":
-      return { text: "action", cls: "bg-amber-800 text-amber-100" };
+      return { text: "action", cls: "bg-chart-5/15 text-chart-5" };
     case "terminal":
-      return { text: "done", cls: "bg-emerald-800 text-emerald-100" };
+      return { text: "done", cls: "bg-ok/15 text-ok" };
     case "signal_lost":
-      return { text: "signal lost", cls: "bg-red-800 text-red-100" };
+      return { text: "signal lost", cls: "bg-alarm-high/15 text-alarm-high" };
     default:
-      return { text: kind, cls: "bg-slate-700 text-slate-200" };
+      return { text: kind, cls: "bg-surface-3 text-ink-dim" };
   }
 }
 
@@ -110,7 +110,7 @@ export function DecisionFlowWidget({ widget }: { widget: WidgetSpec }) {
     return (
       <WidgetFrame widget={widget} badge="decision flow">
         <div className="flex h-full flex-col justify-between">
-          <div className="text-xs text-slate-400">
+          <div className="text-xs text-ink-faint">
             No decision flow configured.
           </div>
           <Disclaimer />
@@ -141,20 +141,20 @@ export function DecisionFlowWidget({ widget }: { widget: WidgetSpec }) {
             the clinician back rather than showing a verdict. */}
         <div className="mt-2 flex-1 overflow-auto">
           {gateBlocks && !onGateStep ? (
-            <div className="rounded border border-red-800 bg-red-950/40 p-2 text-red-100">
+            <div className="rounded border border-alarm-high/60 bg-alarm-high/10 p-2 text-ink">
               Verdict path is locked: the data-integrity gate has not passed.
               Resolve signal integrity before continuing.
             </div>
           ) : (
-            <div className="rounded border border-slate-800 bg-slate-900/40 p-2">
+            <div className="rounded border border-edge bg-surface-2/60 p-2">
               <div className="mb-1 flex items-center justify-between">
-                <span className="font-semibold text-slate-100">
+                <span className="font-semibold text-ink">
                   Step {clampedIdx + 1} / {steps.length}: {step.title}
                 </span>
                 {stepNode ? (
                   <span
                     className={
-                      "rounded px-1.5 py-0.5 text-[10px] uppercase " +
+                      "rounded px-1.5 py-0.5 text-2xs uppercase " +
                       nodeKindBadge(stepNode.kind).cls
                     }
                   >
@@ -163,16 +163,16 @@ export function DecisionFlowWidget({ widget }: { widget: WidgetSpec }) {
                 ) : null}
               </div>
               {stepNode ? (
-                <div className="mb-1 text-slate-300">
+                <div className="mb-1 text-ink-dim">
                   {stepNode.label}
                   {stepNode.signal ? (
-                    <span className="ml-2 rounded bg-slate-800 px-1 py-0.5 text-[10px] text-slate-300">
+                    <span className="ml-2 rounded bg-surface-3 px-1 py-0.5 font-mono text-2xs text-ink-dim">
                       {stepNode.signal}
                     </span>
                   ) : null}
                 </div>
               ) : null}
-              <div className="text-slate-400">{step.guidance}</div>
+              <div className="text-ink-faint">{step.guidance}</div>
 
               {/* Outgoing branches for this node, from the real graph edges. */}
               <BranchList flow={flow} nodeId={step.node} />
@@ -184,18 +184,18 @@ export function DecisionFlowWidget({ widget }: { widget: WidgetSpec }) {
         <div className="mt-2 flex items-center justify-between">
           <button
             type="button"
-            className="rounded border border-slate-700 px-2 py-1 text-slate-200 disabled:opacity-40"
+            className="rounded border border-edge-strong px-2 py-1 text-ink-dim hover:bg-surface-2 hover:text-ink disabled:opacity-40"
             disabled={clampedIdx === 0}
             onClick={() => setStepIdx((i) => Math.max(0, i - 1))}
           >
             Back
           </button>
-          <span className="text-slate-500">
+          <span className="text-ink-faint">
             {flow.inputs.length} inputs · {flow.nodes.length} nodes
           </span>
           <button
             type="button"
-            className="rounded border border-slate-700 px-2 py-1 text-slate-200 disabled:opacity-40"
+            className="rounded border border-edge-strong px-2 py-1 text-ink-dim hover:bg-surface-2 hover:text-ink disabled:opacity-40"
             // Cannot advance past the gate step until the gate is ok.
             disabled={
               clampedIdx >= steps.length - 1 || (onGateStep && gateBlocks)
@@ -231,10 +231,10 @@ function BranchList({
         return (
           <li
             key={i}
-            className="flex items-center justify-between rounded border border-slate-800 px-2 py-1"
+            className="flex items-center justify-between rounded border border-edge px-2 py-1"
           >
-            <span className="text-slate-300">{e.condition}</span>
-            <span className="text-slate-500">
+            <span className="text-ink-dim">{e.condition}</span>
+            <span className="text-ink-faint">
               → {target ? target.label : e.to}
             </span>
           </li>
@@ -247,21 +247,21 @@ function BranchList({
 function GateBanner({ gate }: { gate: GateState }) {
   if (gate.kind === "loading") {
     return (
-      <div className="rounded border border-slate-700 bg-slate-900/40 px-2 py-1 text-slate-400">
+      <div className="rounded border border-edge bg-surface-2/60 px-2 py-1 text-ink-faint">
         Checking data-integrity gate…
       </div>
     );
   }
   if (gate.kind === "ok") {
     return (
-      <div className="rounded border border-emerald-800 bg-emerald-950/40 px-2 py-1 text-emerald-200">
+      <div className="rounded border border-ok/40 bg-ok/10 px-2 py-1 text-ok">
         Data-integrity gate: PASSED (real signal, fresh).
       </div>
     );
   }
   if (gate.kind === "store_unavailable") {
     return (
-      <div className="rounded border border-red-700 bg-red-950/50 px-2 py-1 font-semibold text-red-100">
+      <div className="rounded border border-alarm-high bg-alarm-high/10 px-2 py-1 font-semibold text-alarm-high">
         SIGNAL UNKNOWN — alert store unreachable. Do not interpret; treat as
         signal lost.
       </div>
@@ -269,7 +269,7 @@ function GateBanner({ gate }: { gate: GateState }) {
   }
   if (gate.kind === "no_data") {
     return (
-      <div className="rounded border border-amber-700 bg-amber-950/40 px-2 py-1 text-amber-100">
+      <div className="rounded border border-alarm-med/60 bg-alarm-med/10 px-2 py-1 text-alarm-med">
         No alert events yet — awaiting first evaluation. Do not interpret as
         "normal".
       </div>
@@ -277,7 +277,7 @@ function GateBanner({ gate }: { gate: GateState }) {
   }
   if (gate.kind === "insufficient_baseline") {
     return (
-      <div className="rounded border border-amber-700 bg-amber-950/40 px-2 py-1 text-amber-100">
+      <div className="rounded border border-alarm-med/60 bg-alarm-med/10 px-2 py-1 text-alarm-med">
         INSUFFICIENT BASELINE — under 24h of history. No verdict.{" "}
         {gate.message}
       </div>
@@ -285,7 +285,7 @@ function GateBanner({ gate }: { gate: GateState }) {
   }
   // signal_lost
   return (
-    <div className="rounded border border-red-700 bg-red-950/50 px-2 py-1 font-semibold text-red-100">
+    <div className="rounded border border-alarm-high bg-alarm-high/10 px-2 py-1 font-semibold text-alarm-high">
       SIGNAL LOST{gate.reason ? ` (${gate.reason})` : ""} — do NOT interpret.{" "}
       {gate.message}
     </div>
@@ -296,7 +296,7 @@ function Disclaimer() {
   return (
     <div
       data-non-diagnostic="true"
-      className="mt-2 border-t border-slate-800 pt-1 text-[10px] italic text-slate-500"
+      className="mt-2 border-t border-edge pt-1 text-2xs italic text-ink-faint"
     >
       {DISCLAIMER}
     </div>

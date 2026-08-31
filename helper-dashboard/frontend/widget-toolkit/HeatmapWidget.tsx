@@ -2,54 +2,19 @@
 
 import React from "react";
 
+import {
+  heatmapScale,
+  scaleColorAt,
+  scaleTextColorAt,
+} from "@/lib/chart-theme";
 import type { WidgetSpec } from "@/lib/spec-schema";
 import type { WidgetData } from "@/lib/useQueryData";
 import { WidgetFrame } from "./WidgetFrame";
 
-// ---------------------------------------------------------------------------
-// Colour scales — small built-in set, no external deps.
-// ---------------------------------------------------------------------------
-
-const SCALES: Record<string, string[]> = {
-  warm: ["#1e293b", "#854d0e", "#ca8a04", "#facc15", "#fef08a"],
-  cool: ["#1e293b", "#1e3a5f", "#2563eb", "#60a5fa", "#bfdbfe"],
-  viridis: ["#440154", "#3b528b", "#21918c", "#5ec962", "#fde725"],
-};
-
-function pickScale(name?: string): string[] {
-  if (name && SCALES[name]) return SCALES[name];
-  return SCALES.warm;
-}
-
-function interpolateColor(scale: string[], t: number): string {
-  const clamped = Math.max(0, Math.min(1, t));
-  const idx = clamped * (scale.length - 1);
-  const lo = Math.floor(idx);
-  const hi = Math.min(lo + 1, scale.length - 1);
-  const frac = idx - lo;
-  return blendHex(scale[lo], scale[hi], frac);
-}
-
-function blendHex(a: string, b: string, t: number): string {
-  const [r1, g1, b1] = hexToRgb(a);
-  const [r2, g2, b2] = hexToRgb(b);
-  const r = Math.round(r1 + (r2 - r1) * t);
-  const g = Math.round(g1 + (g2 - g1) * t);
-  const bl = Math.round(b1 + (b2 - b1) * t);
-  return `rgb(${r},${g},${bl})`;
-}
-
-function hexToRgb(hex: string): [number, number, number] {
-  const h = hex.replace("#", "");
-  return [
-    parseInt(h.substring(0, 2), 16),
-    parseInt(h.substring(2, 4), 16),
-    parseInt(h.substring(4, 6), 16),
-  ];
-}
+// Color scales live in lib/chart-theme.ts (the single home for chart hex).
 
 // ---------------------------------------------------------------------------
-// Build a 2D grid from the mock table data.
+// Build a 2D grid from the table data.
 // Each table row becomes one cell; we derive x/y from metric labels.
 // ---------------------------------------------------------------------------
 
@@ -98,7 +63,7 @@ export function HeatmapWidget({
   const decimals = typeof opts.decimals === "number" ? opts.decimals : 1;
   const xLabel = typeof opts.x_label === "string" ? opts.x_label : "";
   const yLabel = typeof opts.y_label === "string" ? opts.y_label : "";
-  const scale = pickScale(
+  const scale = heatmapScale(
     typeof opts.color_scale === "string" ? opts.color_scale : undefined,
   );
 
@@ -117,20 +82,20 @@ export function HeatmapWidget({
   const cellW = xLabels.length ? `${Math.floor(100 / xLabels.length)}%` : "40px";
 
   return (
-    <WidgetFrame widget={widget}>
-      <div className="flex h-full flex-col overflow-auto text-[10px]">
+    <WidgetFrame widget={widget} unit={widget.encoding?.unit}>
+      <div className="flex h-full flex-col overflow-auto text-xs">
         {/* Grid */}
         <div className="flex-1 overflow-auto">
           <table className="w-full border-collapse">
             <thead>
               <tr>
-                <th className="p-1 text-left text-slate-400">
+                <th className="p-1 text-left font-medium text-ink-faint">
                   {yLabel || ""}
                 </th>
                 {xLabels.map((x) => (
                   <th
                     key={x}
-                    className="p-1 text-center text-slate-400"
+                    className="p-1 text-center font-medium text-ink-faint"
                     style={{ width: cellW }}
                   >
                     {x}
@@ -141,22 +106,24 @@ export function HeatmapWidget({
             <tbody>
               {yLabels.map((y) => (
                 <tr key={y}>
-                  <td className="whitespace-nowrap p-1 text-slate-300">
+                  <td className="whitespace-nowrap p-1 text-ink-dim">
                     {y}
                   </td>
                   {xLabels.map((x) => {
                     const cell = lookup.get(`${y}|${x}`);
                     const v = cell?.value ?? 0;
                     const t = (v - minV) / range;
-                    const bg = interpolateColor(scale, t);
                     return (
                       <td
                         key={x}
                         className="p-1 text-center"
-                        style={{ backgroundColor: bg }}
+                        style={{ backgroundColor: scaleColorAt(scale, t) }}
                         title={`${y} / ${x}: ${v.toFixed(decimals)}`}
                       >
-                        <span className="text-[9px] text-white/80">
+                        <span
+                          className="text-xs tabular-nums"
+                          style={{ color: scaleTextColorAt(scale, t) }}
+                        >
                           {v.toFixed(decimals)}
                         </span>
                       </td>
@@ -167,12 +134,28 @@ export function HeatmapWidget({
             </tbody>
           </table>
         </div>
-        {/* Axis labels */}
+        {/* Axis label */}
         {xLabel && (
-          <div className="mt-1 text-center text-[10px] text-slate-400">
+          <div className="mt-1 text-center text-xs text-ink-faint">
             {xLabel}
           </div>
         )}
+        {/* Compact color legend: min → max across the active scale. */}
+        <div className="mt-1 flex shrink-0 items-center gap-2 text-xs text-ink-faint">
+          <span className="font-mono tabular-nums">
+            {minV.toFixed(decimals)}
+          </span>
+          <span
+            className="h-2 min-w-0 flex-1 rounded-sm"
+            style={{
+              background: `linear-gradient(to right, ${scale.join(", ")})`,
+            }}
+            aria-hidden="true"
+          />
+          <span className="font-mono tabular-nums">
+            {maxV.toFixed(decimals)}
+          </span>
+        </div>
       </div>
     </WidgetFrame>
   );

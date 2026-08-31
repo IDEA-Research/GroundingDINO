@@ -21,9 +21,9 @@ export function DataStateNotice({
     return (
       <div
         data-state="loading"
-        className="flex h-full items-center justify-center text-xs text-slate-500"
+        className="flex h-full items-center justify-center text-xs text-ink-faint"
       >
-        載入中… / loading…
+        載入中…
       </div>
     );
   }
@@ -32,15 +32,15 @@ export function DataStateNotice({
     return (
       <div
         data-state="error"
-        className="flex h-full flex-col items-center justify-center gap-1 rounded border-2 border-red-600 bg-red-950/50 p-2 text-center"
+        className="flex h-full flex-col items-center justify-center gap-1 rounded border-2 border-alarm-high bg-alarm-high/10 p-2 text-center"
       >
-        <div className="text-sm font-bold uppercase tracking-wide text-red-300">
-          資料錯誤 / DATA ERROR
+        <div className="text-sm font-bold tracking-wide text-alarm-high">
+          查詢錯誤
         </div>
-        <div className="max-w-full break-words text-xs text-red-200">
+        <div className="max-w-full break-words text-xs text-ink">
           {data.errorDetail || "unknown error"}
         </div>
-        <code className="max-w-full truncate text-[10px] text-red-400/80">
+        <code className="max-w-full truncate font-mono text-xs text-alarm-high/80">
           {promql}
         </code>
       </div>
@@ -51,15 +51,15 @@ export function DataStateNotice({
   return (
     <div
       data-state="empty"
-      className="flex h-full flex-col items-center justify-center gap-1 rounded border-2 border-dashed border-slate-500 bg-slate-900/60 p-2 text-center"
+      className="flex h-full flex-col items-center justify-center gap-1 rounded border-2 border-dashed border-edge-strong bg-surface-2/60 p-2 text-center"
     >
-      <div className="text-sm font-bold uppercase tracking-wide text-slate-300">
-        無資料 / NO DATA
+      <div className="text-sm font-bold uppercase tracking-wide text-ink">
+        尚無資料 NO DATA
       </div>
-      <div className="text-xs text-slate-400">
-        查詢成功但沒有任何資料點 / query returned zero series
+      <div className="text-xs text-ink-faint">
+        查詢成功但沒有任何資料點
       </div>
-      <code className="max-w-full truncate text-[10px] text-slate-500">
+      <code className="max-w-full truncate font-mono text-xs text-ink-faint">
         {promql}
       </code>
     </div>

@@ -3,11 +3,22 @@ import type {
   BrowserEvaluationReport,
   ChatEnqueueResponse,
   ChatJobStatusResponse,
+  ChatRequest,
   ChatResponse,
   DashboardSpec,
+  LoadSavedResponse,
   QuerySpec,
+  SavedDashboardEntry,
   SavedDashboardSummary,
 } from "./spec-schema";
+
+// Wire request for POST /api/dashboard/query: the widget's QuerySpec plus
+// the shared refresh clock's `end` (contract C1, epoch seconds). The
+// backend floors it to the widget's step so every widget renders the same
+// aligned window.
+export interface WidgetQueryRequest extends QuerySpec {
+  end?: number;
+}
 
 export interface WidgetQueryResponse {
   source: "prometheus";
@@ -22,6 +33,11 @@ export interface WidgetQueryResponse {
   // series. >1 means the value shown is an average — the renderer
   // annotates it so nobody mistakes an averaged vital for a raw one.
   n_series: number;
+  // Contract C1: the step-aligned end actually used (epoch seconds) and
+  // the resolved window length. Optional so responses from a backend
+  // predating the contract still parse.
+  end?: number;
+  range_seconds?: number;
 }
 
 const API_BASE = "/api";
@@ -64,11 +80,10 @@ async function del<T>(path: string): Promise<T> {
 }
 
 export const api = {
-  async sendMessage(params: {
-    session_id: string;
-    message: string;
-    current_dashboard_id?: string | null;
-  }, opts?: {
+  // Contract C2: `current_dashboard_id` rides on every message so the
+  // backend re-points session memory at what the user is LOOKING at
+  // before classification — patches then target the visible dashboard.
+  async sendMessage(params: ChatRequest, opts?: {
     onProgress?: (p: { status: string; message?: string | null; pct?: number | null }) => void;
   }): Promise<ChatResponse> {
     const enq = await postJSON<ChatEnqueueResponse>("/chat/message", params);
@@ -109,7 +124,7 @@ export const api = {
   // :9090). There is NO mock fallback: a mock source is rejected with 400,
   // an unreachable Prometheus is a 502 (postJSON throws with the detail),
   // and `data_status` distinguishes real data from an honest empty result.
-  queryWidget(query: QuerySpec): Promise<WidgetQueryResponse> {
+  queryWidget(query: WidgetQueryRequest): Promise<WidgetQueryResponse> {
     return postJSON(`/dashboard/query`, query);
   },
 
@@ -125,12 +140,15 @@ export const api = {
     return getJSON(`/health`);
   },
 
+  // Matches backend SaveRequest exactly (dashboard_id + name required,
+  // description/tags optional). The response carries the FULL stored
+  // entry (spec + summary), not the list-row summary shape.
   saveDashboard(params: {
     dashboard_id: string;
     name: string;
     description?: string;
     tags?: string[];
-  }): Promise<{ saved: SavedDashboardSummary }> {
+  }): Promise<{ saved: SavedDashboardEntry }> {
     return postJSON(`/saved_dashboards/save`, params);
   },
 
@@ -142,8 +160,23 @@ export const api = {
     return del(`/saved_dashboards/${id}`);
   },
 
-  // Real anomaly alert events from the INC2/INC3 store. The decision_flow
-  // widget consumes these — never the AlertListWidget mock.
+  // Full saved entry (including the snapshotted spec). Read-only — to
+  // put a saved dashboard on screen, use loadSaved, which clones it.
+  getSaved(id: string): Promise<{ saved: SavedDashboardEntry }> {
+    return getJSON(`/saved_dashboards/${id}`);
+  },
+
+  // Contract C3: load a saved entry as a FRESH clone. The backend
+  // deep-clones the snapshot under a new dashboard_id, persists the
+  // clone, bumps used_count, and returns the clone's full spec —
+  // chat patches then target the clone, never the shared snapshot.
+  loadSaved(id: string): Promise<LoadSavedResponse> {
+    return postJSON(`/saved_dashboards/${id}/load`, {});
+  },
+
+  // Real anomaly alert events from the INC2/INC3 store. The
+  // decision_flow widget consumes these. (AlertListWidget is
+  // query-driven via its own PromQL — e.g. ALERTS — not this feed.)
   anomalyAlerts(): Promise<AnomalyAlertsResponse> {
     return getJSON(`/anomaly/alerts`);
   },

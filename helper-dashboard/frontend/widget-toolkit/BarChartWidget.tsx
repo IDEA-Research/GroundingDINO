@@ -12,23 +12,17 @@ import {
   YAxis,
 } from "recharts";
 
+import {
+  CHART_COLORS,
+  axisTick,
+  gridStroke,
+  seriesColor,
+  tooltipContentStyle,
+  tooltipLabelStyle,
+} from "@/lib/chart-theme";
 import type { WidgetSpec } from "@/lib/spec-schema";
 import type { WidgetData } from "@/lib/useQueryData";
 import { WidgetFrame } from "./WidgetFrame";
-
-// Colour palette — same deterministic set used by PieChartWidget.
-const PALETTE = [
-  "#38bdf8", // sky-400
-  "#f472b6", // pink-400
-  "#a78bfa", // violet-400
-  "#34d399", // emerald-400
-  "#fbbf24", // amber-400
-  "#fb923c", // orange-400
-  "#60a5fa", // blue-400
-  "#e879f9", // fuchsia-400
-  "#2dd4bf", // teal-400
-  "#f87171", // red-400
-];
 
 interface BarRow {
   label: string;
@@ -50,6 +44,11 @@ function buildRows(
   });
 }
 
+const valueLabelStyle = {
+  fill: CHART_COLORS.inkDim,
+  fontSize: 12,
+};
+
 export function BarChartWidget({
   widget,
   data,
@@ -65,10 +64,13 @@ export function BarChartWidget({
 
   const rows = buildRows(data.table, decimals);
 
-  const barColor = widget.encoding?.color || "#38bdf8";
+  // A single-category bar chart may pin one color via the spec; otherwise
+  // bars cycle the shared (never-red/yellow) palette.
+  const specColor = widget.encoding?.color || null;
+  const fillFor = (i: number) => specColor ?? seriesColor(i);
 
   return (
-    <WidgetFrame widget={widget}>
+    <WidgetFrame widget={widget} unit={widget.encoding?.unit}>
       <ResponsiveContainer width="100%" height="100%">
         {horizontal ? (
           <BarChart
@@ -77,39 +79,30 @@ export function BarChartWidget({
             margin={{ top: 8, right: 16, bottom: 0, left: 0 }}
           >
             {showGrid && (
-              <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
+              <CartesianGrid strokeDasharray="3 3" stroke={gridStroke} />
             )}
             <YAxis
               dataKey="label"
               type="category"
-              tick={{ fontSize: 10, fill: "#94a3b8" }}
+              tick={axisTick}
               width={80}
             />
-            <XAxis
-              type="number"
-              tick={{ fontSize: 10, fill: "#94a3b8" }}
-            />
+            <XAxis type="number" tick={axisTick} />
             <Tooltip
-              contentStyle={{
-                background: "#0f172a",
-                border: "1px solid #1e293b",
-                color: "#e2e8f0",
-              }}
+              contentStyle={tooltipContentStyle}
+              labelStyle={tooltipLabelStyle}
             />
             <Bar
               dataKey="value"
               isAnimationActive={false}
               label={
                 showValues
-                  ? { position: "right", fill: "#94a3b8", fontSize: 10 }
+                  ? { position: "right", ...valueLabelStyle }
                   : false
               }
             >
               {rows.map((_, i) => (
-                <Cell
-                  key={`cell-${i}`}
-                  fill={PALETTE[i % PALETTE.length]}
-                />
+                <Cell key={`cell-${i}`} fill={fillFor(i)} />
               ))}
             </Bar>
           </BarChart>
@@ -119,34 +112,25 @@ export function BarChartWidget({
             margin={{ top: 8, right: 8, bottom: 0, left: 0 }}
           >
             {showGrid && (
-              <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
+              <CartesianGrid strokeDasharray="3 3" stroke={gridStroke} />
             )}
-            <XAxis
-              dataKey="label"
-              tick={{ fontSize: 10, fill: "#94a3b8" }}
-            />
-            <YAxis tick={{ fontSize: 10, fill: "#94a3b8" }} />
+            <XAxis dataKey="label" tick={axisTick} />
+            <YAxis tick={axisTick} />
             <Tooltip
-              contentStyle={{
-                background: "#0f172a",
-                border: "1px solid #1e293b",
-                color: "#e2e8f0",
-              }}
+              contentStyle={tooltipContentStyle}
+              labelStyle={tooltipLabelStyle}
             />
             <Bar
               dataKey="value"
               isAnimationActive={false}
               label={
                 showValues
-                  ? { position: "top", fill: "#94a3b8", fontSize: 10 }
+                  ? { position: "top", ...valueLabelStyle }
                   : false
               }
             >
               {rows.map((_, i) => (
-                <Cell
-                  key={`cell-${i}`}
-                  fill={PALETTE[i % PALETTE.length]}
-                />
+                <Cell key={`cell-${i}`} fill={fillFor(i)} />
               ))}
             </Bar>
           </BarChart>
