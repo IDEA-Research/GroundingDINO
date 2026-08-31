@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import time
 from typing import Any
 
 from fastapi import APIRouter, HTTPException
@@ -65,6 +66,11 @@ class WidgetQueryRequest(BaseModel):
     query_type: str = "instant"
     range: str | None = None
     step: str | None = None
+    # Shared refresh tick (epoch seconds). The frontend computes ONE
+    # end per refresh tick and sends it to every widget query so all
+    # widgets share the same right edge; the backend floors it to this
+    # widget's step. None = "now".
+    end: int | None = None
 
 
 @router.post("/query")
@@ -82,25 +88,43 @@ def query_widget(req: WidgetQueryRequest) -> dict:
       are present, ``"empty"`` when the query succeeded but returned no
       data — the frontend renders an unmistakable NO-DATA state (silent
       emptiness has already hidden an 11-day stale outage once).
+    - Success also echoes ``end`` (the step-aligned epoch second the
+      query actually evaluated at) and ``range_seconds`` so charts pin
+      their x-domain to the exact window the backend used.
     """
     if req.source != "prometheus":
         raise HTTPException(
             status_code=400, detail="mock data source is not allowed"
         )
 
+    range_s = _parse_duration(req.range) or 3600
+    step_s = _parse_duration(req.step) or 30
+    # One step-aligned end per request. When the frontend sends the
+    # shared per-tick `end`, every widget evaluates against the same
+    # instant: range windows are [end-range, end] and instant queries
+    # (stat_card/gauge) are pinned to that same end, so stat values
+    # and chart right edges agree.
+    end = int(req.end) if req.end is not None else int(time.time())
+    end -= end % step_s
+
     try:
         if req.query_type == "range":
-            range_s = _parse_duration(req.range) or 3600
-            step_s = _parse_duration(req.step) or 30
-            resp = _prom.query_range(req.promql, range_s=range_s, step_s=step_s)
+            resp = _prom.query_range(
+                req.promql, range_s=range_s, step_s=step_s, end=end
+            )
         else:
-            resp = _prom.query(req.promql)
+            resp = _prom.query(req.promql, time_s=end)
     except PrometheusUnavailable as exc:
         raise HTTPException(
             status_code=502, detail=f"Prometheus unavailable: {exc}"
         ) from exc
 
-    return _to_widget_data(resp, req.query_type)
+    out = _to_widget_data(resp, req.query_type)
+    # Echo the step-aligned end actually used plus the window length so
+    # charts can pin their x-domain to [end - range_seconds, end].
+    out["end"] = end
+    out["range_seconds"] = range_s
+    return out
 
 
 def _to_widget_data(resp: dict[str, Any], query_type: str) -> dict[str, Any]:

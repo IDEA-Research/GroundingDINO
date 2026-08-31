@@ -130,8 +130,8 @@ _SCHEMA_AWARE_OPERATIONS: set[str] = {
 EXPECTED_TYPES: dict[str, set[str]] = {
     "user_message": {
         "UserResponse", "DashboardIntent", "PatchIntent",
-        "PrometheusIntent", "AlertRuleIntent", "ClarificationRequest",
-        "DeveloperTicket",
+        "PrometheusIntent", "AlertRuleIntent", "LoadSavedIntent",
+        "ClarificationRequest", "DeveloperTicket",
     },
     "generate_dashboard": {"DashboardSpec", "DeveloperTicket"},
     "patch_dashboard": {"PatchSpec", "DeveloperTicket"},
@@ -434,6 +434,18 @@ def _build_system_prompt(operation: str, agent: str, model: str) -> str:
             "  {\"type\":\"AlertRuleIntent\",\"summary\":\"<short>\","
             "\"request_text\":\"<the user's message verbatim>\","
             "\"message_to_user\":\"<short>\"}\n"
+            "When the user asks to open/load/reuse a previously saved "
+            "dashboard from their library (the saved entries are listed "
+            "in args.saved_dashboards with saved_id/name/tags), return:\n"
+            "  {\"type\":\"LoadSavedIntent\",\"saved_id\":\"<saved_id "
+            "from args.saved_dashboards, or null if unsure>\","
+            "\"name_query\":\"<the name the user used>\","
+            "\"message_to_user\":\"<short>\"}\n"
+            "The backend then loads a clone of the saved snapshot "
+            "deterministically — do NOT regenerate a DashboardIntent "
+            "for content the user already saved. If several saved "
+            "entries could match, return a ClarificationRequest "
+            "listing their names instead.\n"
         )
     elif operation == "author_alert_rule":
         contract += (
@@ -634,19 +646,6 @@ def _h_user_message(args: dict) -> dict:
     if not msg:
         return {"type": "UserResponse", "message": "What dashboard would you like?"}
 
-    # Semantic-ish reuse: if the user's message matches a saved name,
-    # relay it via UserResponse.
-    for s in saved:
-        name = (s.get("name") or "").lower()
-        if name and name in low:
-            return {
-                "type": "UserResponse",
-                "message": (
-                    f"I have a saved dashboard called {s['name']!r}. "
-                    f"Say 'load it' to reuse it, or ask for a fresh one."
-                ),
-            }
-
     patch_triggers = [
         "change ", "rename ", "remove ", "delete ", "add a ", "add an ",
         "add error", "add latency", "add threshold", "add alert",
@@ -680,6 +679,43 @@ def _h_user_message(args: dict) -> dict:
             "message_to_user": "Setting up that alert rule now.",
         }
 
+    # Saved-library recall — keep in sync with MockHelperRuntime._chat
+    # and services/saved_dashboard_loader.fuzzy_match_saved (this CLI
+    # runs standalone, so the matcher is mirrored here on purpose).
+    saved_triggers = [
+        "saved", "library", "存", "載入", "叫出", "開啟我的",
+        "my saved", "use my", "open my",
+    ]
+    if any(t in low for t in saved_triggers):
+        if not saved:
+            return {
+                "type": "UserResponse",
+                "message": (
+                    "Your dashboard library is empty — build a "
+                    "dashboard and I'll offer to save it."
+                ),
+            }
+        matches = _fuzzy_match_saved(low, saved)
+        if len(matches) == 1:
+            m = matches[0]
+            name = str(m.get("name") or "")
+            return {
+                "type": "LoadSavedIntent",
+                "saved_id": m.get("saved_id"),
+                "name_query": (name or msg)[:96],
+                "message_to_user": f"Loading {name!r} from your library.",
+            }
+        names = ", ".join(str(s.get("name") or "") for s in saved[:10])
+        question = (
+            f"Which saved dashboard would you like? "
+            f"Your library has: {names}."
+        )
+        return {
+            "type": "ClarificationRequest",
+            "questions": [question],
+            "message_to_user": question,
+        }
+
     if any(t in low for t in ["metric", "promql", "query", "prometheus"]):
         return {
             "type": "PrometheusIntent",
@@ -710,6 +746,37 @@ def _h_user_message(args: dict) -> dict:
             "'a CPU and memory dashboard for my nodes'."
         ),
     }
+
+
+def _fuzzy_match_saved(low: str, summaries: list) -> list:
+    """Mirror of backend/app/services/saved_dashboard_loader.
+    fuzzy_match_saved — keep in sync. Strong pass (full name /
+    saved_id / tag substring) wins; otherwise a weak pass on
+    significant name tokens (>=3 chars ascii, >=2 CJK)."""
+    strong: list = []
+    weak: list = []
+    cjk = re.compile("[㐀-鿿]")
+    for s in summaries:
+        if not isinstance(s, dict):
+            continue
+        name = str(s.get("name") or "").strip().lower()
+        saved_id = str(s.get("saved_id") or "").strip().lower()
+        tags = [str(t).strip().lower() for t in (s.get("tags") or [])]
+        if (
+            (name and name in low)
+            or (saved_id and saved_id in low)
+            or any(t and t in low for t in tags)
+        ):
+            strong.append(s)
+            continue
+        tokens = [
+            t
+            for t in re.split("[^a-z0-9㐀-鿿]+", name)
+            if len(t) >= (2 if cjk.search(t) else 3)
+        ]
+        if tokens and any(t in low for t in tokens):
+            weak.append(s)
+    return strong if strong else weak
 
 
 def _h_generate_dashboard(args: dict) -> dict:

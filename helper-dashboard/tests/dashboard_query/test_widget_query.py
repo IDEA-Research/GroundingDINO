@@ -173,7 +173,7 @@ def test_prometheus_down_is_502_for_range_too(monkeypatch):
 
 
 def test_prometheus_query_transformed_via_endpoint(monkeypatch):
-    def _fake_query(promql):
+    def _fake_query(promql, **_kw):
         return {
             "source": "prometheus",
             "data": {
@@ -197,7 +197,7 @@ def test_prometheus_query_transformed_via_endpoint(monkeypatch):
 
 
 def test_empty_result_via_endpoint_reports_empty(monkeypatch):
-    def _fake_query(promql):
+    def _fake_query(promql, **_kw):
         return {"source": "prometheus", "data": {"resultType": "vector", "result": []}}
 
     monkeypatch.setattr(dashboard_api._prom, "query", _fake_query)
@@ -214,3 +214,128 @@ def test_empty_result_via_endpoint_reports_empty(monkeypatch):
     body = r.json()
     assert body["data_status"] == "empty"
     assert body["latest"] is None and body["table"] == []
+
+
+# ---------------------------------------------------------------------------
+# Shared refresh contract: optional `end` on the request, floored to the
+# widget's step; response echoes `end` + `range_seconds` so charts pin
+# their x-domain to the exact window the backend used.
+# ---------------------------------------------------------------------------
+
+
+def test_range_end_is_floored_to_step_and_echoed(monkeypatch):
+    seen = {}
+
+    def _fake_range(promql, *, range_s, step_s, end=None, **_kw):
+        seen.update(promql=promql, range_s=range_s, step_s=step_s, end=end)
+        return {"source": "prometheus", "data": {"result": []}}
+
+    monkeypatch.setattr(dashboard_api._prom, "query_range", _fake_range)
+
+    r = client.post(
+        "/api/dashboard/query",
+        json={
+            "source": "prometheus",
+            "promql": "up",
+            "query_type": "range",
+            "range": "1h",
+            "step": "30s",
+            "end": 1017,  # not step-aligned: floor(1017 / 30) * 30 = 990
+        },
+    )
+    assert r.status_code == 200
+    body = r.json()
+    assert seen["end"] == 990  # backend floored the shared tick to the step
+    assert seen["range_s"] == 3600 and seen["step_s"] == 30
+    assert body["end"] == 990  # echoed: the end ACTUALLY used
+    assert body["range_seconds"] == 3600
+    # Wire contract unchanged alongside the new fields.
+    assert body["data_status"] == "empty"
+    assert body["n_series"] == 0
+
+
+def test_instant_query_pins_time_to_the_same_aligned_end(monkeypatch):
+    """stat_card/gauge instant queries must evaluate at the same
+    step-aligned instant as chart right edges, not a per-request now."""
+    seen = {}
+
+    def _fake_query(promql, time_s=None, **_kw):
+        seen["time_s"] = time_s
+        return {
+            "source": "prometheus",
+            "data": {"result": [{"metric": {}, "value": [990, "1"]}]},
+        }
+
+    monkeypatch.setattr(dashboard_api._prom, "query", _fake_query)
+
+    r = client.post(
+        "/api/dashboard/query",
+        json={
+            "source": "prometheus",
+            "promql": "up",
+            "query_type": "instant",
+            "step": "30s",
+            "end": 1017,
+        },
+    )
+    assert r.status_code == 200
+    body = r.json()
+    assert seen["time_s"] == 990  # same flooring as the range path
+    assert body["end"] == 990
+    assert body["range_seconds"] == 3600  # default window still reported
+
+
+def test_omitted_end_defaults_to_aligned_now(monkeypatch):
+    import time as _time
+
+    seen = {}
+
+    def _fake_range(promql, *, range_s, step_s, end=None, **_kw):
+        seen["end"] = end
+        return {"source": "prometheus", "data": {"result": []}}
+
+    monkeypatch.setattr(dashboard_api._prom, "query_range", _fake_range)
+
+    before = int(_time.time())
+    r = client.post(
+        "/api/dashboard/query",
+        json={
+            "source": "prometheus",
+            "promql": "up",
+            "query_type": "range",
+            "range": "5m",
+            "step": "30s",
+        },
+    )
+    after = int(_time.time())
+    assert r.status_code == 200
+    body = r.json()
+    assert seen["end"] is not None
+    assert seen["end"] % 30 == 0  # aligned even without a client end
+    assert (before - 30) <= seen["end"] <= after
+    assert body["end"] == seen["end"]
+    assert body["range_seconds"] == 300
+
+
+def test_client_query_range_floors_end_defensively(monkeypatch):
+    """PrometheusClient itself floors `end` to the step (defense in
+    depth), so even a caller that skips the API alignment cannot send
+    an unaligned window."""
+    from app.prometheus.client import PrometheusClient
+
+    captured = {}
+    c = PrometheusClient(base_url="http://example.invalid")
+
+    def _fake_get(path):
+        captured["path"] = path
+        return {"data": {"result": []}}
+
+    monkeypatch.setattr(c, "_get", _fake_get)
+
+    c.query_range("up", range_s=600, step_s=30, end=1017)
+    assert "end=990" in captured["path"]
+    assert "start=390" in captured["path"]  # 990 - 600
+    assert "step=30" in captured["path"]
+
+    c.query("up", time_s=990)
+    assert "time=990" in captured["path"]

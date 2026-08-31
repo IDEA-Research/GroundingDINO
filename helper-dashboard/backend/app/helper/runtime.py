@@ -51,6 +51,7 @@ from typing import Any
 
 from ..prometheus import catalog as prom_catalog
 from ..prometheus.client import PrometheusUnavailable
+from ..services.saved_dashboard_loader import fuzzy_match_saved
 from ..specs.widget_spec import WidgetType
 
 
@@ -130,6 +131,10 @@ EXPECTED_OUTPUT_TYPES: dict[str, frozenset[str]] = {
         "PatchIntent",
         "PrometheusIntent",
         "AlertRuleIntent",
+        # Library recall: "open my saved X" → the orchestrator resolves
+        # the entry and loads a clone deterministically (no LLM
+        # regeneration of the saved spec).
+        "LoadSavedIntent",
         "ClarificationRequest",
         "DeveloperTicket",
     }),
@@ -1150,6 +1155,52 @@ class MockHelperRuntime:
                 "summary": msg[:120],
                 "request_text": msg,
                 "message_to_user": "Setting up that alert rule now.",
+            }
+
+        # Saved-library recall — checked before the prometheus/dashboard
+        # branches so "show me my saved CPU dashboard" loads the stored
+        # snapshot instead of regenerating a spec, and before the
+        # generic fallback so "use my saved widget" stops dead-ending
+        # in small talk. Single fuzzy match → LoadSavedIntent (the
+        # orchestrator resolves + clones deterministically); zero or
+        # several → ClarificationRequest listing the library.
+        saved_triggers = [
+            "saved", "library", "存", "載入", "叫出", "開啟我的",
+            "my saved", "use my", "open my",
+        ]
+        if any(t in low for t in saved_triggers):
+            saved = args.get("saved_dashboards") or []
+            if not saved:
+                return {
+                    "type": "UserResponse",
+                    "message": (
+                        "Your dashboard library is empty — build a "
+                        "dashboard and I'll offer to save it."
+                    ),
+                }
+            matches = fuzzy_match_saved(low, saved)
+            if len(matches) == 1:
+                m = matches[0]
+                name = str(m.get("name") or "")
+                return {
+                    "type": "LoadSavedIntent",
+                    "saved_id": m.get("saved_id"),
+                    "name_query": (name or msg)[:96],
+                    "message_to_user": (
+                        f"Loading {name!r} from your library."
+                    ),
+                }
+            names = ", ".join(
+                str(s.get("name") or "") for s in saved[:10]
+            )
+            question = (
+                f"Which saved dashboard would you like? "
+                f"Your library has: {names}."
+            )
+            return {
+                "type": "ClarificationRequest",
+                "questions": [question],
+                "message_to_user": question,
             }
 
         if any(t in low for t in ["metric", "promql", "query", "prometheus"]):

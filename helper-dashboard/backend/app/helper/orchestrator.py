@@ -29,6 +29,10 @@ from ..prometheus import catalog as prom_catalog
 from ..prometheus.client import PrometheusUnavailable
 from ..services.dashboard_store import DashboardStore
 from ..services.patch_service import PatchApplicationError, PatchService
+from ..services.saved_dashboard_loader import (
+    fuzzy_match_saved,
+    load_saved_dashboard,
+)
 from ..services.saved_dashboard_store import SavedDashboardStore
 from ..services.spec_validator import SpecValidationError, SpecValidator
 from ..specs import DashboardSpec
@@ -307,6 +311,15 @@ class Orchestrator:
             f"current_dashboard_id={current_dashboard_id!r} "
             f"message_len={len(message)}"
         )
+        if current_dashboard_id:
+            # The frontend tells us what the user is LOOKING at (e.g. a
+            # dashboard loaded from the library). Update session memory
+            # BEFORE classification so patch intents target exactly
+            # that spec — not a stale current_dashboard_id from an
+            # earlier turn.
+            self._memory.set_current_dashboard_id(
+                session_id, current_dashboard_id
+            )
         current_dashboard_id = (
             current_dashboard_id
             or self._memory.get_current_dashboard_id(session_id)
@@ -566,6 +579,16 @@ class Orchestrator:
                 runtime_meta=runtime_meta,
             )
 
+        if rtype == "LoadSavedIntent":
+            print("[orchestrator] branch=LoadSavedIntent")
+            _progress("Loading saved dashboard…", 90)
+            return self._handle_load_saved_intent(
+                session_id=session_id,
+                message=message,
+                intent=result,
+                runtime_meta=runtime_meta,
+            )
+
         if rtype == "SystemAlertRule":
             print("[orchestrator] branch=SystemAlertRule")
             _progress("Validating alert rule…", 90)
@@ -799,6 +822,98 @@ class Orchestrator:
             patch=patch.model_dump(mode="json", by_alias=True),
             runtime_meta=runtime_meta,
             extra_warnings=warnings,
+        )
+
+    # ---------------------------------------------------------------
+    def _handle_load_saved_intent(
+        self,
+        *,
+        session_id: str,
+        message: str,
+        intent: dict[str, Any],
+        runtime_meta: dict[str, Any],
+    ) -> dict[str, Any]:
+        """LoadSavedIntent — deterministic library recall, no LLM.
+
+        Resolves the saved entry (exact saved_id first, then fuzzy
+        name_query), clones it under a fresh dashboard_id through the
+        SAME service function `POST /api/saved_dashboards/{id}/load`
+        uses, points session memory at the clone, and returns a normal
+        dashboard-bearing response (like DashboardIntent does). Zero
+        matches → friendly UserResponse listing the library; several →
+        ClarificationRequest.
+        """
+        entry = None
+        saved_id = str(intent.get("saved_id") or "").strip()
+        if saved_id:
+            entry = self._saved.load(saved_id)
+        if entry is None:
+            name_query = (
+                str(intent.get("name_query") or "").strip() or message
+            )
+            summaries = [
+                s.model_dump(mode="json") for s in self._saved.summaries()
+            ]
+            matches = fuzzy_match_saved(name_query.lower(), summaries)
+            if len(matches) > 1:
+                names = ", ".join(
+                    str(m.get("name") or "") for m in matches[:10]
+                )
+                question = (
+                    f"Which saved dashboard did you mean? "
+                    f"Matching entries: {names}."
+                )
+                return self._response(
+                    user_reply=question,
+                    intent_type="ClarificationRequest",
+                    clarification=[question],
+                    runtime_meta=runtime_meta,
+                )
+            if len(matches) == 1:
+                entry = self._saved.load(
+                    str(matches[0].get("saved_id") or "")
+                )
+        if entry is None:
+            names = ", ".join(
+                s.name for s in self._saved.summaries()[:10]
+            )
+            listing = (
+                f"Your library has: {names}."
+                if names
+                else (
+                    "Your library is empty — build a dashboard and "
+                    "I'll offer to save it."
+                )
+            )
+            return self._response(
+                user_reply=(
+                    f"I couldn't find that saved dashboard. {listing}"
+                ),
+                intent_type="UserResponse",
+                runtime_meta=runtime_meta,
+            )
+
+        clone = load_saved_dashboard(
+            entry, dashboards=self._store, saved=self._saved,
+        )
+        self._memory.set_current_dashboard_id(
+            session_id, clone.dashboard_id
+        )
+        self._memory.record(
+            session_id, action="loaded",
+            dashboard_id=clone.dashboard_id, summary=message,
+        )
+        reply = (
+            str(intent.get("message_to_user") or "")
+            or f"Loaded {entry.name!r} from your library."
+        )
+        return self._response(
+            user_reply=reply,
+            intent_type="DashboardSpec",
+            # by_alias=True so decision_flow edges serialize as `from` —
+            # the frontend renders this dump directly.
+            dashboard=clone.model_dump(mode="json", by_alias=True),
+            runtime_meta=runtime_meta,
         )
 
     # ---------------------------------------------------------------
@@ -1108,7 +1223,17 @@ class Orchestrator:
                 }
             return self._runtime.invoke_operation(
                 "patch_dashboard",
-                {"intent": intent, "dashboard": current_dashboard},
+                {
+                    "intent": intent,
+                    "dashboard": current_dashboard,
+                    # Library context: lets the patch agent reference a
+                    # saved dashboard's widgets/promqls by name (e.g.
+                    # "add my saved SpO2 widget").
+                    "saved_dashboards": [
+                        s.model_dump(mode="json")
+                        for s in self._saved.summaries()
+                    ],
+                },
             )
         if t == "PrometheusIntent":
             return self._runtime.invoke_operation(
@@ -1164,7 +1289,16 @@ class Orchestrator:
             contract = contract_for_patch(requested, current_dashboard)
             outcome = self._retry.run(
                 "patch_dashboard",
-                {"intent": intent, "dashboard": current_dashboard},
+                {
+                    "intent": intent,
+                    "dashboard": current_dashboard,
+                    # Library context — same injection as user_message,
+                    # so patches can reference saved dashboards.
+                    "saved_dashboards": [
+                        s.model_dump(mode="json")
+                        for s in self._saved.summaries()
+                    ],
+                },
                 contract=contract,
             )
             if outcome.accepted is not None:

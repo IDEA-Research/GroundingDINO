@@ -11,6 +11,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
 from ..services.dashboard_store import DashboardStore
+from ..services.saved_dashboard_loader import load_saved_dashboard
 from ..services.saved_dashboard_store import SavedDashboardStore
 from ..services.spec_validator import SpecValidationError, SpecValidator
 
@@ -62,6 +63,34 @@ def get_saved(saved_id: str) -> dict:
     if entry is None:
         raise HTTPException(status_code=404, detail="not found")
     return {"saved": entry.model_dump(mode="json")}
+
+
+# Both forms registered explicitly (same reason as the list route):
+# redirect_slashes is disabled on the app, so a missing form would 404
+# instead of redirecting.
+@router.post("/{saved_id}/load")
+@router.post("/{saved_id}/load/")
+def load_saved(saved_id: str) -> dict:
+    """Clone the saved entry into the working dashboard store.
+
+    This is the SINGLE load surface — the frontend library button and
+    the chat LoadSavedIntent both go through the same service function,
+    so every load clones the snapshot under a FRESH dashboard_id (the
+    stored id may be shared with newer specs; patching must target
+    exactly what the user is looking at), persists the clone, and bumps
+    the entry's used_count.
+    """
+    entry = _store.load(saved_id)
+    if entry is None:
+        raise HTTPException(status_code=404, detail="not found")
+    clone = load_saved_dashboard(entry, dashboards=_dashboards, saved=_store)
+    # by_alias=True: decision_flow edges must serialize as `from` —
+    # the frontend renders this dump directly.
+    return {
+        "saved_id": entry.saved_id,
+        "name": entry.name,
+        "dashboard": clone.model_dump(mode="json", by_alias=True),
+    }
 
 
 @router.delete("/{saved_id}")

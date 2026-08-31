@@ -33,6 +33,18 @@ def _next_dir_exists() -> bool:
     return (FRONTEND_DIR / ".next").exists()
 
 
+def _backend_alive() -> bool:
+    """True when a live backend answers on :8010 — the scenario under
+    test (backend down) is then not reproducible on this machine."""
+    try:
+        with urllib.request.urlopen(
+            "http://127.0.0.1:8010/api/health", timeout=1
+        ):
+            return True
+    except Exception:
+        return False
+
+
 def _port_free(port: int) -> bool:
     try:
         with urllib.request.urlopen(f"http://127.0.0.1:{port}/", timeout=0.5):
@@ -59,6 +71,11 @@ def _wait_port(port: int, tries: int = 60) -> bool:
 @pytest.mark.skipif(not _next_dir_exists(),
                     reason="frontend .next build not present")
 def test_backend_down_ux_shows_disconnected_and_improved_error():
+    if _backend_alive():
+        pytest.skip(
+            "live backend answering on :8010 — backend-down UX "
+            "not reproducible while production backend is running"
+        )
     port = 3939
     assert _port_free(port), f"port {port} already in use"
 
@@ -80,13 +97,15 @@ def test_backend_down_ux_shows_disconnected_and_improved_error():
             page.goto(f"http://127.0.0.1:{port}/",
                        wait_until="domcontentloaded")
 
-            # The connection dot turns red within ~15s of the first
-            # health probe failing. We poll the element color.
+            # The connection dot flips to "down" within ~15s of the
+            # first health probe failing. We poll the semantic
+            # data-backend-status attribute (not a styling class, so
+            # theme changes cannot break this test).
             deadline = time.time() + 25
             dot_red = False
             while time.time() < deadline:
                 html = page.content()
-                if "bg-rose-500" in html:
+                if 'data-backend-status="down"' in html:
                     dot_red = True
                     break
                 time.sleep(0.5)
@@ -95,7 +114,7 @@ def test_backend_down_ux_shows_disconnected_and_improved_error():
             # Try to send a message. The input should be disabled
             # AND/OR the Send button should be disabled. Either way
             # the user can't accidentally send into the void.
-            btn = page.get_by_role("button", name="Send")
+            btn = page.get_by_role("button", name="傳送")
             assert btn.is_disabled()
 
             browser.close()

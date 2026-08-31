@@ -30,6 +30,9 @@ _JOBS: dict[str, dict[str, Any]] = {}
 class ChatRequest(BaseModel):
     session_id: str = Field(..., min_length=1, max_length=64)
     message: str = Field(..., min_length=1, max_length=4000)
+    # What the user is LOOKING at right now (e.g. a dashboard loaded
+    # from the library). When present, the orchestrator updates session
+    # memory BEFORE classification so patch intents apply to this spec.
     current_dashboard_id: str | None = Field(default=None, max_length=64)
 
 
