@@ -19,7 +19,13 @@ document.addEventListener('DOMContentLoaded', () => {
     const globalIntervalModal = document.getElementById('global-interval-modal');
     const saveGlobalIntervalBtn = document.getElementById('save-global-interval-btn');
     const closeGlobalIntervalModalBtn = document.getElementById('close-global-interval-modal-btn');
+    const saveApiKeyBtn = document.getElementById('save-api-key-btn');
+    const deleteApiKeyBtn = document.getElementById('delete-api-key-btn');
+    const apiKeySettingsStatus = document.getElementById('api-key-settings-status');
+    const settingsTabs = Array.from(document.querySelectorAll('[data-settings-tab]'));
+    const settingsPanels = Array.from(document.querySelectorAll('[data-settings-panel]'));
     let globalCaptureIntervalMinutes = DEFAULT_CAPTURE_INTERVAL_MINUTES;
+    let activeSettingsTab = 'interval';
 
     // 定義各廠商的模型清單 (與 upload.html 保持一致)
     const modelsByProvider = {
@@ -83,14 +89,52 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    function openGlobalIntervalModal() {
+    function activateSettingsTab(tabName, focusTab = false) {
+        if (!settingsTabs.some((tab) => tab.dataset.settingsTab === tabName)) return;
+        activeSettingsTab = tabName;
+
+        settingsTabs.forEach((tab) => {
+            const isActive = tab.dataset.settingsTab === tabName;
+            tab.classList.toggle('active', isActive);
+            tab.setAttribute('aria-selected', String(isActive));
+            tab.tabIndex = isActive ? 0 : -1;
+            if (isActive && focusTab) tab.focus();
+        });
+
+        settingsPanels.forEach((panel) => {
+            const isActive = panel.dataset.settingsPanel === tabName;
+            panel.hidden = !isActive;
+            panel.setAttribute('aria-hidden', String(!isActive));
+        });
+
+        if (saveGlobalIntervalBtn) {
+            saveGlobalIntervalBtn.hidden = tabName !== 'interval';
+        }
+        if (saveApiKeyBtn) {
+            saveApiKeyBtn.hidden = tabName !== 'api-key';
+        }
+        if (deleteApiKeyBtn) {
+            deleteApiKeyBtn.hidden = tabName !== 'api-key';
+        }
+    }
+
+    function openGlobalIntervalModal(tabName = activeSettingsTab) {
         if (!globalIntervalModal) return;
         captureIntervalInput.value = String(globalCaptureIntervalMinutes);
         captureIntervalInput.classList.remove('is-invalid');
+        if (apiKeySettingsStatus) {
+            apiKeySettingsStatus.textContent = '';
+            apiKeySettingsStatus.className = 'form-text';
+        }
         updateIntervalGuidance();
+        activateSettingsTab(tabName);
         globalIntervalModal.classList.remove('d-none');
         globalIntervalModal.setAttribute('aria-hidden', 'false');
-        captureIntervalInput.focus();
+        if (tabName === 'api-key') {
+            document.getElementById('api-key')?.focus();
+        } else {
+            captureIntervalInput.focus();
+        }
     }
 
     function closeGlobalIntervalModal() {
@@ -179,12 +223,36 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     if (globalIntervalSettingsBtn) {
-        globalIntervalSettingsBtn.addEventListener('click', openGlobalIntervalModal);
+        globalIntervalSettingsBtn.addEventListener('click', () => openGlobalIntervalModal());
     }
 
     if (closeGlobalIntervalModalBtn) {
         closeGlobalIntervalModalBtn.addEventListener('click', closeGlobalIntervalModal);
     }
+
+    settingsTabs.forEach((tab) => {
+        tab.addEventListener('click', () => {
+            activateSettingsTab(tab.dataset.settingsTab);
+            const activePanel = settingsPanels.find((panel) => panel.dataset.settingsPanel === activeSettingsTab);
+            activePanel?.querySelector('input, button')?.focus();
+        });
+
+        tab.addEventListener('keydown', (event) => {
+            if (!['ArrowUp', 'ArrowDown', 'Home', 'End'].includes(event.key)) return;
+            event.preventDefault();
+            const currentIndex = settingsTabs.indexOf(tab);
+            let nextIndex;
+            if (event.key === 'Home') {
+                nextIndex = 0;
+            } else if (event.key === 'End') {
+                nextIndex = settingsTabs.length - 1;
+            } else {
+                const direction = event.key === 'ArrowDown' ? 1 : -1;
+                nextIndex = (currentIndex + direction + settingsTabs.length) % settingsTabs.length;
+            }
+            activateSettingsTab(settingsTabs[nextIndex].dataset.settingsTab, true);
+        });
+    });
 
     if (globalIntervalModal) {
         globalIntervalModal.addEventListener('click', (event) => {
@@ -193,6 +261,13 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         });
     }
+
+    document.addEventListener('keydown', (event) => {
+        if (event.key === 'Escape' && globalIntervalModal && !globalIntervalModal.classList.contains('d-none')) {
+            closeGlobalIntervalModal();
+            globalIntervalSettingsBtn?.focus();
+        }
+    });
 
     if (saveGlobalIntervalBtn) {
         saveGlobalIntervalBtn.addEventListener('click', async () => {
@@ -217,6 +292,37 @@ document.addEventListener('DOMContentLoaded', () => {
 
     if (savedApiKey) {
         if (initApiKeyInput) initApiKeyInput.value = savedApiKey;
+    }
+
+    function showApiKeySettingsStatus(message, type) {
+        if (!apiKeySettingsStatus) return;
+        apiKeySettingsStatus.textContent = message;
+        apiKeySettingsStatus.className = `form-text text-${type}`;
+    }
+
+    if (saveApiKeyBtn) {
+        saveApiKeyBtn.addEventListener('click', () => {
+            const apiKey = initApiKeyInput ? initApiKeyInput.value.trim() : '';
+            if (!apiKey) {
+                if (initApiKeyInput) initApiKeyInput.classList.add('is-invalid');
+                showApiKeySettingsStatus('請先輸入 API Key 再進行儲存。', 'danger');
+                return;
+            }
+            initApiKeyInput.classList.remove('is-invalid');
+            localStorage.setItem('openrouter_api_key', apiKey);
+            showApiKeySettingsStatus('API Key 已成功儲存！', 'success');
+        });
+    }
+
+    if (deleteApiKeyBtn) {
+        deleteApiKeyBtn.addEventListener('click', () => {
+            if (initApiKeyInput) {
+                initApiKeyInput.value = '';
+                initApiKeyInput.classList.remove('is-invalid');
+            }
+            localStorage.removeItem('openrouter_api_key');
+            showApiKeySettingsStatus('API Key 已成功刪除！', 'success');
+        });
     }
 
     // === 相機範本管理邏輯 ===
@@ -906,7 +1012,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 // 判斷是否需要 API Key
                 const provider = stream.provider || (stream.llm_model && stream.llm_model.includes('/') ? 'openrouter' : 'local');
                 if (provider === 'openrouter' && !apiKey) {
-                    showAlert('請先在左側表單中輸入 OpenRouter API Key，再點擊啟動！', 'danger');
+                    showAlert('請先在「設定」中輸入 OpenRouter API Key，再點擊啟動！', 'danger');
+                    openGlobalIntervalModal('api-key');
                     if (apiKeyInput) {
                         apiKeyInput.focus();
                         apiKeyInput.classList.add('is-invalid');
@@ -1049,6 +1156,12 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         if (hasError) {
+            if (provider === 'openrouter' && !apiKey) {
+                openGlobalIntervalModal('api-key');
+                apiKeyInput.classList.add('is-invalid');
+                apiKeyInput.focus();
+                showApiKeySettingsStatus('請輸入並儲存 OpenRouter API Key。', 'danger');
+            }
             return;
         }
 

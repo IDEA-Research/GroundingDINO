@@ -540,13 +540,6 @@
             <option value="openai/gpt-4o">GPT-4o</option>
         </select>
         
-        <!-- 新增 API Key 輸入框 -->
-        <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
-            <label for="apiKeyInput" style="font-weight: 600; color: #555; font-size: 0.9em;">🔑 API Key:</label>
-            <input type="password" id="apiKeyInput" placeholder="OpenRouter API Key（地端模型可留空）" style="padding: 8px 12px; border-radius: 6px; border: 1px solid #ccc; font-size: 0.9em; width: 250px;">
-            <button type="button" id="saveApiKeyBtn" style="background: linear-gradient(135deg, #28a745 0%, #218838 100%); color: white; border: none; padding: 8px 15px; border-radius: 6px; font-weight: 600; font-size: 0.85rem; cursor: pointer; transition: all 0.3s ease; box-shadow: 0 4px 12px rgba(40,167,69,0.2); white-space: nowrap;">💾 儲存</button>
-            <button type="button" id="deleteApiKeyBtn" style="background: linear-gradient(135deg, #dc3545 0%, #c82333 100%); color: white; border: none; padding: 8px 15px; border-radius: 6px; font-weight: 600; font-size: 0.85rem; cursor: pointer; transition: all 0.3s ease; box-shadow: 0 4px 12px rgba(220,53,69,0.2); white-space: nowrap;">🗑️ 刪除</button>
-        </div>
 
         <button id="btnAnalyzeMissing" onclick="analyzeMissingFrames()" class="btn-resend" style="display: none; background: #e3f2fd; border-color: #90caf9; color: #1976d2; padding: 8px 15px;">
             ▶️ 使用此模型分析所有未分析的畫面
@@ -682,9 +675,9 @@
     }
 
     function requireApiKeyForCurrentModel() {
-        const apiKey = document.getElementById('apiKeyInput').value.trim();
+        const apiKey = localStorage.getItem('openrouter_api_key') || '';
         if (providerForModel(currentModel) === 'openrouter' && !apiKey) {
-            showDetailsAlert('請輸入 OpenRouter API Key 後再進行分析。', 'warning');
+            showDetailsAlert('請先至「即時監測」頁面的「設定」輸入並儲存 OpenRouter API Key。', 'warning');
             return null;
         }
         return apiKey;
@@ -752,36 +745,6 @@
             backBtn.href = getDatabaseBackUrl();
         }
 
-        // 載入記住的 API Key
-        const apiKeyInput = document.getElementById('apiKeyInput');
-        const savedApiKey = localStorage.getItem('openrouter_api_key');
-        if (savedApiKey && apiKeyInput) {
-            apiKeyInput.value = savedApiKey;
-        }
-
-        // 儲存與刪除 API Key 按鈕事件
-        const saveApiKeyBtn = document.getElementById('saveApiKeyBtn');
-        const deleteApiKeyBtn = document.getElementById('deleteApiKeyBtn');
-
-        if (saveApiKeyBtn) {
-            saveApiKeyBtn.addEventListener('click', function() {
-                const apiKey = apiKeyInput.value.trim();
-                if (!apiKey) {
-                    showDetailsAlert('請先輸入 API Key 再進行儲存。', 'warning');
-                    return;
-                }
-                localStorage.setItem('openrouter_api_key', apiKey);
-                showDetailsAlert('API Key 已成功儲存！', 'success');
-            });
-        }
-
-        if (deleteApiKeyBtn) {
-            deleteApiKeyBtn.addEventListener('click', function() {
-                apiKeyInput.value = '';
-                localStorage.removeItem('openrouter_api_key');
-                showDetailsAlert('API Key 已成功刪除！', 'success');
-            });
-        }
 
         // 從 URL 參數獲取 session_id
         const urlParams = new URLSearchParams(window.location.search);

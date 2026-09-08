@@ -542,31 +542,177 @@
 
     .global-settings-card {
         width: 100%;
-        max-width: 560px;
+        max-width: 820px;
+        max-height: calc(100vh - 32px);
+        overflow-y: auto;
         background: #fff;
         border-radius: 12px;
         box-shadow: 0 12px 28px rgba(0,0,0,0.2);
         border: 1px solid #e2e8f0;
-        padding: 18px 18px 14px 18px;
+        padding: 22px 22px 18px;
     }
 
     .global-settings-title {
-        margin: 0 0 12px 0;
-        font-size: 1.05rem;
+        margin: 0 0 16px 0;
+        font-size: 1.2rem;
         font-weight: 700;
         color: #1f2937;
+    }
+
+    .settings-layout {
+        display: grid;
+        grid-template-columns: 180px minmax(0, 1fr);
+        min-height: 330px;
+        margin: 0 -22px -18px;
+        border-top: 1px solid #e2e8f0;
+    }
+
+    .settings-tabs {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        padding: 20px 14px;
+        background: #f8fafc;
+        border-right: 1px solid #e2e8f0;
+    }
+
+    .settings-tab {
+        position: relative;
+        border: 0;
+        background: transparent;
+        color: #64748b;
+        padding: 13px 14px;
+        border-radius: 8px;
+        font-size: 0.95rem;
+        font-weight: 700;
+        text-align: left;
+        cursor: pointer;
+        transition: color 0.2s ease, background 0.2s ease;
+    }
+
+    .settings-tab:hover {
+        color: #0284c7;
+        background: #f0f9ff;
+    }
+
+    .settings-tab.active {
+        color: #0284c7;
+        background: #e0f2fe;
+    }
+
+    .settings-tab.active::after {
+        content: '';
+        position: absolute;
+        top: 8px;
+        right: -11px;
+        bottom: 8px;
+        width: 3px;
+        border-radius: 3px 0 0 3px;
+        background: linear-gradient(180deg, #4facfe 0%, #00d9e8 100%);
+    }
+
+    .settings-tab:focus-visible {
+        outline: 3px solid rgba(79, 172, 254, 0.25);
+        outline-offset: -3px;
+        border-radius: 6px;
+    }
+
+    .settings-content {
+        display: flex;
+        flex-direction: column;
+        min-width: 0;
+        padding: 26px;
+    }
+
+    .settings-panel {
+        flex: 1;
+        min-height: 174px;
+    }
+
+    .settings-panel[hidden],
+    .global-settings-actions .btn[hidden],
+    .settings-delete-btn[hidden] {
+        display: none !important;
     }
 
     .global-settings-actions {
         margin-top: 12px;
         display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+    }
+
+    .settings-primary-actions {
+        display: flex;
         justify-content: flex-end;
         gap: 8px;
+        margin-left: auto;
     }
 
     .global-settings-actions .btn {
         min-width: 90px;
+        min-height: 50px;
+        padding: 12px 20px;
         border-radius: 8px;
+    }
+
+    .global-settings-actions .settings-save-btn {
+        min-width: 160px;
+        background: linear-gradient(135deg, #4facfe 0%, #00d9e8 100%);
+        color: #fff;
+        border: none;
+    }
+
+    .global-settings-actions .settings-close-btn {
+        background: #f1f5f9;
+        color: #475569;
+        border: 1px solid #cbd5e1;
+        box-shadow: none;
+    }
+
+    .global-settings-actions .settings-close-btn:hover {
+        background: #e2e8f0;
+        color: #334155;
+        box-shadow: none;
+    }
+
+    .api-key-delete-row {
+        margin-top: 12px;
+    }
+
+    .settings-delete-btn {
+        min-height: 44px;
+        padding: 10px 18px;
+        border-radius: 8px;
+        background: #dc3545;
+        color: #fff;
+        border: none;
+    }
+
+    @media (max-width: 520px) {
+        .settings-layout {
+            grid-template-columns: 124px minmax(0, 1fr);
+        }
+
+        .settings-tab {
+            padding: 10px 8px;
+            font-size: 0.85rem;
+        }
+
+        .global-settings-actions {
+            align-items: stretch;
+            flex-direction: column;
+        }
+
+        .settings-primary-actions {
+            width: 100%;
+        }
+
+        .global-settings-actions .btn {
+            flex: 1;
+            min-width: 0;
+        }
     }
 </style>
 {% endblock %}
@@ -575,31 +721,58 @@
 <div class="stream-container">
     <div class="stream-toolbar">
         <h2 class="page-title">即時串流監測與管理</h2>
-        <button type="button" id="global-interval-settings-btn" class="global-settings-trigger" title="全域分析間隔設定">⚙️</button>
+        <button type="button" id="global-interval-settings-btn" class="global-settings-trigger" title="設定" aria-label="設定">⚙️</button>
     </div>
 
     <div id="global-interval-modal" class="global-settings-modal d-none" aria-hidden="true">
         <div class="global-settings-card" role="dialog" aria-modal="true" aria-labelledby="global-settings-title">
-            <h3 id="global-settings-title" class="global-settings-title">⚙️ 全域分析間隔設定</h3>
-            <div class="form-group" style="margin-bottom: 0;">
-                <label for="capture-interval-minutes">全域分析間隔（分鐘）</label>
-                <input
-                    type="number"
-                    class="form-control"
-                    id="capture-interval-minutes"
-                    min="1"
-                    max="60"
-                    step="1"
-                    value="1"
-                    placeholder="最小 1 分鐘"
-                    required
-                >
-                <small id="interval-hint" class="form-text text-muted">首次分析會在下一個整分鐘開始，之後每 N 分鐘執行一次。</small>
-                <div class="invalid-feedback">請輸入 1~60 的整數分鐘</div>
-            </div>
-            <div class="global-settings-actions">
-                <button type="button" class="btn btn-outline-secondary" id="close-global-interval-modal-btn">取消</button>
-                <button type="button" class="btn btn-primary" id="save-global-interval-btn">儲存</button>
+            <h3 id="global-settings-title" class="global-settings-title">⚙️ 設定</h3>
+            <div class="settings-layout">
+                <div class="settings-tabs" role="tablist" aria-label="設定分類" aria-orientation="vertical">
+                    <button type="button" id="settings-tab-interval" class="settings-tab active" role="tab" aria-selected="true" aria-controls="settings-panel-interval" data-settings-tab="interval">⏱️ 分析間隔</button>
+                    <button type="button" id="settings-tab-api-key" class="settings-tab" role="tab" aria-selected="false" aria-controls="settings-panel-api-key" data-settings-tab="api-key" tabindex="-1">🔑 API Key</button>
+                </div>
+
+                <div class="settings-content">
+                    <div id="settings-panel-interval" class="settings-panel" role="tabpanel" aria-labelledby="settings-tab-interval" data-settings-panel="interval">
+                        <div class="form-group" style="margin-bottom: 0;">
+                            <label for="capture-interval-minutes">全域分析間隔（分鐘）</label>
+                            <input
+                                type="number"
+                                class="form-control"
+                                id="capture-interval-minutes"
+                                min="1"
+                                max="60"
+                                step="1"
+                                value="1"
+                                placeholder="最小 1 分鐘"
+                                required
+                            >
+                            <small id="interval-hint" class="form-text text-muted">首次分析會在下一個整分鐘開始，之後每 N 分鐘執行一次。</small>
+                            <div class="invalid-feedback">請輸入 1~60 的整數分鐘</div>
+                        </div>
+                    </div>
+
+                    <div id="settings-panel-api-key" class="settings-panel" role="tabpanel" aria-labelledby="settings-tab-api-key" data-settings-panel="api-key" hidden>
+                        <div class="form-group" style="margin-bottom: 0;">
+                            <label for="api-key">🔑 OpenRouter API Key（地端模型可留空）</label>
+                            <input type="password" class="form-control" id="api-key" placeholder="sk-or-v1-...">
+                            <div class="invalid-feedback">請輸入 OpenRouter API Key</div>
+                            <div class="api-key-delete-row">
+                                <button type="button" id="delete-api-key-btn" class="btn settings-delete-btn" hidden>🗑️ 刪除 API Key</button>
+                            </div>
+                            <small id="api-key-settings-status" class="form-text" aria-live="polite"></small>
+                        </div>
+                    </div>
+
+                    <div class="global-settings-actions">
+                        <div class="settings-primary-actions">
+                            <button type="button" class="btn settings-close-btn" id="close-global-interval-modal-btn">關閉</button>
+                            <button type="button" class="btn settings-save-btn" id="save-global-interval-btn">儲存分析間隔</button>
+                            <button type="button" class="btn settings-save-btn" id="save-api-key-btn" hidden>儲存 API Key</button>
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
@@ -658,9 +831,8 @@
                     </div>
                     
                     <div class="form-group">
-                        <label for="api-key">🔑 OpenRouter API Key（地端模型可留空）</label>
+                        <label>📁 攝影機範本管理</label>
                         <div style="display: flex; gap: 10px; align-items: center;">
-                            <input type="password" class="form-control" id="api-key" placeholder="sk-or-v1-...">
                             <button type="button" id="save-template-btn" class="btn-save-custom">💾 儲存範本</button>
                             <button type="button" id="delete-template-btn" class="btn-delete-custom" style="display: none;">🗑️ 刪除範本</button>
                         </div>
