@@ -28,6 +28,7 @@ import { SimulationBanner } from "@/components/dashboard/SimulationBanner";
 import { TemplatePicker } from "@/components/dashboard/TemplatePicker";
 import { TOPBAR_HEIGHT_PX, TopBar } from "@/components/dashboard/TopBar";
 import { DevWorkspaceDrawer } from "@/components/dev/DevWorkspaceDrawer";
+import { CommandPaletteProvider } from "@/components/shell/CommandPalette";
 import {
   Button,
   Skeleton,
@@ -755,6 +756,14 @@ function HomeShell() {
 
   return (
     <DevModeContext.Provider value={devMode}>
+      <CommandPaletteProvider
+        library={library}
+        hasSpec={!!spec}
+        onOpenTemplates={() => setTemplatesOpen(true)}
+        onOpenDataSource={() => setDataSourceOpen(true)}
+        onOpenHelper={() => setHelperOpen(true)}
+        dev={{ visible: devVisible, onOpen: () => setDevOpen(true) }}
+      >
       <div className="flex h-screen flex-col bg-canvas text-ink">
         <TopBar
           spec={spec}
@@ -868,6 +877,7 @@ function HomeShell() {
 
         <ToastViewport />
       </div>
+      </CommandPaletteProvider>
     </DevModeContext.Provider>
   );
 }
