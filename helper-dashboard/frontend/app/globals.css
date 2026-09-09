@@ -86,27 +86,51 @@
 :root[data-theme="dark"] {
   color-scheme: dark;
 
-  --canvas: 15 23 42; /* #0f172a deep blue-gray */
-  --surface: 23 32 51; /* #172033 card */
-  --surface-2: 31 42 64; /* #1f2a40 raised / hover */
-  --surface-3: 40 53 80; /* #283550 chips, inputs */
+  /* background tiers — Grafana dark theme, verified values: canvas
+   * #111217, panel/page-primary #181b1f, secondary/elevated (hover, chips,
+   * inputs) #22252b. Grafana has no separate 4th tier, so surface-3 reuses
+   * the secondary value instead of inventing a new one. */
+  --canvas: 17 18 23; /* #111217 page ground */
+  --surface: 24 27 31; /* #181b1f panel/card */
+  --surface-2: 34 37 43; /* #22252b raised / hover */
+  --surface-3: 34 37 43; /* #22252b chips, inputs — same tier as surface-2 */
 
-  --edge: 47 61 87; /* #2f3d57 (1.49:1 on surface) */
-  --edge-strong: 67 85 122; /* #43557a */
-  --grid: 34 48 80; /* #223050 */
+  /* lines — Grafana's real border tokens are rgba(204, 204, 220, alpha)
+   * overlays (weak .12 / medium .20 / strong .30) so one line reads
+   * consistently over every background layer. This file's tokens must stay
+   * opaque "R G B" triplets (see the grammar note above: Tailwind reads
+   * them as `rgb(var(--x) / <alpha-value>)`, which breaks if the variable
+   * itself contains an rgba() string), so each tier below is that same
+   * rgba() pre-composited over the panel background (--surface, #181b1f)
+   * into its opaque equivalent — the alpha math is the source of truth,
+   * not the resulting hex. */
+  --edge: 60 62 69; /* #3c3e45 = rgba(204,204,220,.20) over #181b1f — medium */
+  --edge-strong: 78 80 88; /* #4e5058 = rgba(204,204,220,.30) over #181b1f — strong */
+  --grid: 46 48 54; /* #2e3036 = rgba(204,204,220,.12) over #181b1f — weak */
 
-  --ink: 232 238 246; /* #e8eef6 (14.6:1) */
-  --ink-dim: 166 179 200; /* #a6b3c8 (7.7:1) */
-  --ink-faint: 133 147 168; /* #8593a8 (5.2:1 on surface, 4.6:1 on surface-2) */
+  /* text tiers — Grafana text.primary is rgb(204,204,220); secondary and
+   * disabled are rgba(204,204,220, .65/.61) overlays, pre-composited over
+   * #181b1f for the same reason as the border tokens above. */
+  --ink: 204 204 220; /* rgb(204,204,220) primary */
+  --ink-dim: 141 142 154; /* #8d8e9a = rgba(204,204,220,.65) over #181b1f — secondary */
+  --ink-faint: 134 135 146; /* #868792 = rgba(204,204,220,.61) over #181b1f — disabled */
 
-  --accent: 96 165 250; /* #60a5fa */
-  --accent-ink: 11 18 32; /* dark text on the light-blue accent */
-  --focus: 96 165 250;
+  /* Grafana gives two shades per accent/status color: "main" (fill) and
+   * "text" (a brighter shade of the same hue, meant for text/icons on a
+   * dark surface). This token set only has one variable per color, and
+   * grep across the codebase shows it is used mostly as literal text/icon
+   * color (text-ok, text-accent, ...), with fills only ever applied at low
+   * opacity (bg-ok/10, bg-accent/30, ...) — so each variable below takes
+   * the brighter "text" shade for legibility; the "main" shade is noted
+   * for reference but intentionally unused here. */
+  --accent: 61 113 217; /* #3d71d9 Grafana accent "main" */
+  --accent-ink: 255 255 255; /* #ffffff Grafana text.maxContrast — text drawn on the accent fill */
+  --focus: 61 113 217; /* tracks --accent */
 
-  --ok: 52 211 153; /* #34d399 */
-  --warn: 251 191 36; /* #fbbf24 */
-  --danger: 248 113 113; /* #f87171 */
-  --info: 147 167 196; /* #93a7c4 */
+  --ok: 108 207 142; /* #6ccf8e Grafana success "text" (main #1a7f4b unused, see note above) */
+  --warn: 251 173 55; /* #fbad37 Grafana warning "text" (main #ff9900 unused, see note above) */
+  --danger: 255 82 134; /* #ff5286 Grafana error "text" (main #d10e5c unused, see note above) */
+  --info: 147 167 196; /* #93a7c4 blue-gray — unchanged, not part of this pass */
 
   --data-1: 45 212 191; /* #2dd4bf teal */
   --data-2: 167 139 250; /* #a78bfa violet */
@@ -114,6 +138,12 @@
   --data-4: 56 189 248; /* #38bdf8 sky */
   --data-5: 232 121 249; /* #e879f9 fuchsia */
   --data-6: 148 163 184; /* #94a3b8 slate */
+
+  /* Grafana classic reads as flat and compact, not card-rounded — a
+   * near-square 2px radius everywhere, dark theme only. */
+  --radius-sm: 2px;
+  --radius: 2px;
+  --radius-lg: 2px;
 
   --shadow-card: 0 1px 0 rgb(255 255 255 / 0.03) inset, 0 1px 2px rgb(0 0 0 / 0.35);
   --shadow-hover: 0 1px 0 rgb(255 255 255 / 0.04) inset, 0 6px 16px rgb(0 0 0 / 0.45),
