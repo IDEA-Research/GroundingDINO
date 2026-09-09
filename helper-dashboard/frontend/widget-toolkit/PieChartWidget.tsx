@@ -2,10 +2,10 @@
 
 import React from "react";
 
-import { CHART_COLORS, seriesColor } from "@/lib/chart-theme";
+import { seriesColor, useChartTheme, type ChartColors } from "@/lib/chart-theme";
 import type { WidgetSpec } from "@/lib/spec-schema";
-import type { WidgetData } from "@/lib/useQueryData";
-import { WidgetFrame } from "./WidgetFrame";
+import type { TableRow, WidgetData } from "@/lib/useQueryData";
+import { WidgetFrame, frameStatusProps } from "./WidgetFrame";
 
 interface Slice {
   label: string;
@@ -16,14 +16,17 @@ interface Slice {
   color: string;
 }
 
-function buildSlices(
-  rows: { metric: Record<string, string>; value: number }[],
-): Slice[] {
-  const total = rows.reduce((s, r) => s + Math.abs(r.value), 0);
+function buildSlices(rows: TableRow[], colors: ChartColors): Slice[] {
+  // Missing values contribute nothing — they are never treated as 0.
+  const present = rows.filter(
+    (r): r is TableRow & { value: number } =>
+      r.value !== null && Number.isFinite(r.value),
+  );
+  const total = present.reduce((s, r) => s + Math.abs(r.value), 0);
   if (total === 0) return [];
 
   let cursor = 0;
-  return rows.map((r, i) => {
+  return present.map((r, i) => {
     const pct = Math.abs(r.value) / total;
     const startAngle = cursor;
     const endAngle = cursor + pct * 360;
@@ -38,7 +41,7 @@ function buildSlices(
       pct,
       startAngle,
       endAngle,
-      color: seriesColor(i),
+      color: seriesColor(i, colors),
     };
   });
 }
@@ -103,12 +106,13 @@ export function PieChartWidget({
   widget: WidgetSpec;
   data: WidgetData;
 }) {
+  const theme = useChartTheme();
   const opts = (widget.options ?? {}) as Record<string, unknown>;
   const showLabels = opts.show_labels !== false;
   const showLegend = opts.show_legend !== false;
   const isDonut = opts.donut === true;
 
-  const slices = buildSlices(data.table);
+  const slices = buildSlices(data.table, theme.colors);
 
   const cx = 100;
   const cy = 100;
@@ -116,15 +120,24 @@ export function PieChartWidget({
   const innerR = 48;
 
   return (
-    <WidgetFrame widget={widget} unit={widget.encoding?.unit}>
+    <WidgetFrame
+      widget={widget}
+      unit={widget.encoding?.unit}
+      {...frameStatusProps(data)}
+    >
       <div className="flex h-full items-center justify-center gap-4">
-        <svg viewBox="0 0 200 200" className="h-full max-h-48 w-auto flex-shrink-0">
+        <svg
+          viewBox="0 0 200 200"
+          className="h-full max-h-48 w-auto flex-shrink-0"
+          role="img"
+          aria-label={widget.title}
+        >
           {slices.length === 0 ? (
             <text
               x={cx}
               y={cy}
               textAnchor="middle"
-              fill={CHART_COLORS.inkFaint}
+              fill={theme.colors.inkFaint}
               fontSize={14}
             >
               尚無資料
@@ -139,7 +152,7 @@ export function PieChartWidget({
                     : arcPath(cx, cy, outerR, s.startAngle, s.endAngle)
                 }
                 fill={s.color}
-                stroke={CHART_COLORS.surface}
+                stroke={theme.colors.surface}
                 strokeWidth={1}
               >
                 <title>
@@ -162,7 +175,7 @@ export function PieChartWidget({
                     y={pos.y}
                     textAnchor="middle"
                     dominantBaseline="central"
-                    fill={CHART_COLORS.ink}
+                    fill={theme.name === "dark" ? theme.colors.canvas : theme.colors.surface}
                     fontSize={12}
                     fontWeight={600}
                   >
@@ -172,19 +185,23 @@ export function PieChartWidget({
               })}
         </svg>
         {showLegend && slices.length > 0 && (
-          <div className="flex flex-col gap-1 overflow-auto text-xs">
+          <ul className="flex flex-col gap-1 overflow-auto text-sm">
             {slices.map((s, i) => (
-              <div key={i} className="flex items-center gap-1.5">
+              <li key={i} className="flex items-center gap-1.5">
                 <span
+                  aria-hidden="true"
                   className="inline-block h-2.5 w-2.5 flex-shrink-0 rounded-sm"
                   style={{ backgroundColor: s.color }}
                 />
-                <span className="max-w-[120px] truncate text-ink-dim">
+                <span className="max-w-[140px] truncate text-ink-dim" title={s.label}>
                   {s.label}
                 </span>
-              </div>
+                <span className="ml-auto font-mono text-xs tabular-nums text-ink-faint">
+                  {(s.pct * 100).toFixed(0)}%
+                </span>
+              </li>
             ))}
-          </div>
+          </ul>
         )}
       </div>
     </WidgetFrame>

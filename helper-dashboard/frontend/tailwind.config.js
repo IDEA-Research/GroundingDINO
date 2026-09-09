@@ -1,8 +1,10 @@
 /** @type {import('tailwindcss').Config} */
 
 // Every color maps to a CSS-variable token defined in app/globals.css
-// (R G B triplets, so Tailwind opacity modifiers like bg-alarm-high/10
-// work). The hex mirror for SVG/Recharts is frontend/lib/chart-theme.ts.
+// (R G B triplets, so Tailwind opacity modifiers like bg-danger/10 work).
+// Light values live on :root, dark values on :root[data-theme="dark"], so no
+// `dark:` variants are needed anywhere. Chart code resolves the same
+// variables at runtime (lib/chart-theme.ts).
 const token = (name) => `rgb(var(${name}) / <alpha-value>)`;
 
 module.exports = {
@@ -31,28 +33,35 @@ module.exports = {
           dim: token("--ink-dim"),
           faint: token("--ink-faint"),
         },
-        vital: {
-          hr: token("--vital-hr"),
-          spo2: token("--vital-spo2"),
-          rso2: token("--vital-rso2"),
+        accent: {
+          DEFAULT: token("--accent"),
+          ink: token("--accent-ink"),
         },
-        alarm: {
-          high: token("--alarm-high"),
-          med: token("--alarm-med"),
-          info: token("--alarm-info"),
-        },
+        focus: token("--focus"),
+        // Status colors — meaning only (never for data series).
         ok: token("--ok"),
-        chart: {
-          1: token("--chart-1"),
-          2: token("--chart-2"),
-          3: token("--chart-3"),
-          4: token("--chart-4"),
-          5: token("--chart-5"),
-          6: token("--chart-6"),
-          7: token("--chart-7"),
-          8: token("--chart-8"),
+        warn: token("--warn"),
+        danger: token("--danger"),
+        info: token("--info"),
+        // Data palette — series / vitals (HR data-1, SpO2 data-2, rSO2 data-3).
+        data: {
+          1: token("--data-1"),
+          2: token("--data-2"),
+          3: token("--data-3"),
+          4: token("--data-4"),
+          5: token("--data-5"),
+          6: token("--data-6"),
         },
-        ring: token("--ring"),
+      },
+      borderRadius: {
+        sm: "var(--radius-sm)",
+        DEFAULT: "var(--radius-sm)",
+        md: "var(--radius)",
+        lg: "var(--radius-lg)",
+      },
+      boxShadow: {
+        card: "var(--shadow-card)",
+        pop: "var(--shadow-pop)",
       },
       fontFamily: {
         sans: [
@@ -75,8 +84,13 @@ module.exports = {
         ],
       },
       fontSize: {
-        // The ONE sanctioned sub-12px size — tiny badges/annotations only.
+        // The ONE sanctioned sub-12px size — Latin-only badges, never CJK.
         "2xs": ["0.6875rem", { lineHeight: "1rem" }],
+      },
+      minHeight: {
+        ctl: "2.25rem",
+        "ctl-sm": "2rem",
+        touch: "2.5rem",
       },
     },
   },

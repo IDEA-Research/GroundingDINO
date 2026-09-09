@@ -4,14 +4,20 @@
 // exclusively from widget-toolkit. Unknown widget types never render.
 //
 // Every query-driven widget is wrapped in QueryGate: the gate owns the
-// single fetch for the widget and renders the shared loading / NO-DATA /
-// ERROR states, so no widget can silently show a blank (or fabricated)
-// panel. Widgets themselves are purely presentational and receive the
-// already-fetched WidgetData.
+// single fetch for the widget, registers the widget's data status with the
+// dashboard-level store, and renders the shared loading / NO-DATA / offline
+// / ERROR states, so no widget can silently show a blank (or fabricated)
+// panel. Stale data (backend freshness flag or a failed refresh) stays on
+// screen with a visible badge. Widgets themselves are purely presentational
+// and receive the already-fetched WidgetData.
 
+import React from "react";
+
+import { useRegisterDataStatus } from "./data-status";
 import type { DashboardSpec, WidgetSpec, WidgetType } from "./spec-schema";
-import { WIDGET_TYPES } from "./spec-schema";
-import { useQueryData, type WidgetData } from "./useQueryData";
+import { WIDGET_TYPES, widgetQuery } from "./spec-schema";
+import { useEffectiveRange } from "./time-range";
+import { hasContent, useQueryData, type WidgetData } from "./useQueryData";
 
 import { LineChartWidget } from "@/widget-toolkit/LineChartWidget";
 import { StatCardWidget } from "@/widget-toolkit/StatCardWidget";
@@ -23,11 +29,16 @@ import { BarChartWidget } from "@/widget-toolkit/BarChartWidget";
 import { HeatmapWidget } from "@/widget-toolkit/HeatmapWidget";
 import { DecisionFlowWidget } from "@/widget-toolkit/DecisionFlowWidget";
 import { DataStateNotice } from "@/widget-toolkit/DataStateNotice";
-import { WidgetFrame } from "@/widget-toolkit/WidgetFrame";
+import { WidgetFrame, frameStatusProps } from "@/widget-toolkit/WidgetFrame";
 
 export interface RenderProblem {
   widget_id: string;
   reason: string;
+}
+
+export interface RenderOptions {
+  // Gauge folded beneath its paired stat card (no header, arc only).
+  compact?: boolean;
 }
 
 export function isSupportedType(t: string): t is WidgetType {
@@ -40,33 +51,51 @@ export function isSupportedType(t: string): t is WidgetType {
 function QueryGate({
   widget,
   renderEmptyAsContent = false,
+  compact = false,
   children,
 }: {
   widget: WidgetSpec;
   renderEmptyAsContent?: boolean;
+  compact?: boolean;
   children: (data: WidgetData) => JSX.Element;
 }) {
-  const data = useQueryData(widget.query);
+  const isJoinedTable =
+    widget.type === "table" && Boolean(widget.queries && widget.queries.length);
+  const data = useQueryData(widget.query ?? null, {
+    queries: isJoinedTable ? widget.queries : null,
+  });
+  useRegisterDataStatus(widget.id, data);
+  const range = useEffectiveRange(widget.query ?? null);
+  const promql = widgetQuery(widget).promql;
+
   const passThrough =
     data.status === "ok" ||
+    (data.status === "stale" && hasContent(data)) ||
     (renderEmptyAsContent && data.status === "empty");
+
   if (!passThrough) {
     return (
-      <WidgetFrame widget={widget}>
-        <DataStateNotice data={data} promql={widget.query.promql} />
+      <WidgetFrame
+        widget={widget}
+        badge={range?.label ?? null}
+        compact={compact}
+        {...frameStatusProps(data)}
+      >
+        <DataStateNotice data={data} promql={promql} variant="compact" />
       </WidgetFrame>
     );
   }
-  if (data.nSeries > 1) {
+  if (data.nSeries > 1 && !isJoinedTable) {
     // The backend collapsed several series into one by MEAN (free-text
     // device_model labels split one vital into parallel series). Say so
-    // — an averaged value must never pass for a raw reading.
+    // — an averaged value must never pass for a raw reading. (Joined
+    // tables are one row per patient; nothing is averaged there.)
     return (
       <div className="relative h-full">
         {children(data)}
         <div
           data-annotation="n-series"
-          className="pointer-events-none absolute bottom-1 right-2 rounded bg-surface-3/90 px-1.5 py-0.5 text-2xs text-ink-dim"
+          className="pointer-events-none absolute bottom-1 right-2 rounded bg-surface-3/90 px-1.5 py-0.5 text-xs text-ink-dim"
           title="Multiple Prometheus series were averaged into this value"
         >
           {data.nSeries} series (averaged)
@@ -77,7 +106,10 @@ function QueryGate({
   return children(data);
 }
 
-export function renderWidget(widget: WidgetSpec): JSX.Element | null {
+export function renderWidget(
+  widget: WidgetSpec,
+  opts: RenderOptions = {},
+): JSX.Element | null {
   switch (widget.type) {
     case "line_chart":
       return (
@@ -93,8 +125,10 @@ export function renderWidget(widget: WidgetSpec): JSX.Element | null {
       );
     case "gauge":
       return (
-        <QueryGate widget={widget}>
-          {(data) => <GaugeWidget widget={widget} data={data} />}
+        <QueryGate widget={widget} compact={opts.compact}>
+          {(data) => (
+            <GaugeWidget widget={widget} data={data} compact={opts.compact} />
+          )}
         </QueryGate>
       );
     case "table":
@@ -145,6 +179,12 @@ export function collectRenderProblems(spec: DashboardSpec): RenderProblem[] {
         widget_id: w.id,
         reason: `unsupported widget type: ${w.type}`,
       });
+    } else if (
+      w.type !== "decision_flow" &&
+      !w.query &&
+      !(w.type === "table" && w.queries && w.queries.length > 0)
+    ) {
+      problems.push({ widget_id: w.id, reason: "widget has no query" });
     }
   }
   return problems;

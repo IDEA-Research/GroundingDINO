@@ -36,7 +36,7 @@ export default function DashboardByIdPage({
     return (
       <div
         data-dashboard-state="error"
-        className="flex h-screen items-center justify-center text-alarm-high"
+        className="flex h-screen items-center justify-center text-sm text-danger"
       >
         {error}
       </div>
@@ -45,7 +45,10 @@ export default function DashboardByIdPage({
 
   return (
     <div data-dashboard-state={spec ? "ready" : "loading"} className="h-screen">
-      <DashboardPreview spec={spec} />
+      {/* Headless evaluator render: spec x/y placement (no zone order), no
+          pairing, title header on; DashboardPreview self-provides the
+          TimeRangeProvider because nothing above does. */}
+      <DashboardPreview spec={spec} showHeader pairDuplicates={false} />
     </div>
   );
 }

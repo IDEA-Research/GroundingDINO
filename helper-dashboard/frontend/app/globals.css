@@ -3,66 +3,110 @@
 @tailwind utilities;
 
 /* ---------------------------------------------------------------------------
- * Clinical dark theme — bedside-monitor visual grammar.
+ * Design tokens — light theme on :root, dark theme on :root[data-theme="dark"].
  *
- * Near-black canvas, low-luminance chrome, high-luminance data. Vital colors
- * follow the ICU/OR convention (HR = monitor green, SpO2 = cyan, cerebral
- * rSO2 = violet). Pure red and amber are reserved EXCLUSIVELY for alarm
- * priorities per IEC 60601-1-8 (red = high, amber = medium) — the chart
- * palette never uses them.
+ * Every color is an R G B triplet so Tailwind opacity modifiers work
+ * (rgb(var(--x) / <alpha-value>)). Chart code never hardcodes hex: it
+ * resolves these variables at runtime (lib/chart-theme.ts) and only keeps
+ * hex fallbacks for SSR.
  *
- * Tokens are raw R G B triplets so Tailwind opacity modifiers work
- * (rgb(var(--x) / <alpha-value>)). The hex mirror for SVG/Recharts lives in
- * frontend/lib/chart-theme.ts — KEEP THE TWO IN SYNC.
+ * Grammar:
+ *   - accent (blue)             = interactive / focus, never a data color
+ *   - ok / warn / danger / info = STATUS meaning only (threshold breach,
+ *                                 alerts, connection state)
+ *   - data-1..6                 = series / vital colors (teal, violet,
+ *                                 indigo, sky, fuchsia, slate). HR -> data-1,
+ *                                 SpO2 -> data-2, rSO2 -> data-3.
+ * The theme attribute is set before first paint by the inline script in
+ * app/layout.tsx (localStorage "hd.theme" or prefers-color-scheme).
  * ------------------------------------------------------------------------- */
 
 :root {
-  /* background tiers (near-black, faint blue cast) */
-  --canvas: 5 8 12; /* #05080c page ground */
-  --surface: 10 15 22; /* #0a0f16 card */
-  --surface-2: 16 23 33; /* #101721 raised / hover */
-  --surface-3: 23 32 45; /* #17202d chips, inputs */
+  color-scheme: light;
+
+  /* background tiers */
+  --canvas: 245 247 250; /* #f5f7fa page ground */
+  --surface: 255 255 255; /* #ffffff card */
+  --surface-2: 241 244 248; /* #f1f4f8 raised / hover */
+  --surface-3: 230 235 242; /* #e6ebf2 chips, inputs */
 
   /* lines */
-  --edge: 28 38 53; /* #1c2635 subtle border */
-  --edge-strong: 42 55 74; /* #2a374a emphasized border */
-  --grid: 20 28 40; /* #141c28 chart gridlines */
+  --edge: 217 224 234; /* #d9e0ea subtle border (1.33:1 on surface) */
+  --edge-strong: 184 196 211; /* #b8c4d3 emphasized border */
+  --grid: 231 236 242; /* #e7ecf2 chart gridlines */
 
   /* text tiers */
-  --ink: 232 238 246; /* #e8eef6 primary */
-  --ink-dim: 148 163 180; /* #94a3b4 secondary */
-  --ink-faint: 95 108 126; /* #5f6c7e labels / tertiary */
+  --ink: 15 23 42; /* #0f172a primary (17.9:1) */
+  --ink-dim: 71 85 105; /* #475569 secondary (7.6:1) */
+  --ink-faint: 89 106 128; /* #596a80 captions (5.5:1 on surface, 4.6:1 on surface-3) */
 
-  /* vital colors (bedside-monitor convention) */
-  --vital-hr: 0 224 122; /* #00e07a heart rate — monitor green */
-  --vital-spo2: 34 211 238; /* #22d3ee SpO2 — cyan */
-  --vital-rso2: 167 139 250; /* #a78bfa cerebral rSO2 — violet */
+  /* interactive */
+  --accent: 37 99 235; /* #2563eb */
+  --accent-ink: 255 255 255; /* text on accent */
+  --focus: 37 99 235; /* focus ring */
 
-  /* alarm colors — IEC 60601-1-8. Red/amber appear NOWHERE else. */
-  --alarm-high: 255 69 84; /* #ff4554 high priority */
-  --alarm-med: 255 176 32; /* #ffb020 medium priority */
-  --alarm-info: 124 147 178; /* #7c93b2 informational, blue-gray */
+  /* status — meaning only */
+  --ok: 21 128 61; /* #15803d */
+  --warn: 180 83 9; /* #b45309 */
+  --danger: 220 38 38; /* #dc2626 */
+  --info: 71 85 105; /* #475569 blue-gray */
 
-  /* good/normal status (backend up, gate passed, resolved) */
-  --ok: 52 211 153; /* #34d399 */
+  /* data palette — never green/amber/red */
+  --data-1: 15 118 110; /* #0f766e teal   (HR) */
+  --data-2: 124 58 237; /* #7c3aed violet (SpO2) */
+  --data-3: 67 56 202; /* #4338ca indigo (rSO2) */
+  --data-4: 3 105 161; /* #0369a1 sky */
+  --data-5: 162 28 175; /* #a21caf fuchsia */
+  --data-6: 100 116 139; /* #64748b slate */
 
-  /* chart palette — NO red, NO yellow/amber/orange */
-  --chart-1: 0 224 122; /* green (HR) */
-  --chart-2: 34 211 238; /* cyan (SpO2) */
-  --chart-3: 167 139 250; /* violet (rSO2) */
-  --chart-4: 96 165 250; /* #60a5fa blue */
-  --chart-5: 45 212 191; /* #2dd4bf teal */
-  --chart-6: 244 114 182; /* #f472b6 pink */
-  --chart-7: 216 140 240; /* #d88cf0 orchid */
-  --chart-8: 143 160 196; /* #8fa0c4 slate blue */
+  /* shape */
+  --radius-sm: 6px;
+  --radius: 10px;
+  --radius-lg: 14px;
+  --shadow-card: 0 1px 2px rgb(15 23 42 / 0.06), 0 1px 1px rgb(15 23 42 / 0.03);
+  --shadow-pop: 0 8px 24px rgb(15 23 42 / 0.14), 0 2px 6px rgb(15 23 42 / 0.08);
 
-  /* focus ring */
-  --ring: 56 189 248; /* #38bdf8 */
-
+  /* type */
   --font-sans: Inter, "Noto Sans TC", "PingFang TC", "Microsoft JhengHei",
     system-ui, -apple-system, sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas,
     "Courier New", monospace;
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+
+  --canvas: 15 23 42; /* #0f172a deep blue-gray */
+  --surface: 23 32 51; /* #172033 card */
+  --surface-2: 31 42 64; /* #1f2a40 raised / hover */
+  --surface-3: 40 53 80; /* #283550 chips, inputs */
+
+  --edge: 47 61 87; /* #2f3d57 (1.49:1 on surface) */
+  --edge-strong: 67 85 122; /* #43557a */
+  --grid: 34 48 80; /* #223050 */
+
+  --ink: 232 238 246; /* #e8eef6 (14.6:1) */
+  --ink-dim: 166 179 200; /* #a6b3c8 (7.7:1) */
+  --ink-faint: 133 147 168; /* #8593a8 (5.2:1 on surface, 4.6:1 on surface-2) */
+
+  --accent: 96 165 250; /* #60a5fa */
+  --accent-ink: 11 18 32; /* dark text on the light-blue accent */
+  --focus: 96 165 250;
+
+  --ok: 52 211 153; /* #34d399 */
+  --warn: 251 191 36; /* #fbbf24 */
+  --danger: 248 113 113; /* #f87171 */
+  --info: 147 167 196; /* #93a7c4 */
+
+  --data-1: 45 212 191; /* #2dd4bf teal */
+  --data-2: 167 139 250; /* #a78bfa violet */
+  --data-3: 129 140 248; /* #818cf8 indigo */
+  --data-4: 56 189 248; /* #38bdf8 sky */
+  --data-5: 232 121 249; /* #e879f9 fuchsia */
+  --data-6: 148 163 184; /* #94a3b8 slate */
+
+  --shadow-card: 0 1px 0 rgb(255 255 255 / 0.03) inset, 0 1px 2px rgb(0 0 0 / 0.35);
+  --shadow-pop: 0 12px 32px rgb(0 0 0 / 0.55), 0 2px 6px rgb(0 0 0 / 0.35);
 }
 
 html,
@@ -73,6 +117,9 @@ body {
   margin: 0;
   padding: 0;
   font-family: var(--font-sans);
+  font-size: 14px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
 }
 
 #__next,
@@ -80,22 +127,164 @@ body > div {
   height: 100%;
 }
 
-/* Visible, consistent keyboard focus. */
+/* Visible, consistent keyboard focus (2px accent ring, non-text 3:1+). */
 :focus-visible {
-  outline: 2px solid rgb(var(--ring) / 0.8);
-  outline-offset: 1px;
+  outline: 2px solid rgb(var(--focus));
+  outline-offset: 2px;
 }
 
-/* Dominant stat-card numeral — readable at 3 meters. */
+/* ---------------------------------------------------------------------------
+ * Cards + numerals. The card root is a size container so the primary
+ * numeral scales with the CARD width (28-40px), not the viewport.
+ * ------------------------------------------------------------------------- */
+.hd-card {
+  container-type: inline-size;
+}
+
 .stat-numeral {
-  font-size: clamp(2.5rem, 6vw, 4.5rem);
-  line-height: 1;
+  font-size: clamp(1.75rem, 9cqi, 2.5rem);
+  line-height: 1.05;
   font-weight: 700;
   letter-spacing: -0.02em;
   font-variant-numeric: tabular-nums;
 }
 
-/* Quiet dark scrollbars so chrome stays low-luminance. */
+@supports not (font-size: 1cqi) {
+  .stat-numeral {
+    font-size: clamp(1.75rem, 3vw, 2.5rem);
+  }
+}
+
+/* ---------------------------------------------------------------------------
+ * Dashboard grid.
+ *   >= lg : the spec grid (12 columns x row_height). Explicit x/y placement
+ *           by default; with .dash-grid--flow (zone order on "/") widgets keep
+ *           their w/h but auto-place in DOM order.
+ *   <  lg : x/y ignored; 2 columns; stat_card/gauge span 1, every other type
+ *           spans the full row; row heights auto with a per-type minimum.
+ * ------------------------------------------------------------------------- */
+.dash-grid {
+  display: grid;
+  gap: 0.75rem;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-auto-rows: auto;
+  grid-auto-flow: row;
+}
+
+.dash-cell {
+  min-width: 0;
+  grid-column: 1 / -1;
+  min-height: 16rem;
+}
+
+.dash-cell[data-widget-type="stat_card"],
+.dash-cell[data-widget-type="gauge"] {
+  grid-column: span 1;
+  min-height: 8.5rem;
+}
+
+.dash-cell[data-widget-type="pair"] {
+  grid-column: span 1;
+  min-height: 13rem;
+}
+
+.dash-cell[data-widget-type="table"],
+.dash-cell[data-widget-type="alert_list"] {
+  min-height: 14rem;
+}
+
+.dash-cell[data-widget-type="decision_flow"] {
+  min-height: 18rem;
+}
+
+@media (max-width: 639.98px) {
+  .dash-grid {
+    gap: 0.5rem;
+  }
+}
+
+@media (min-width: 1024px) {
+  .dash-grid {
+    grid-template-columns: repeat(var(--dash-cols, 12), minmax(0, 1fr));
+    grid-auto-rows: var(--dash-row-h, 40px);
+  }
+
+  .dash-grid--flow {
+    grid-auto-flow: row dense;
+  }
+
+  .dash-grid .dash-cell,
+  .dash-grid .dash-cell[data-widget-type] {
+    grid-column: var(--gc);
+    grid-row: var(--gr);
+    min-height: 0;
+  }
+
+  .dash-grid--flow .dash-cell,
+  .dash-grid--flow .dash-cell[data-widget-type] {
+    grid-column: span var(--gw, 3);
+    grid-row: span var(--gh, 4);
+  }
+}
+
+/* ---------------------------------------------------------------------------
+ * Skeleton shimmer (Skeleton primitive). Static under reduced motion.
+ * ------------------------------------------------------------------------- */
+.hd-skeleton {
+  position: relative;
+  overflow: hidden;
+  border-radius: var(--radius-sm);
+  background: rgb(var(--surface-3));
+}
+
+.hd-skeleton::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgb(var(--surface) / 0.6),
+    transparent
+  );
+  animation: hd-shimmer 1.4s ease-in-out infinite;
+}
+
+@keyframes hd-shimmer {
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+@keyframes hd-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.hd-spin {
+  animation: hd-spin 0.9s linear infinite;
+}
+
+/* ---------------------------------------------------------------------------
+ * Motion: short, subtle, and fully disabled on request.
+ * ------------------------------------------------------------------------- */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+  .hd-skeleton::after {
+    display: none;
+  }
+}
+
+/* Quiet scrollbars in both themes. */
 * {
   scrollbar-width: thin;
   scrollbar-color: rgb(var(--edge-strong)) transparent;

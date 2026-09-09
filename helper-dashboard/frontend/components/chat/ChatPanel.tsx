@@ -1,17 +1,25 @@
 "use client";
 
-import React, { useEffect, useRef, useState } from "react";
+import React, { useContext, useEffect, useRef, useState } from "react";
 
+import { Button, Disclosure, Field, fieldDescribedBy } from "@/components/ui";
+import { DevModeContext } from "@/lib/dev-mode";
 import type { BackendStatusState } from "@/lib/useBackendStatus";
 
 export interface ChatMessage {
   id: string;
   from: "user" | "helper";
+  // 繁中, user-facing.
   text: string;
+  // Developer provenance (intent · runtime · fallback). NEVER rendered in
+  // the user UI — only inside 「技術細節」 when the developer workspace is
+  // unlocked.
   meta?: string;
+  // Raw error/diagnostic detail; same rule as `meta`.
+  detail?: string;
   // For ClarificationRequest messages — clickable question suggestions.
   questions?: string[];
-  // For save-prompt messages — offer Yes/No chips.
+  // For save-prompt messages — offer a name input / skip.
   savePromptFor?: string | null;
 }
 
@@ -22,6 +30,7 @@ export function ChatPanel({
   busy,
   busyMessage,
   backend,
+  onClose,
 }: {
   messages: ChatMessage[];
   onSend: (text: string) => void;
@@ -29,7 +38,9 @@ export function ChatPanel({
   busy: boolean;
   busyMessage?: string | null;
   backend: BackendStatusState;
+  onClose?: () => void;
 }) {
+  const { unlocked } = useContext(DevModeContext);
   const [text, setText] = useState("");
   const scrollRef = useRef<HTMLDivElement | null>(null);
 
@@ -46,128 +57,174 @@ export function ChatPanel({
     setText("");
   }
 
+  const down = backend.status === "down";
   const dotColor =
     backend.status === "up"
       ? "bg-ok"
-      : backend.status === "down"
-        ? "bg-alarm-high"
-        : "bg-alarm-med";
+      : down
+        ? "bg-danger"
+        : "bg-warn";
   const dotLabel =
     backend.status === "up"
-      ? "後端連線正常"
-      : backend.status === "down"
-        ? `後端無法連線${backend.httpCode ? ` (HTTP ${backend.httpCode})` : ""}`
-        : "檢查後端連線中…";
+      ? "伺服器連線正常"
+      : down
+        ? "伺服器無法連線"
+        : "檢查連線中…";
 
   return (
-    <div className="flex h-full flex-col bg-canvas">
-      <div className="flex items-center justify-between border-b border-edge px-3 py-2">
-        <div className="text-sm font-semibold text-ink">Helper</div>
+    <div className="flex h-full min-h-0 flex-col bg-canvas">
+      <div className="flex items-center gap-2 border-b border-edge px-3 py-2">
+        <div className="min-w-0 flex-1">
+          <div className="text-sm font-semibold text-ink">Helper</div>
+          <div className="text-xs text-ink-dim">儀表板助理</div>
+        </div>
         <div
+          className="flex items-center gap-1.5 text-xs text-ink-dim"
           title={dotLabel}
-          className="flex items-center gap-1.5 text-xs text-ink-faint"
         >
           <span
             data-backend-status={backend.status}
-            className={`inline-block h-2 w-2 rounded-full ${dotColor}`}
+            aria-hidden="true"
+            className={`inline-block h-2.5 w-2.5 rounded-full ${dotColor}`}
           />
-          <span className="hidden md:inline">{dotLabel}</span>
+          <span>{dotLabel}</span>
         </div>
+        {onClose ? (
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={onClose}
+            aria-label="關閉 Helper 對話"
+          >
+            關閉
+          </Button>
+        ) : null}
       </div>
+
       <div
         ref={scrollRef}
-        className="flex-1 space-y-2 overflow-y-auto p-3"
+        role="log"
+        aria-live="polite"
+        aria-label="對話內容"
+        className="min-h-0 flex-1 space-y-2 overflow-y-auto p-3"
       >
         {messages.length === 0 ? (
-          <div className="rounded-lg border border-edge bg-surface-2/60 p-3 text-sm text-ink-dim">
-            嗨 — 告訴我你想要的儀表板。例如:「幫我建立新生兒 HR 與 SpO2
-            監控儀表板」。
+          <div className="rounded-lg border border-edge bg-surface p-3 text-sm leading-relaxed text-ink-dim">
+            你好，我是 Helper。告訴我你想看的監控畫面，例如「幫我建立新生兒 HR 與
+            SpO2 監控儀表板」，或直接說要調整目前儀表板的哪個部分。
           </div>
         ) : null}
+
         {messages.map((m) => (
           <div
             key={m.id}
             className={
-              "max-w-[85%] rounded-lg border px-3 py-2 text-sm " +
+              "max-w-[88%] rounded-lg border px-3 py-2 text-sm leading-relaxed " +
               (m.from === "user"
-                ? "ml-auto border-chart-4/30 bg-chart-4/15 text-ink"
-                : "border-edge bg-surface-2 text-ink")
+                ? "ml-auto border-accent/30 bg-accent/10 text-ink"
+                : "border-edge bg-surface text-ink")
             }
           >
-            <div className="whitespace-pre-wrap">{m.text}</div>
+            <div className="whitespace-pre-wrap break-words">{m.text}</div>
 
             {m.questions && m.questions.length > 0 ? (
-              <div className="mt-2 space-y-1">
+              <div className="mt-2 space-y-1.5">
                 {m.questions.map((q, i) => (
-                  <button
+                  <Button
                     key={i}
                     type="button"
+                    variant="secondary"
+                    size="sm"
+                    className="w-full justify-start text-left"
                     onClick={() => onQuickReply(q)}
-                    className="block w-full rounded border border-edge-strong bg-surface px-2 py-1 text-left text-xs text-ink-dim hover:bg-surface-3 hover:text-ink"
                   >
                     {q}
-                  </button>
+                  </Button>
                 ))}
               </div>
             ) : null}
 
             {m.savePromptFor ? (
-              <div className="mt-2 flex flex-wrap items-center gap-1.5">
-                <span className="text-2xs uppercase tracking-wide text-ink-faint">
-                  另存為
-                </span>
-                <SaveQuick onPick={(name) => onQuickReply(name)} />
-                <button
-                  type="button"
-                  onClick={() => onQuickReply("no")}
-                  className="rounded border border-edge-strong bg-surface-3 px-2 py-0.5 text-xs text-ink-dim hover:bg-surface-2 hover:text-ink"
-                >
-                  略過
-                </button>
-              </div>
+              <SaveQuick
+                id={`hd-save-name-${m.id}`}
+                onPick={(name) => onQuickReply(name)}
+                onSkip={() => onQuickReply("略過")}
+              />
             ) : null}
 
-            {m.meta ? (
-              <div className="mt-1 font-mono text-2xs uppercase tracking-wide text-ink-faint">
-                {m.meta}
+            {unlocked && (m.meta || m.detail) ? (
+              <div className="mt-2">
+                <Disclosure summary="技術細節">
+                  <pre className="whitespace-pre-wrap break-all font-mono text-xs text-ink-dim">
+                    {[m.meta, m.detail].filter(Boolean).join("\n")}
+                  </pre>
+                </Disclosure>
               </div>
             ) : null}
           </div>
         ))}
+
         {busy ? (
-          <div className="max-w-[85%] rounded-lg border border-edge bg-surface-2 px-3 py-2 text-xs italic text-ink-faint">
-            {busyMessage || "Helper 思考中…"}
+          <div
+            role="status"
+            className="flex max-w-[88%] items-center gap-2 rounded-lg border border-edge bg-surface px-3 py-2 text-sm text-ink-dim"
+          >
+            <span
+              aria-hidden="true"
+              className="inline-block h-2 w-2 shrink-0 animate-pulse rounded-full bg-accent motion-reduce:animate-none"
+            />
+            <span>{busyMessage || "Helper 思考中…"}</span>
           </div>
         ) : null}
       </div>
+
       <form
         onSubmit={submit}
-        className="flex gap-2 border-t border-edge p-2"
+        className="flex items-end gap-2 border-t border-edge p-3"
       >
-        <input
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-          disabled={busy}
-          placeholder={
-            backend.status === "down"
-              ? "後端無法連線 — 等待重新連線…"
-              : "輸入訊息…"
-          }
-          className="flex-1 rounded-md border border-edge bg-surface-2 px-3 py-2 text-sm text-ink outline-none placeholder:text-ink-faint focus:ring-1 focus:ring-ring"
-        />
-        <button
+        <div className="min-w-0 flex-1">
+          <Field
+            label="訊息"
+            htmlFor="hd-chat-input"
+            hint={down ? "伺服器無法連線，暫時無法傳送。" : undefined}
+          >
+            <input
+              id="hd-chat-input"
+              data-autofocus
+              aria-describedby={fieldDescribedBy("hd-chat-input", { hint: down })}
+              value={text}
+              onChange={(e) => setText(e.target.value)}
+              disabled={busy}
+              autoComplete="off"
+              placeholder={down ? "等待伺服器重新連線…" : "描述你想看的畫面或要調整的地方"}
+              className="min-h-[40px] w-full rounded-md border border-edge bg-surface px-3 text-sm text-ink placeholder:text-ink-faint focus:outline-none focus:ring-2 focus:ring-focus disabled:opacity-60"
+            />
+          </Field>
+        </div>
+        <Button
           type="submit"
-          disabled={busy || !text.trim() || backend.status === "down"}
-          className="rounded-md border border-vital-spo2/40 bg-vital-spo2/15 px-3 py-2 text-sm font-medium text-vital-spo2 hover:bg-vital-spo2/25 disabled:opacity-40"
+          variant="primary"
+          size="md"
+          disabled={busy || !text.trim() || down}
+          className="min-h-[40px]"
         >
           傳送
-        </button>
+        </Button>
       </form>
     </div>
   );
 }
 
-function SaveQuick({ onPick }: { onPick: (name: string) => void }) {
+function SaveQuick({
+  id,
+  onPick,
+  onSkip,
+}: {
+  id: string;
+  onPick: (name: string) => void;
+  onSkip: () => void;
+}) {
   const [v, setV] = useState("");
   return (
     <form
@@ -175,20 +232,26 @@ function SaveQuick({ onPick }: { onPick: (name: string) => void }) {
         e.preventDefault();
         if (v.trim()) onPick(v.trim());
       }}
-      className="flex gap-1"
+      className="mt-2 flex flex-wrap items-end gap-2"
     >
-      <input
-        value={v}
-        onChange={(e) => setV(e.target.value)}
-        placeholder="名稱…"
-        className="rounded border border-edge bg-surface px-2 py-0.5 text-xs text-ink outline-none placeholder:text-ink-faint focus:ring-1 focus:ring-ring"
-      />
-      <button
-        type="submit"
-        className="rounded border border-ok/40 bg-ok/15 px-2 py-0.5 text-xs font-medium text-ok hover:bg-ok/25"
-      >
+      <div className="min-w-0 flex-1">
+        <Field label="儲存名稱" htmlFor={id}>
+          <input
+            id={id}
+            value={v}
+            onChange={(e) => setV(e.target.value)}
+            autoComplete="off"
+            placeholder="例如：新生兒 HR 與 SpO2"
+            className="min-h-[36px] w-full rounded-md border border-edge bg-canvas px-2 text-sm text-ink placeholder:text-ink-faint focus:outline-none focus:ring-2 focus:ring-focus"
+          />
+        </Field>
+      </div>
+      <Button type="submit" variant="primary" size="sm" disabled={!v.trim()}>
         儲存
-      </button>
+      </Button>
+      <Button type="button" variant="ghost" size="sm" onClick={onSkip}>
+        略過
+      </Button>
     </form>
   );
 }

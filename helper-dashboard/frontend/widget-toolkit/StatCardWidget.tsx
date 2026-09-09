@@ -3,17 +3,35 @@
 import React from "react";
 
 import {
-  CHART_COLORS,
-  alarmColorForSpec,
+  colorForSeverity,
+  useChartTheme,
   vitalColorFor,
 } from "@/lib/chart-theme";
-import type { WidgetSpec } from "@/lib/spec-schema";
-import type { WidgetData } from "@/lib/useQueryData";
-import { WidgetFrame } from "./WidgetFrame";
+import { sampleTsOf } from "@/lib/data-status";
+import { widgetQuery, type WidgetSpec } from "@/lib/spec-schema";
+import { activeThreshold, resolveThresholdDirection } from "@/lib/threshold";
+import { useEffectiveRange } from "@/lib/time-range";
+import {
+  REASON_TEXT,
+  useQueryFilters,
+  type WidgetData,
+} from "@/lib/useQueryData";
+import {
+  NonDiagnosticFooter,
+  SeverityIcon,
+  WidgetFrame,
+  fmtClock,
+  fmtClockMs,
+  formatValue,
+  frameStatusProps,
+} from "./WidgetFrame";
 
-// Bedside-monitor stat card: one dominant numeral, readable at 3 meters,
-// in the vital's conventional color. A threshold breach recolors the
-// NUMERAL with the normalized IEC alarm color — never the card background.
+// Stat card, four tiers: 名稱 (frame header) -> 數值 (「—」 when null) -> 單位
+// -> 資料時間/狀態 (最後量測 HH:mm:ss or the reason, 多位病患平均 note).
+// A threshold breach shows TEXT + icon in the status color (never color
+// alone) and recolors the numeral; a normal reading uses the vital's data
+// color (HR data-1 / SpO2 data-2 / rSO2 data-3). Widgets with thresholds
+// carry the LD-7 footer.
 export function StatCardWidget({
   widget,
   data,
@@ -21,54 +39,80 @@ export function StatCardWidget({
   widget: WidgetSpec;
   data: WidgetData;
 }) {
-  const unit = widget.encoding?.unit || "";
-  const value = data.latest ?? 0;
+  const theme = useChartTheme();
+  const filters = useQueryFilters();
+  const query = widgetQuery(widget);
+  const range = useEffectiveRange(widget.query ?? null);
 
-  const alarm = activeAlarmColor(value, widget.thresholds);
-  const color =
-    alarm ??
-    widget.encoding?.color ??
-    vitalColorFor(widget.query.promql, widget.title) ??
-    CHART_COLORS.ink;
+  const unit = widget.encoding?.unit || "";
+  const decimals = (widget.options as { decimals?: unknown } | undefined)
+    ?.decimals;
+  const value = data.latest;
+  const thresholds = widget.thresholds ?? [];
+  const direction = resolveThresholdDirection(thresholds);
+  const active = activeThreshold(value, thresholds, direction);
+
+  const color = active
+    ? colorForSeverity(active.severity, theme.colors)
+    : widget.encoding?.color ||
+      vitalColorFor(query.promql, widget.title, theme.colors) ||
+      theme.colors.ink;
+
+  const sampleTs = sampleTsOf(data);
+  const averaged = data.nSeries > 1 && !filters?.patient_id;
 
   return (
-    <WidgetFrame widget={widget}>
-      <div className="flex h-full items-center justify-center">
-        <div className="flex items-baseline gap-2">
+    <WidgetFrame
+      widget={widget}
+      badge={range?.label ?? null}
+      {...frameStatusProps(data)}
+      footer={thresholds.length > 0 ? <NonDiagnosticFooter /> : null}
+    >
+      <div className="flex h-full flex-col justify-center gap-1.5">
+        <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
           <span
-            className="stat-numeral font-mono tabular-nums"
-            style={{ color }}
+            className="stat-numeral font-mono"
+            style={{ color: value === null ? theme.colors.inkFaint : color }}
           >
-            {formatNumber(value)}
+            {value === null
+              ? "—"
+              : formatValue(value, typeof decimals === "number" ? decimals : null)}
           </span>
           {unit ? (
             <span className="text-sm font-medium text-ink-dim">{unit}</span>
           ) : null}
         </div>
+
+        {active ? (
+          <div
+            className="inline-flex items-center gap-1.5 text-sm font-medium"
+            style={{ color }}
+          >
+            <SeverityIcon severity={active.severity} />
+            <span>{active.label}</span>
+          </div>
+        ) : null}
+
+        {value === null && data.status !== "loading" ? (
+          <div className="text-sm text-ink-dim">
+            {data.reason ?? REASON_TEXT.empty}
+          </div>
+        ) : null}
+
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-ink-faint">
+          <span className="font-mono tabular-nums">
+            {sampleTs !== null
+              ? `最後量測 ${fmtClock(sampleTs)}`
+              : data.lastSuccessAt !== null
+                ? `最後查詢 ${fmtClockMs(data.lastSuccessAt)}`
+                : "尚無量測時間"}
+          </span>
+          {averaged ? <span>多位病患平均</span> : null}
+          {data.filtersApplied?.patient_id ? (
+            <span>病患 {data.filtersApplied.patient_id}</span>
+          ) : null}
+        </div>
       </div>
     </WidgetFrame>
   );
-}
-
-function formatNumber(v: number): string {
-  if (Math.abs(v) >= 1000) return v.toFixed(0);
-  if (Math.abs(v) >= 10) return v.toFixed(1);
-  return v.toFixed(2);
-}
-
-// Same activation rule as before (highest threshold <= value wins), but the
-// spec's free-form color is normalized onto the alarm tokens. Returns null
-// when no threshold is active — the numeral keeps its normal vital color.
-function activeAlarmColor(
-  value: number,
-  thresholds?: WidgetSpec["thresholds"],
-): string | null {
-  if (!thresholds || thresholds.length === 0) return null;
-  const sorted = [...thresholds].sort((a, b) => a.value - b.value);
-  let hit: (typeof sorted)[number] | null = null;
-  for (const t of sorted) {
-    if (value >= t.value) hit = t;
-  }
-  if (!hit) return null;
-  return alarmColorForSpec(hit.color) ?? CHART_COLORS.alarmInfo;
 }
