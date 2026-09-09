@@ -27,14 +27,42 @@ from app.helper.extend_runner import ExtendOutcome
 from app.helper.orchestrator import Orchestrator, _PENDING_SAVE
 
 
-def _reset_storage():
+_STORAGE_SUBDIRS = ("dashboards", "tickets", "saved_dashboards", "retry_logs")
+
+
+@pytest.fixture(autouse=True)
+def _isolated_storage():
+    """Give every test in this module an empty view of the real storage
+    dirs WITHOUT ever deleting real data: back up existing *.json* files
+    in-memory, clear the dirs for the test, then restore the originals
+    and remove anything the test created. See the identical fixture in
+    tests/saved_dashboards/test_saved_dashboards.py for the full
+    rationale (DashboardStore/SavedDashboardStore resolve an absolute,
+    non-redirectable storage root by design). `*.json*` (not just
+    `*.json`) also covers retry_logs/ entries if
+    HELPER_DASHBOARD_PERSIST_RETRY_LOGS=1 makes any test write `.jsonl`."""
     root = Path("backend/app/storage")
-    for sub in ("dashboards", "tickets", "saved_dashboards", "retry_logs"):
+    backups: dict[Path, bytes] = {}
+    for sub in _STORAGE_SUBDIRS:
         d = root / sub
         if d.exists():
-            for p in d.glob("*.json"):
+            for p in d.glob("*.json*"):
+                backups[p] = p.read_bytes()
                 p.unlink()
     _PENDING_SAVE.clear()
+    try:
+        yield
+    finally:
+        for sub in _STORAGE_SUBDIRS:
+            d = root / sub
+            if d.exists():
+                for p in d.glob("*.json*"):
+                    if p not in backups:
+                        p.unlink()
+        for p, content in backups.items():
+            p.parent.mkdir(parents=True, exist_ok=True)
+            p.write_bytes(content)
+        _PENDING_SAVE.clear()
 
 
 class _ScriptedRuntime:
@@ -125,7 +153,6 @@ def _valid_dashboard_spec() -> dict:
 
 
 def test_extend_ticket_triggers_redispatch_and_succeeds(monkeypatch):
-    _reset_storage()
     monkeypatch.delenv("HELPER_DASHBOARD_HELPERCODE", raising=False)
     monkeypatch.delenv("HELPER_DASHBOARD_PRE_OUTPUT_REVIEW", raising=False)
     monkeypatch.setenv("HELPER_AGENT_MAX_ATTEMPTS", "2")
@@ -174,7 +201,6 @@ def test_safety_gate_refusal_yields_honest_reply(monkeypatch):
     """When a safety gate refuses (denylist, prompt-injection, quota),
     the reply should name the widget the user asked for and the gate
     reason — never say it's "not in the toolkit"."""
-    _reset_storage()
     monkeypatch.delenv("HELPER_DASHBOARD_HELPERCODE", raising=False)
     monkeypatch.delenv("HELPER_DASHBOARD_PRE_OUTPUT_REVIEW", raising=False)
     monkeypatch.setenv("HELPER_AGENT_MAX_ATTEMPTS", "2")
@@ -209,7 +235,6 @@ def test_safety_gate_refusal_yields_honest_reply(monkeypatch):
 
 
 def test_extend_failure_falls_through_to_ticket_reply(monkeypatch):
-    _reset_storage()
     monkeypatch.delenv("HELPER_DASHBOARD_HELPERCODE", raising=False)
     monkeypatch.delenv("HELPER_DASHBOARD_PRE_OUTPUT_REVIEW", raising=False)
     monkeypatch.setenv("HELPER_AGENT_MAX_ATTEMPTS", "2")
@@ -246,7 +271,6 @@ def test_extend_failure_falls_through_to_ticket_reply(monkeypatch):
 
 
 def test_non_extend_ticket_does_not_trigger_extend(monkeypatch):
-    _reset_storage()
     monkeypatch.delenv("HELPER_DASHBOARD_HELPERCODE", raising=False)
     monkeypatch.delenv("HELPER_DASHBOARD_PRE_OUTPUT_REVIEW", raising=False)
     monkeypatch.setenv("HELPER_AGENT_MAX_ATTEMPTS", "2")
@@ -278,7 +302,6 @@ def test_extend_does_not_recurse_on_second_extend_ticket(monkeypatch):
     """If the re-dispatched generate STILL emits an extend ticket (for
     a different widget type, say), the orchestrator must not extend
     again — it returns the ticket as a normal DeveloperTicket reply."""
-    _reset_storage()
     monkeypatch.delenv("HELPER_DASHBOARD_HELPERCODE", raising=False)
     monkeypatch.delenv("HELPER_DASHBOARD_PRE_OUTPUT_REVIEW", raising=False)
     monkeypatch.setenv("HELPER_AGENT_MAX_ATTEMPTS", "2")

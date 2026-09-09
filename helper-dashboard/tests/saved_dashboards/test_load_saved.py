@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
 from fastapi.testclient import TestClient
 
 from app.helper.orchestrator import Orchestrator, _PENDING_SAVE
@@ -18,15 +19,40 @@ from app.services.dashboard_store import DashboardStore
 from app.services.saved_dashboard_store import SavedDashboardStore
 from app.specs import DashboardSpec
 
+_STORAGE_SUBDIRS = ("dashboards", "tickets", "evaluation_reports", "saved_dashboards")
 
-def _reset_storage():
+
+@pytest.fixture(autouse=True)
+def _isolated_storage():
+    """Give every test in this module an empty view of the real storage
+    dirs WITHOUT ever deleting real data: back up existing *.json files
+    in-memory, clear the dirs for the test, then restore the originals
+    and remove anything the test created. See the identical fixture in
+    tests/saved_dashboards/test_saved_dashboards.py for the full
+    rationale (DashboardStore/SavedDashboardStore resolve an absolute,
+    non-redirectable storage root by design)."""
     root = Path("backend/app/storage")
-    for sub in ("dashboards", "tickets", "evaluation_reports", "saved_dashboards"):
+    backups: dict[Path, bytes] = {}
+    for sub in _STORAGE_SUBDIRS:
         d = root / sub
         if d.exists():
             for p in d.glob("*.json"):
+                backups[p] = p.read_bytes()
                 p.unlink()
     _PENDING_SAVE.clear()
+    try:
+        yield
+    finally:
+        for sub in _STORAGE_SUBDIRS:
+            d = root / sub
+            if d.exists():
+                for p in d.glob("*.json"):
+                    if p not in backups:
+                        p.unlink()
+        for p, content in backups.items():
+            p.parent.mkdir(parents=True, exist_ok=True)
+            p.write_bytes(content)
+        _PENDING_SAVE.clear()
 
 
 def _spec(dashboard_id: str = "demo", title: str = "Demo") -> DashboardSpec:
@@ -43,7 +69,6 @@ def _spec(dashboard_id: str = "demo", title: str = "Demo") -> DashboardSpec:
 
 
 def test_load_endpoint_clones_with_fresh_id_and_bumps_used():
-    _reset_storage()
     client = TestClient(app)
     store = SavedDashboardStore()
     entry = store.save(_spec("orig-dash", "Prod CPU"), name="prod CPU")
@@ -75,7 +100,6 @@ def test_load_endpoint_clones_with_fresh_id_and_bumps_used():
 
 
 def test_load_endpoint_404_when_missing():
-    _reset_storage()
     client = TestClient(app)
     r = client.post("/api/saved_dashboards/no-such-entry/load")
     assert r.status_code == 404
@@ -85,7 +109,6 @@ def test_load_endpoint_404_when_missing():
 def test_load_endpoint_trailing_slash_form_registered():
     # redirect_slashes=False on the app: both forms must be explicit
     # routes, or the proxy-escaping 307 bug comes back.
-    _reset_storage()
     client = TestClient(app)
     store = SavedDashboardStore()
     entry = store.save(_spec(), name="slash form")
@@ -102,7 +125,6 @@ def test_orchestrator_loads_saved_dashboard_via_chat(monkeypatch):
     """End-to-end (mock runtime): 'load my saved X' resolves the entry,
     clones it with a fresh id, updates session memory, and returns a
     dashboard-bearing response — no LLM regeneration."""
-    _reset_storage()
     monkeypatch.delenv("HELPER_DASHBOARD_PRE_OUTPUT_REVIEW", raising=False)
     monkeypatch.delenv("HELPER_DASHBOARD_HELPERCODE", raising=False)
     store = SavedDashboardStore()
@@ -136,7 +158,6 @@ def test_orchestrator_loads_saved_dashboard_via_chat(monkeypatch):
 def test_orchestrator_load_saved_ambiguous_returns_clarification():
     """A LoadSavedIntent whose name_query matches several entries must
     come back as a ClarificationRequest listing the candidates."""
-    _reset_storage()
     store = SavedDashboardStore()
     store.save(_spec("a", "A"), name="prod cpu")
     store.save(_spec("b", "B"), name="prod memory")
@@ -163,7 +184,6 @@ def test_orchestrator_load_saved_ambiguous_returns_clarification():
 
 
 def test_orchestrator_load_saved_no_match_lists_library():
-    _reset_storage()
     store = SavedDashboardStore()
     store.save(_spec(), name="prod cpu")
 
@@ -228,7 +248,6 @@ def test_mock_classifier_clarifies_when_library_ambiguous(monkeypatch):
 
 
 def test_chat_current_dashboard_id_updates_session_memory():
-    _reset_storage()
     o = Orchestrator()
     r = o.handle_user_message(
         session_id="cm-1",
