@@ -88,7 +88,10 @@ export function WidgetFrame({
       )}
       style={style}
     >
-      <div className="mb-2 flex shrink-0 items-start justify-between gap-2">
+      {/* dash-drag-handle: the panel's react-grid-layout draggableHandle
+          target (DashboardGrid.tsx). Title/description/badges only — no
+          click targets live here, so it is safe to grab whole-row. */}
+      <div className="dash-drag-handle mb-2 flex shrink-0 items-start justify-between gap-2">
         <div className="min-w-0">
           <h3
             className="line-clamp-2 text-sm font-semibold leading-5 text-ink"

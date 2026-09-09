@@ -542,11 +542,21 @@ export interface SavedDashboardEntry {
   updated_at?: string | null;
 }
 
-// PATCH /api/saved_dashboards/{id}
+// One widget's new grid position — Phase 2 (react-grid-layout) drag/resize.
+export interface WidgetPositionUpdate {
+  id: string;
+  position: WidgetPosition;
+}
+
+// PATCH /api/saved_dashboards/{id}. `widgets`/`layout` are the Phase 2
+// layout-engine additions (drag/resize persistence) folded into the SAME
+// rename/re-tag route rather than a new endpoint — see DashboardGrid.tsx.
 export interface SavedDashboardPatch {
   name?: string;
   description?: string;
   tags?: string[];
+  widgets?: WidgetPositionUpdate[];
+  layout?: DashboardLayout;
 }
 
 // Response of POST /api/saved_dashboards/{saved_id}/load (contract C3).

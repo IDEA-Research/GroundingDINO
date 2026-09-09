@@ -153,10 +153,17 @@ class SavedDashboardStore:
         name: str | None = None,
         description: str | None = None,
         tags: list[str] | None = None,
+        spec: DashboardSpec | None = None,
     ) -> SavedDashboard | None:
         """Rename / re-describe / re-tag in place. `saved_id` never
         changes (the bar, LoadSavedIntent and used_count all key on it;
-        Chinese names slug to `saved-<hex>` anyway)."""
+        Chinese names slug to `saved-<hex>` anyway).
+
+        `spec` (Phase 2 layout engine): a pre-validated, already-merged
+        DashboardSpec replacing the stored snapshot wholesale — the
+        caller (api/saved_dashboards.py) owns the merge + validation,
+        this just persists it and refreshes the derived `summary`.
+        """
         entry = self.load(saved_id)
         if entry is None:
             return None
@@ -167,6 +174,9 @@ class SavedDashboardStore:
             changes["description"] = description[:512]
         if tags is not None:
             changes["tags"] = list(dict.fromkeys(tags[:16]))
+        if spec is not None:
+            changes["spec"] = spec
+            changes["summary"] = _summary(spec)
         entry = entry.model_copy(update=changes)
         self._write(entry)
         return entry

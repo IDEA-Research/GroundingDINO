@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useMemo } from "react";
+import type { Layout } from "react-grid-layout";
 
 import { Badge } from "@/components/ui/Badge";
 import { Disclosure } from "@/components/ui/Disclosure";
@@ -10,6 +11,7 @@ import type {
   DashboardSpec,
   QueryFilters,
   ReviewTrailEvent,
+  WidgetPosition,
   WidgetSpec,
 } from "@/lib/spec-schema";
 import { widgetQuery } from "@/lib/spec-schema";
@@ -17,20 +19,44 @@ import { TimeRangeProvider, useHasTimeRangeProvider } from "@/lib/time-range";
 import { QueryFiltersProvider } from "@/lib/useQueryData";
 import { PairedStatGauge } from "@/widget-toolkit/PairedStatGauge";
 import { TimeRangeControls } from "@/components/dashboard/TimeRangeControls";
+import {
+  DashboardGrid,
+  GRID_COLUMNS,
+  type GridPanel,
+} from "@/components/dashboard/DashboardGrid";
 
-// Renders a DashboardSpec as the responsive widget grid.
+// Renders a DashboardSpec as the widget grid (Phase 2 — DashboardGrid.tsx /
+// react-grid-layout, replacing the old static CSS grid).
 //
-//   >= lg : the spec grid (layout.columns x row_height). zoneOrder=false
-//           (evaluator route) places every widget at its spec x/y/w/h;
-//           zoneOrder=true ("/") keeps w/h but auto-flows in zone order:
-//           stat_card/gauge -> charts -> table/alert_list/decision_flow,
-//           (y, x) within a zone.
-//   <  lg : x/y ignored, 2 columns, stat_card/gauge span 1, everything else
-//           spans the row, auto row heights (CSS in globals.css .dash-grid).
+//   >= 768px : every widget/pair renders as a react-grid-layout panel at
+//              its real x/y/w/h, draggable and resizable when `editable`.
+//              react-grid-layout's native grid is GRID_COLUMNS (24) wide,
+//              matching Grafana's GRID_COLUMN_COUNT; a dashboard authored
+//              on a narrower `layout.columns` (existing specs are 12) has
+//              its x/w scaled up on read so proportions are unchanged —
+//              see `scale` below. `editable` (true only on "/") is the
+//              ONLY thing that turns dragging on; the headless evaluator
+//              route (dashboard/[id]) renders the identical geometry
+//              frozen.
+//   <  768px : DashboardGrid drops react-grid-layout and stacks every
+//              panel full-width in one column (our own choice, not a
+//              claimed Grafana breakpoint) — see DashboardGrid.tsx.
 //
 // pairDuplicates folds a gauge whose normalized PromQL equals a stat card's
-// into ONE cell (PairedStatGauge) — both widgets keep their own
-// data-widget-id roots, so the evaluator still counts both.
+// into ONE panel (PairedStatGauge) — both widgets keep their own
+// data-widget-id roots, so the evaluator still counts both. Only the
+// stat card gets its own react-grid-layout panel; the folded gauge's
+// position is basis-migrated (see onLayoutSettled) but never itself laid
+// out, same as before Phase 2.
+//
+// `zoneOrder` no longer changes ANY panel's on-screen position — that was
+// the old CSS `grid-auto-flow: dense` behavior, which is fundamentally
+// incompatible with drag-to-position persistence (it recomputed every
+// panel's slot from DOM order on every render, ignoring stored x/y).
+// react-grid-layout requires — and this Phase 2 conversion is built
+// around — every panel's position being real, explicit, and durable, the
+// same model Grafana uses. `zoneOrder` is kept only to order pairing/tab
+// order (stat_card/gauge first) via buildCells' sort; it has no layout effect.
 //
 // A TimeRangeProvider is self-provided ONLY when none exists above (the
 // headless /dashboard/[id] route); on "/" the shell mounts it so the
@@ -43,7 +69,7 @@ export interface DashboardPreviewProps {
   // the headless evaluator route has none). Drives the review badge —
   // there is no unconditional badge.
   reviewTrail?: ReviewTrailEvent[];
-  // Enforce zone order (true on "/", false on the evaluator route).
+  // Kept for pairing/tab order only — see the module comment above.
   zoneOrder?: boolean;
   // Fold gauge+stat_card duplicates into one cell (default on; the
   // evaluator route passes false so spec placement stays 1:1).
@@ -53,10 +79,18 @@ export interface DashboardPreviewProps {
   // Render the compact title/description/TimeRangeControls header. Off by
   // default — on "/" the DashboardHeader owns that row.
   showHeader?: boolean;
+  // Enables react-grid-layout drag/resize (Phase 2). Default off — only
+  // "/" passes true; the headless evaluator route stays frozen.
+  editable?: boolean;
+  // Fires after a drag/resize settles, with a FULLY updated DashboardSpec
+  // (every widget's position — including panels not directly dragged —
+  // re-expressed on the GRID_COLUMNS basis; see onLayoutSettled). The
+  // caller owns persistence (setSpec + whatever backend write applies).
+  onLayoutChange?: (next: DashboardSpec) => void;
   className?: string;
 }
 
-type Cell =
+export type Cell =
   | { kind: "single"; widget: WidgetSpec }
   | { kind: "pair"; stat: WidgetSpec; gauge: WidgetSpec };
 
@@ -128,21 +162,27 @@ function pairExtraRows(rowHeight: number): number {
   return Math.max(1, Math.ceil((64 + 12 + 8) / Math.max(10, rowHeight)));
 }
 
-function cellStyle(
-  primary: WidgetSpec,
-  columns: number,
+// A dashboard's `layout.columns` (existing specs: 12) expressed on
+// DashboardGrid's fixed GRID_COLUMNS (24) canvas. x/w scale by this
+// factor so a panel keeps the same fraction of the row's width it had
+// before Phase 2; y/h are row counts and are never scaled.
+function columnScale(columns: number): number {
+  return GRID_COLUMNS / Math.max(1, columns);
+}
+
+// One panel's react-grid-layout geometry from its real spec position —
+// scaled to GRID_COLUMNS and clamped the same way the old CSS-grid
+// cellStyle() clamped (x within bounds, w never overflowing the grid).
+function toGridGeometry(
+  position: WidgetPosition,
+  scale: number,
   extraRows: number,
-): React.CSSProperties {
-  const x = Math.max(0, Math.min(primary.position.x, columns - 1));
-  const w = Math.max(1, Math.min(primary.position.w, columns - x));
-  const y = Math.max(0, primary.position.y);
-  const h = Math.max(1, primary.position.h) + extraRows;
-  return {
-    ["--gc" as string]: `${x + 1} / span ${w}`,
-    ["--gr" as string]: `${y + 1} / span ${h}`,
-    ["--gw" as string]: String(w),
-    ["--gh" as string]: String(h),
-  } as React.CSSProperties;
+): { x: number; y: number; w: number; h: number } {
+  const x = Math.max(0, Math.min(GRID_COLUMNS - 1, Math.round(position.x * scale)));
+  const w = Math.max(1, Math.min(GRID_COLUMNS - x, Math.round(position.w * scale)));
+  const y = Math.max(0, position.y);
+  const h = Math.max(1, position.h) + extraRows;
+  return { x, y, w, h };
 }
 
 export function DashboardPreview(props: DashboardPreviewProps) {
@@ -164,17 +204,85 @@ function DashboardPreviewBody({
   pairDuplicates = true,
   filters = null,
   showHeader = false,
+  editable = false,
+  onLayoutChange,
   className,
 }: DashboardPreviewProps) {
   const { unlocked: devUnlocked } = useDevMode();
 
   const columns = spec?.layout?.columns || 12;
   const rowHeight = spec?.layout?.row_height || 40;
+  const scale = columnScale(columns);
 
   const cells = useMemo(
     () => (spec ? buildCells(spec.widgets, { zoneOrder, pairDuplicates }) : []),
     [spec, zoneOrder, pairDuplicates],
   );
+
+  const extraRows = pairExtraRows(rowHeight);
+
+  const panels: GridPanel[] = useMemo(
+    () =>
+      cells.map((cell) =>
+        cell.kind === "pair"
+          ? {
+              id: cell.stat.id,
+              type: "pair",
+              ...toGridGeometry(cell.stat.position, scale, extraRows),
+              content: (
+                <PairedStatGauge
+                  stat={renderWidget(cell.stat)}
+                  gauge={renderWidget(cell.gauge, { compact: true })}
+                />
+              ),
+            }
+          : {
+              id: cell.widget.id,
+              type: cell.widget.type,
+              ...toGridGeometry(cell.widget.position, scale, 0),
+              content: renderWidget(cell.widget),
+            },
+      ),
+    [cells, scale, extraRows],
+  );
+
+  // Fires once a drag or resize completes. Rebuilds the FULL widget list
+  // on the GRID_COLUMNS basis — not just the panel that moved — so a
+  // paired gauge (never its own react-grid-layout panel; see the module
+  // comment) stays correctly proportioned if pairing is later turned off
+  // (「顯示全部」), and so `layout.columns` can move to GRID_COLUMNS in
+  // the same, single, atomic update.
+  const handleLayoutSettled = (layout: Layout[]) => {
+    if (!spec || !onLayoutChange) return;
+    const byId = new Map(layout.map((item) => [item.i, item]));
+    const pairExtraById = new Map<string, number>();
+    for (const cell of cells) {
+      if (cell.kind === "pair") pairExtraById.set(cell.stat.id, extraRows);
+    }
+    const nextWidgets = spec.widgets.map((w) => {
+      const item = byId.get(w.id);
+      if (item) {
+        const extra = pairExtraById.get(w.id) ?? 0;
+        return {
+          ...w,
+          position: {
+            x: item.x,
+            y: item.y,
+            w: item.w,
+            h: Math.max(1, item.h - extra),
+          },
+        };
+      }
+      // Not directly represented on screen (a folded pair gauge) — only
+      // migrate its coordinate basis, never move it.
+      return { ...w, position: toGridGeometry(w.position, scale, 0) };
+    });
+    onLayoutChange({
+      ...spec,
+      layout: { ...spec.layout, columns: GRID_COLUMNS },
+      widgets: nextWidgets,
+    });
+  };
 
   if (!spec) {
     if (!reviewing) return null;
@@ -195,8 +303,6 @@ function DashboardPreviewBody({
     .reverse()
     .find((e) => e.stage === "review" && typeof e.decision === "string");
   const reviewApproved = lastReview?.decision === "approve";
-
-  const extraRows = pairExtraRows(rowHeight);
 
   return (
     <QueryFiltersProvider filters={filters}>
@@ -244,40 +350,12 @@ function DashboardPreviewBody({
         ) : null}
 
         <div className="min-h-0 flex-1 overflow-auto p-3">
-          <div
-            className={zoneOrder ? "dash-grid dash-grid--flow" : "dash-grid"}
-            style={
-              {
-                ["--dash-cols" as string]: String(columns),
-                ["--dash-row-h" as string]: `${rowHeight}px`,
-              } as React.CSSProperties
-            }
-          >
-            {cells.map((cell) =>
-              cell.kind === "pair" ? (
-                <div
-                  key={`${cell.stat.id}+${cell.gauge.id}`}
-                  className="dash-cell"
-                  data-widget-type="pair"
-                  style={cellStyle(cell.stat, columns, extraRows)}
-                >
-                  <PairedStatGauge
-                    stat={renderWidget(cell.stat)}
-                    gauge={renderWidget(cell.gauge, { compact: true })}
-                  />
-                </div>
-              ) : (
-                <div
-                  key={cell.widget.id}
-                  className="dash-cell"
-                  data-widget-type={cell.widget.type}
-                  style={cellStyle(cell.widget, columns, 0)}
-                >
-                  {renderWidget(cell.widget)}
-                </div>
-              ),
-            )}
-          </div>
+          <DashboardGrid
+            panels={panels}
+            rowHeight={rowHeight}
+            editable={editable}
+            onLayoutSettled={handleLayoutSettled}
+          />
         </div>
 
         {reviewing ? (

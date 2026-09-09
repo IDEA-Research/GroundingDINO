@@ -11,12 +11,13 @@ through the undo toast right after deleting).
 from __future__ import annotations
 
 from fastapi import APIRouter, Header, HTTPException, Query
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from ..services.dashboard_store import DashboardStore
 from ..services.saved_dashboard_loader import load_saved_dashboard
 from ..services.saved_dashboard_store import SavedDashboardStore
 from ..services.spec_validator import SpecValidationError, SpecValidator
+from ..specs import WidgetPosition
 from ._auth import require_dev
 
 
@@ -33,12 +34,42 @@ class SaveRequest(BaseModel):
     tags: list[str] = Field(default_factory=list, max_length=16)
 
 
+class WidgetPositionUpdate(BaseModel):
+    """One widget's new grid position — Phase 2 (react-grid-layout)
+    drag/resize on the frontend, folded into the SAME PATCH route
+    that already renames/re-tags a saved entry (no new endpoint)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    id: str = Field(..., min_length=1, max_length=64)
+    position: WidgetPosition
+
+
+class LayoutUpdate(BaseModel):
+    """Dashboard-level grid metadata paired with `widgets` below. The
+    frontend migrates a saved entry's `layout.columns` to 24 (the
+    react-grid-layout / Grafana GRID_COLUMN_COUNT) the first time any
+    widget is dragged or resized, and re-expresses every widget's x/w
+    on that new 24-wide basis in the same request — never a partial
+    write, so a stale mix of column bases can't sneak into one spec."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    columns: int = Field(..., ge=1, le=24)
+    row_height: int = Field(..., ge=10, le=200)
+
+
 class UpdateRequest(BaseModel):
     """PATCH body: every field optional; omitted fields are untouched."""
 
     name: str | None = Field(default=None, min_length=1, max_length=96)
     description: str | None = Field(default=None, max_length=512)
     tags: list[str] | None = Field(default=None, max_length=16)
+    # Phase 2 layout engine: widget positions (keyed by widget id — ids
+    # absent from the saved spec are ignored) and/or the layout bump
+    # above. Both optional and independent of name/description/tags.
+    widgets: list[WidgetPositionUpdate] | None = Field(default=None, max_length=64)
+    layout: LayoutUpdate | None = None
 
 
 def _dev_header_valid(token: str | None) -> bool:
@@ -100,16 +131,49 @@ def get_saved(saved_id: str) -> dict:
 @router.patch("/{saved_id}")
 @router.patch("/{saved_id}/")
 def update_saved(saved_id: str, req: UpdateRequest) -> dict:
-    """Rename / re-describe / re-tag. `saved_id` never changes."""
-    if req.name is None and req.description is None and req.tags is None:
+    """Rename / re-describe / re-tag, and/or apply a Phase 2 layout-engine
+    position update (`widgets` / `layout`). `saved_id` never changes."""
+    if (
+        req.name is None
+        and req.description is None
+        and req.tags is None
+        and req.widgets is None
+        and req.layout is None
+    ):
         raise HTTPException(
-            status_code=400, detail="nothing to update (name, description or tags)"
+            status_code=400,
+            detail="nothing to update (name, description, tags, widgets or layout)",
         )
+
+    spec_update = None
+    if req.widgets is not None or req.layout is not None:
+        entry = _store.load(saved_id)
+        if entry is None:
+            raise HTTPException(status_code=404, detail="not found")
+        # Merge onto the CURRENT stored spec (by_alias so decision_flow
+        # edges round-trip their `from` key) — only the fields the
+        # frontend grid actually owns (position, layout) change here.
+        spec_payload = entry.spec.model_dump(mode="json", by_alias=True)
+        if req.layout is not None:
+            spec_payload["layout"] = req.layout.model_dump(mode="json")
+        if req.widgets is not None:
+            positions = {
+                u.id: u.position.model_dump(mode="json") for u in req.widgets
+            }
+            for w in spec_payload["widgets"]:
+                if w["id"] in positions:
+                    w["position"] = positions[w["id"]]
+        try:
+            spec_update = _validator.validate_dashboard(spec_payload)
+        except SpecValidationError as exc:
+            raise HTTPException(status_code=422, detail=exc.errors)
+
     entry = _store.update(
         saved_id,
         name=req.name,
         description=req.description,
         tags=req.tags,
+        spec=spec_update,
     )
     if entry is None:
         raise HTTPException(status_code=404, detail="not found")

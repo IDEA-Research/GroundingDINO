@@ -198,75 +198,63 @@ body > div {
 }
 
 /* ---------------------------------------------------------------------------
- * Dashboard grid.
- *   >= lg : the spec grid (12 columns x row_height). Explicit x/y placement
- *           by default; with .dash-grid--flow (zone order on "/") widgets keep
- *           their w/h but auto-place in DOM order.
- *   <  lg : x/y ignored; 2 columns; stat_card/gauge span 1, every other type
- *           spans the full row; row heights auto with a per-type minimum.
+ * Dashboard grid (Phase 2 — react-grid-layout, DashboardGrid.tsx).
+ *   >= 768px : react-grid-layout's own absolutely-positioned
+ *              `.react-grid-item` elements carry `.dash-cell`; geometry
+ *              comes entirely from RGL's inline style, not CSS grid.
+ *   <  768px : DashboardGrid renders a plain single-column stack instead
+ *              of mounting react-grid-layout at all (`.dash-stack`) — a
+ *              deliberate app choice, not a claimed Grafana breakpoint.
+ *              Each `.dash-cell` gets an explicit inline height
+ *              (h * row_height) so it keeps its desktop size ratio.
  * ------------------------------------------------------------------------- */
-.dash-grid {
-  display: grid;
-  gap: 0.75rem;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  grid-auto-rows: auto;
-  grid-auto-flow: row;
-}
-
 .dash-cell {
   min-width: 0;
-  grid-column: 1 / -1;
-  min-height: 16rem;
 }
 
-.dash-cell[data-widget-type="stat_card"],
-.dash-cell[data-widget-type="gauge"] {
-  grid-column: span 1;
-  min-height: 8.5rem;
-}
-
-.dash-cell[data-widget-type="pair"] {
-  grid-column: span 1;
-  min-height: 13rem;
-}
-
-.dash-cell[data-widget-type="table"],
-.dash-cell[data-widget-type="alert_list"] {
-  min-height: 14rem;
-}
-
-.dash-cell[data-widget-type="decision_flow"] {
-  min-height: 18rem;
+.dash-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
 }
 
 @media (max-width: 639.98px) {
-  .dash-grid {
+  .dash-stack {
     gap: 0.5rem;
   }
 }
 
-@media (min-width: 1024px) {
-  .dash-grid {
-    grid-template-columns: repeat(var(--dash-cols, 12), minmax(0, 1fr));
-    grid-auto-rows: var(--dash-row-h, 40px);
-  }
+/* Panel title row (WidgetFrame.tsx) doubles as the react-grid-layout
+ * draggableHandle target. Only a grab affordance on the editable ("/")
+ * grid — the read-only evaluator render (dashboard/[id]) never sets
+ * `.dash-rgl--editable`, so its title rows keep the default cursor. */
+.dash-rgl--editable .dash-drag-handle {
+  cursor: grab;
+}
 
-  .dash-grid--flow {
-    grid-auto-flow: row dense;
-  }
+.dash-rgl--editable .dash-drag-handle:active {
+  cursor: grabbing;
+}
 
-  .dash-grid .dash-cell,
-  .dash-grid .dash-cell[data-widget-type] {
-    grid-column: var(--gc);
-    grid-row: var(--gr);
-    min-height: 0;
-  }
+/* Restyle react-grid-layout's own drag placeholder / resize handle
+ * (react-grid-layout/css/styles.css, react-resizable/css/styles.css)
+ * to use existing tokens instead of the library's hardcoded defaults. */
+.dash-rgl .react-grid-item.react-grid-placeholder {
+  background: rgb(var(--accent) / 0.14);
+  border: 1px dashed rgb(var(--accent) / 0.6);
+  border-radius: var(--radius-sm);
+}
 
-  .dash-grid--flow .dash-cell,
-  .dash-grid--flow .dash-cell[data-widget-type] {
-    grid-column: span var(--gw, 3);
-    grid-row: span var(--gh, 4);
-  }
+.dash-rgl .react-resizable-handle {
+  opacity: 0.55;
+}
+
+.dash-rgl .react-grid-item:hover > .react-resizable-handle {
+  opacity: 1;
+}
+
+:root[data-theme="dark"] .dash-rgl .react-resizable-handle {
+  filter: invert(1) brightness(1.6);
 }
 
 /* ---------------------------------------------------------------------------
