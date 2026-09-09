@@ -19,6 +19,15 @@
  *                                 SpO2 -> data-2, rSO2 -> data-3.
  * The theme attribute is set before first paint by the inline script in
  * app/layout.tsx (localStorage "hd.theme" or prefers-color-scheme).
+ *
+ * Interaction states already have an established convention — reuse it,
+ * don't add parallel tokens: `hover:bg-surface-2` (list/menu rows),
+ * `hover:brightness-110` + `active:brightness-95` (accent primary button),
+ * `active:bg-surface-3` (secondary/ghost button press), `bg-accent/10
+ * text-accent` (selected/checked, e.g. the active time-range pill). See
+ * components/ui/Button.tsx and TimeRangeControls.tsx. `--shadow-hover`
+ * below is the one interaction token that was actually missing (no card
+ * anywhere lifts on hover today).
  * ------------------------------------------------------------------------- */
 
 :root {
@@ -64,6 +73,7 @@
   --radius: 10px;
   --radius-lg: 14px;
   --shadow-card: 0 1px 2px rgb(15 23 42 / 0.06), 0 1px 1px rgb(15 23 42 / 0.03);
+  --shadow-hover: 0 4px 12px rgb(15 23 42 / 0.1), 0 1px 3px rgb(15 23 42 / 0.06);
   --shadow-pop: 0 8px 24px rgb(15 23 42 / 0.14), 0 2px 6px rgb(15 23 42 / 0.08);
 
   /* type */
@@ -106,6 +116,8 @@
   --data-6: 148 163 184; /* #94a3b8 slate */
 
   --shadow-card: 0 1px 0 rgb(255 255 255 / 0.03) inset, 0 1px 2px rgb(0 0 0 / 0.35);
+  --shadow-hover: 0 1px 0 rgb(255 255 255 / 0.04) inset, 0 6px 16px rgb(0 0 0 / 0.45),
+    0 2px 5px rgb(0 0 0 / 0.3);
   --shadow-pop: 0 12px 32px rgb(0 0 0 / 0.55), 0 2px 6px rgb(0 0 0 / 0.35);
 }
 

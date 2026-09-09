@@ -61,6 +61,7 @@ module.exports = {
       },
       boxShadow: {
         card: "var(--shadow-card)",
+        hover: "var(--shadow-hover)",
         pop: "var(--shadow-pop)",
       },
       fontFamily: {
