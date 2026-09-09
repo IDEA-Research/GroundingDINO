@@ -142,7 +142,7 @@ def main():
 
             step("wait for Helper reply")
             expect(
-                page.get_by_text("Building that dashboard now.")
+                page.get_by_text("正在建立這個儀表板。")
             ).to_be_visible(timeout=10_000)
             print("  Helper replied in the chat")
 
@@ -189,7 +189,7 @@ def main():
 
             step("wait for PatchSpec user reply")
             expect(
-                page.get_by_text("Working on those changes.")
+                page.get_by_text("正在處理這些修改。")
             ).to_be_visible(timeout=10_000)
             page.wait_for_function(
                 "() => document.querySelectorAll('[data-widget-id]').length >= 3",

@@ -26,6 +26,7 @@ import re
 import time
 import unicodedata
 from dataclasses import dataclass
+from typing import Iterable
 from urllib import request as urllib_request
 
 from .client import PROM_URL, REQUEST_TIMEOUT, PrometheusUnavailable
@@ -155,6 +156,38 @@ def resolve_synonyms(text: str) -> list[str]:
 
 
 # ---------------------------------------------------------------------------
+# Metric-name extraction from PromQL (freshness / simulation helper)
+# ---------------------------------------------------------------------------
+
+_IDENT_RE = re.compile(r"[A-Za-z_:][A-Za-z0-9_:]*")
+
+
+def extract_metric_names(promql: str, known: "Iterable[str]") -> list[str]:
+    """Raw metric names referenced by `promql`, restricted to `known`.
+
+    Pure and network-free: tokenises the expression into identifiers and
+    keeps the ones that are real metric names (catalog-matched), in
+    first-seen order, deduplicated. Used to derive `max(timestamp(<m>))`
+    freshness probes for the dashboard query path — the instant-vector
+    timestamp Prometheus returns is the EVALUATION time, so sample
+    freshness needs the raw selector, never the aggregated expression.
+    Identifiers that are PromQL functions/keywords (`max`, `by`, `rate`)
+    are simply not in `known`, so they fall out naturally.
+    """
+    if not promql:
+        return []
+    known_set = set(known)
+    if not known_set:
+        return []
+    out: list[str] = []
+    for m in _IDENT_RE.finditer(promql):
+        name = m.group(0)
+        if name in known_set and name not in out:
+            out.append(name)
+    return out
+
+
+# ---------------------------------------------------------------------------
 # Live catalog
 # ---------------------------------------------------------------------------
 
@@ -232,6 +265,15 @@ class MetricCatalog:
         self._fetched_at = 0.0
 
     # -- queries ---------------------------------------------------
+    def metrics_in(self, promql: str) -> list[str]:
+        """Catalog-matched raw metric names referenced by `promql`.
+        Raises PrometheusUnavailable when the catalog cannot be fetched."""
+        return extract_metric_names(promql, self.list_metrics())
+
+    def clinical_metrics(self) -> list[str]:
+        """Live clinical (patient_*/ventilator_*/cerebral_*) names."""
+        return [m for m in self.list_metrics() if is_clinical_metric(m)]
+
     def has(self, metric: str) -> bool:
         """Raises PrometheusUnavailable when the catalog is unreachable."""
         return metric in self.list_metrics()

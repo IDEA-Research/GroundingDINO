@@ -77,7 +77,11 @@ _TYPE_PURPOSE: dict[str, str] = {
     "line_chart": "Time-series over a range query. Best for trends, percentiles, throughput.",
     "stat_card": "Single big number from an instant query. Best for current KPIs.",
     "gauge": "Bounded instant value (needs min/max in options). Best for utilization 0..1.",
-    "table": "Per-label breakdown from an instant or range query. Pair with `columns`.",
+    "table": (
+        "Per-label breakdown from an instant query. For several metrics side "
+        "by side (e.g. HR + SpO2 per patient) use `queries` instead of `query`. "
+        "Pair with `columns`."
+    ),
     "alert_list": "List of firing alerts from ALERTS{alertstate=\"firing\"} or similar.",
     "pie_chart": "Proportional breakdown from an instant query. Best for share-of-total by label.",
     "bar_chart": "Categorical comparison from an instant query. Best for per-node / per-service breakdowns.",
@@ -110,21 +114,65 @@ def _types_section() -> str:
 
 
 def _widget_fields_section() -> str:
+    from .threshold_semantics import DIRECTION_RULES_DOC
+    from .widget_spec import MAX_TABLE_QUERIES
+
     return (
         "## WidgetSpec required shape\n"
         "Every widget MUST have exactly these top-level fields, no others:\n"
         "- `id` — 1..64 chars, `[a-zA-Z0-9_-]+`\n"
         "- `type` — one of the widget types listed in the section above\n"
-        "- `title` — 1..128 chars, no script/markup\n"
+        "- `title` — 1..128 chars, no script/markup. Name the MEASUREMENT "
+        "only (e.g. `心率趨勢`, `SpO2`): NEVER embed a time range such as "
+        "`（過去 1 小時）` / `(last 1h)` — the UI shows the active range "
+        "next to the chart and the user can change it, so a range in the "
+        "title becomes wrong immediately.\n"
         "- `description` — optional, max 512 chars\n"
         "- `query` — `{source, promql, query_type, range?, step?}`. "
         "`source` is `prometheus` or `mock`. `query_type` is `instant` or "
-        "`range`. `range` and `step` are required only when `query_type=range`.\n"
+        "`range`. `range` and `step` are required only when `query_type=range`. "
+        "Required on every widget EXCEPT a `table` that provides `queries`.\n"
+        f"- `queries` — TABLE ONLY, optional, 1..{MAX_TABLE_QUERIES} entries "
+        "`{source, promql, query_type: 'instant', key, label?, unit?}`. Use it "
+        "for a multi-metric table (e.g. 各病患一覽 with HR + SpO2 columns): one "
+        "instant query per column, joined server-side by `patient_id`; each "
+        "`key` is a unique column id (`[a-zA-Z_][a-zA-Z0-9_]*`), `label` the "
+        "column header shown to the user, `unit` the column unit. When "
+        "`queries` is present, omit `query`. Never emit `queries` on any "
+        "other widget type.\n"
         "- `position` — `{x, y, w, h}`, all non-negative ints; "
         "x in [0,23], y in [0,999], w in [1,24], h in [1,60]\n"
         "- `encoding` — only `unit`, `legend`, `color` (no other keys)\n"
-        "- `thresholds` — list of `{value: number, color: '#hex' or name, label?}`, max 16\n"
+        "- `thresholds` — list of `{value: number, color: '#hex' or name, "
+        "label?, direction?}`, max 16. `direction` is `\"above\"` (readings "
+        ">= value are alarmed — error rate, latency, tachycardia) or "
+        "`\"below\"` (readings <= value are alarmed — SpO2, rSO2, "
+        "availability). ALWAYS set `direction` explicitly when you emit "
+        "thresholds; when it is missing the renderer resolves it: "
+        f"{DIRECTION_RULES_DOC} Never invent clinical threshold VALUES — "
+        "only attach thresholds the user gave you or well-known service "
+        "SLOs; clinical vitals default to `thresholds: []`.\n"
         "- `options` — see allowed-keys list below"
+    )
+
+
+def _authoring_rules_section() -> str:
+    return (
+        "## Dashboard authoring rules (checked by review)\n"
+        "- One instant-value widget per PromQL: NEVER emit a `stat_card` AND a "
+        "`gauge` for the same query — pick the stat_card (a gauge only for a "
+        "bounded 0..100 / 0..1 utilisation with `min`/`max`). Do not pad a "
+        "dashboard by showing the same value twice.\n"
+        "- A two-vital clinical request is complete with 2 stat_cards + "
+        "2 line_charts + 1 table (`queries` for both vitals, joined by "
+        "patient_id). Do not stretch it to 6-8 widgets.\n"
+        "- Multi-metric tables use `queries` (one entry per column) — never a "
+        "single PromQL `or` union, which cannot carry two values per patient.\n"
+        "- Widget titles name the measurement only; no time ranges, refresh "
+        "intervals, units or patient ids in the title.\n"
+        "- Every threshold you emit carries `direction`.\n"
+        "- Clinical metrics (`patient_*`, `ventilator_*`, `cerebral_*`) are "
+        "always aggregated `max by (patient_id) (<metric>)`."
     )
 
 
@@ -212,6 +260,7 @@ def render_widget_schema_markdown() -> str:
     return "\n\n".join([
         _types_section(),
         _widget_fields_section(),
+        _authoring_rules_section(),
         _options_section(),
         _decision_flow_section(),
         _forbidden_section(),

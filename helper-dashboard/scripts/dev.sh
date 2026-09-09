@@ -1,6 +1,6 @@
 #!/usr/bin/env bash 
 # Start backend (uvicorn) + frontend (next) together.
-# Sources .env if present. Traps EXIT so Ctrl-C kills both.
+# Sources .env when readable. Traps EXIT so Ctrl-C kills both.
 #
 # Usage: ./scripts/dev.sh [--mode mock|helpercode|auto]
 #
@@ -14,8 +14,10 @@ ROOT="$(pwd)"
 BACKEND_PORT="${HELPER_DASHBOARD_BACKEND_PORT:-8010}"
 BACKEND_URL="http://127.0.0.1:${BACKEND_PORT}"
 
-# --- 1. Load .env if present ------------------------------------------
-if [ -f .env ]; then
+# --- 1. Load .env if readable -----------------------------------------
+# systemd loads a root-owned .env through EnvironmentFile before dropping
+# privileges to User=cluster, so skip sourcing it again when it is unreadable.
+if [ -r .env ]; then
   set -a
   # shellcheck disable=SC1091
   source .env

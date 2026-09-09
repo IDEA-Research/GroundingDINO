@@ -575,13 +575,112 @@ def _log_finish(
     run_log: "_devfix_log.RunLogger | None",
     status: str,
     error_kind: str | None = None,
+    *,
+    failure_summary: str | None = None,
 ) -> None:
     if run_log is None:
         return
     try:
-        run_log.finish(status, error_kind=error_kind)
+        run_log.finish(
+            status, error_kind=error_kind, failure_summary=failure_summary,
+        )
     except Exception:  # pragma: no cover - observability only
         pass
+
+
+# ---------------------------------------------------------------------------
+# Cancel registry — live devfix CLI processes by run_id (in-process).
+# `POST /api/devfix/runs/{id}/cancel` lands in `request_devfix_cancel`.
+# ---------------------------------------------------------------------------
+
+_DEVFIX_CANCEL_GRACE_S = 8.0
+
+
+class _ActiveDevfixProc:
+    __slots__ = ("run_id", "proc", "pgid", "cancel_event")
+
+    def __init__(self, run_id: str, proc: Any, pgid: int | None):
+        self.run_id = run_id
+        self.proc = proc
+        self.pgid = pgid
+        self.cancel_event = threading.Event()
+
+
+_ACTIVE_DEVFIX_LOCK = threading.Lock()
+_ACTIVE_DEVFIX: dict[str, _ActiveDevfixProc] = {}
+
+
+def _register_active_devfix(run_id: str, proc: Any, pgid: int | None) -> _ActiveDevfixProc:
+    entry = _ActiveDevfixProc(run_id, proc, pgid)
+    with _ACTIVE_DEVFIX_LOCK:
+        _ACTIVE_DEVFIX[run_id] = entry
+    return entry
+
+
+def _unregister_active_devfix(run_id: str) -> None:
+    with _ACTIVE_DEVFIX_LOCK:
+        _ACTIVE_DEVFIX.pop(run_id, None)
+
+
+def _signal_devfix_proc(entry: _ActiveDevfixProc, *, hard: bool) -> None:
+    """SIGTERM (hard=False) / SIGKILL (hard=True) the CLI's whole
+    process group (start_new_session=True made it its own group). Falls
+    back to the Popen handle where killpg is unavailable (Windows dev
+    boxes) or the group is already gone."""
+    import signal
+
+    sig = getattr(signal, "SIGKILL", None) if hard else getattr(signal, "SIGTERM", None)
+    if entry.pgid is not None and hasattr(os, "killpg") and sig is not None:
+        try:
+            os.killpg(entry.pgid, sig)
+            return
+        except (ProcessLookupError, PermissionError, OSError):
+            pass
+    try:
+        if hard:
+            entry.proc.kill()
+        else:
+            entry.proc.terminate()
+    except Exception:  # pragma: no cover - already-dead race
+        pass
+
+
+def active_devfix_run_ids() -> list[str]:
+    with _ACTIVE_DEVFIX_LOCK:
+        return sorted(_ACTIVE_DEVFIX)
+
+
+def is_devfix_cancel_requested(run_id: str) -> bool:
+    with _ACTIVE_DEVFIX_LOCK:
+        entry = _ACTIVE_DEVFIX.get(run_id)
+    return bool(entry is not None and entry.cancel_event.is_set())
+
+
+def request_devfix_cancel(run_id: str, *, grace_s: float | None = None) -> bool:
+    """Cancel a RUNNING run: set the flag (the waiting thread then
+    classifies the exit as `user_cancel`), SIGTERM the process group,
+    and SIGKILL it after `grace_s` (default 8s) if still alive. Returns
+    False when no live process is registered under `run_id` in this
+    process."""
+    with _ACTIVE_DEVFIX_LOCK:
+        entry = _ACTIVE_DEVFIX.get(run_id)
+    if entry is None:
+        return False
+    entry.cancel_event.set()
+    _signal_devfix_proc(entry, hard=False)
+    grace = _DEVFIX_CANCEL_GRACE_S if grace_s is None else max(0.0, float(grace_s))
+
+    def _hard_kill() -> None:
+        try:
+            if entry.proc.poll() is None:
+                _signal_devfix_proc(entry, hard=True)
+        except Exception:  # pragma: no cover - defensive
+            pass
+
+    timer = threading.Timer(grace, _hard_kill)
+    timer.daemon = True
+    timer.start()
+    return True
 
 
 class DevFixOpenCodeCLIRuntime:
@@ -639,16 +738,10 @@ class DevFixOpenCodeCLIRuntime:
         ticket_id = str(args.get("ticket_id") or "manual")
 
         # Live run log (storage/devfix_runs/): the web UI tails this to
-        # show what Big Guy thinks and does. Never load-bearing.
-        run_log: _devfix_log.RunLogger | None = None
-        try:
-            run_log = _devfix_log.start_run(
-                ticket_id,
-                instruction=str(args.get("instruction") or ""),
-                model=_resolve_devfix_model(),
-            )
-        except Exception:  # pragma: no cover - observability only
-            _warn("devfix: run log unavailable; continuing without it")
+        # show what Big Guy thinks and does. Never load-bearing. A
+        # pre-created record (manual queue / auto_fix) is resumed via
+        # args["run_id"]; otherwise a fresh one is started here.
+        run_log = self._open_run_log(args, ticket_id)
 
         try:
             handle = _devfix_worktree.create(ticket_id, payload=payload)
@@ -660,10 +753,22 @@ class DevFixOpenCodeCLIRuntime:
             ) from exc
 
         _log_note(run_log, f"worktree created: {handle.project_dir}")
+        if run_log is not None:
+            try:
+                run_log.set_project_dir(handle.project_dir)
+            except Exception:  # pragma: no cover - observability only
+                pass
 
         try:
             return self._run_in_worktree(handle, operation, run_log)
         finally:
+            # Diff + changed files are captured from the worktree BEFORE
+            # it is removed, on EVERY terminal state (success, waiting,
+            # failed, timeout, cancelled) — the developer can review what
+            # Big Guy did even when nothing was applied.
+            self._capture_worktree_changes(handle, run_log)
+            if run_log is not None and not run_log.finished:
+                _log_finish(run_log, "failed", "internal_error")
             try:
                 _devfix_worktree.remove(handle)
             except Exception:  # pragma: no cover - defensive
@@ -671,14 +776,56 @@ class DevFixOpenCodeCLIRuntime:
 
     # -- internals ---------------------------------------------------
 
+    @staticmethod
+    def _open_run_log(
+        args: dict[str, Any], ticket_id: str,
+    ) -> "_devfix_log.RunLogger | None":
+        model = _resolve_devfix_model()
+        run_id = args.get("run_id")
+        if isinstance(run_id, str) and run_id:
+            try:
+                run_log = _devfix_log.resume_run(run_id)
+                run_log.mark_running(model=model)
+                return run_log
+            except Exception:
+                _warn(f"devfix: could not resume run {run_id!r}; starting a fresh record")
+        try:
+            title = args.get("title")
+            return _devfix_log.start_run(
+                ticket_id,
+                instruction=str(args.get("instruction") or ""),
+                model=model,
+                source="auto" if args.get("auto", True) else "manual",
+                title=title if isinstance(title, str) and title else None,
+            )
+        except Exception:  # pragma: no cover - observability only
+            _warn("devfix: run log unavailable; continuing without it")
+            return None
+
+    @staticmethod
+    def _capture_worktree_changes(
+        handle: "_devfix_worktree.WorktreeHandle",
+        run_log: "_devfix_log.RunLogger | None",
+    ) -> None:
+        """diff.patch + files_changed from the worktree. Observability
+        only: never raises, never blocks the fix result."""
+        if run_log is None:
+            return
+        try:
+            changes = list(_devfix_worktree.collect_changes(handle))
+            diff = _devfix_worktree.capture_diff(handle, changes)
+            run_log.save_diff(diff.get("patch") or "", diff.get("files") or [])
+            if changes:
+                run_log.add_changed_files(changes)
+        except Exception as exc:  # pragma: no cover - observability only
+            _warn(f"devfix: diff capture failed: {exc}")
+
     def _run_in_worktree(
         self,
         handle: "_devfix_worktree.WorktreeHandle",
         operation: str,
         run_log: "_devfix_log.RunLogger | None" = None,
     ) -> dict[str, Any]:
-        import signal
-
         bin_path = _resolve_devfix_bin()
         model = _resolve_devfix_model()
         timeout = _resolve_devfix_timeout()
@@ -719,6 +866,20 @@ class DevFixOpenCodeCLIRuntime:
         except FileNotFoundError as exc:
             _log_finish(run_log, "failed", "binary_missing")
             raise _HelperCodeUnavailable(str(exc), kind="binary_missing") from exc
+
+        # Process identity -> meta (cancel needs it) + in-process registry.
+        pgid: int | None = None
+        try:
+            pgid = os.getpgid(proc.pid) if hasattr(os, "getpgid") else None
+        except OSError:  # pragma: no cover - already-dead race
+            pgid = None
+        run_id = run_log.run_id if run_log is not None else f"pid-{proc.pid}"
+        if run_log is not None:
+            try:
+                run_log.set_process(proc.pid, pgid)
+            except Exception:  # pragma: no cover - observability only
+                pass
+        active = _register_active_devfix(run_id, proc, pgid)
 
         # Incremental consumption (replaces communicate()): a reader
         # thread tails stdout line by line so every CLI event reaches
@@ -762,20 +923,24 @@ class DevFixOpenCodeCLIRuntime:
         try:
             proc.wait(timeout=timeout)
         except subprocess.TimeoutExpired:
-            try:
-                os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
-            except Exception:  # pragma: no cover - already-dead race
-                pass
+            _signal_devfix_proc(active, hard=True)
             try:
                 proc.wait(timeout=10)
             except Exception:  # pragma: no cover - defensive
                 pass
             t_out.join(timeout=5)
             t_err.join(timeout=5)
+            _unregister_active_devfix(run_id)
+            if active.cancel_event.is_set():
+                _log_finish(run_log, "cancelled", "user_cancel")
+                raise _HelperCodeUnavailable(
+                    "run cancelled by developer", kind="user_cancel",
+                )
             _log_finish(run_log, "failed", "timeout")
             raise _HelperCodeUnavailable(
                 f"timeout after {timeout}s", kind="timeout",
             )
+        _unregister_active_devfix(run_id)
 
         # EOF on both pipes follows process exit; short joins are a
         # belt-and-braces bound, not an expected wait.
@@ -795,6 +960,14 @@ class DevFixOpenCodeCLIRuntime:
             f"devfix:done rc={proc.returncode} elapsed={elapsed:.2f}s "
             f"events={len(events)} stderr_len={len(stderr)}"
         )
+
+        if active.cancel_event.is_set():
+            # The developer pulled the plug: whatever the exit code says,
+            # this is a cancel, not a runtime failure.
+            _log_finish(run_log, "cancelled", "user_cancel")
+            raise _HelperCodeUnavailable(
+                "run cancelled by developer", kind="user_cancel",
+            )
 
         if proc.returncode != 0:
             error_texts = " ".join(
@@ -862,21 +1035,58 @@ class DevFixOpenCodeCLIRuntime:
                 stderr=stderr,
             )
 
+        if run_log is not None:
+            try:
+                actions = report.get("actions_taken")
+                tests_reported = report.get("tests_run")
+                run_log.set_fields(
+                    report_summary=str(report.get("summary") or "")[:512],
+                    actions_taken=[
+                        str(a)[:300] for a in (actions if isinstance(actions, list) else [])
+                    ][:20],
+                    tests_reported=[
+                        str(t)[:300]
+                        for t in (tests_reported if isinstance(tests_reported, list) else [])
+                    ][:20],
+                )
+            except Exception:  # pragma: no cover - observability only
+                pass
+
         if report.get("status") == "resolved":
             try:
                 applied = _devfix_worktree.copy_back(handle)
             except _devfix_worktree.CopyBackViolation as exc:
                 _log_note(run_log, f"copy-back refused: {exc}")
-                _log_finish(run_log, "failed", "copyback_violation")
+                if run_log is not None:
+                    try:
+                        run_log.set_applied("violation", list(exc.bad_paths))
+                    except Exception:  # pragma: no cover
+                        pass
+                _log_finish(
+                    run_log, "failed", "copyback_violation",
+                    failure_summary=f"copy-back refused: {exc}",
+                )
                 raise RuntimeError_(str(exc)) from exc
             _trace(f"devfix:copied_back {applied!r}")
             summary = f"copy-back: {len(applied)} files applied"
             if applied:
                 summary += " — " + ", ".join(str(p) for p in applied)
             _log_note(run_log, summary)
-        # Non-resolved statuses: nothing is copied at all.
+            if run_log is not None:
+                try:
+                    run_log.set_applied("applied", [str(p) for p in applied])
+                except Exception:  # pragma: no cover
+                    pass
+        elif run_log is not None:
+            # Non-resolved statuses: nothing is copied at all.
+            try:
+                run_log.set_applied("not_applied", [])
+            except Exception:  # pragma: no cover
+                pass
 
         report["runtime_used"] = "opencode"
+        if run_log is not None:
+            report["run_id"] = run_log.run_id
         report_status = report.get("status")
         if report_status in ("resolved", "rejected", "needs_context"):
             _log_finish(run_log, str(report_status))
@@ -1122,7 +1332,7 @@ class MockHelperRuntime:
         current = args.get("current_dashboard_id")
 
         if not msg:
-            return {"type": "UserResponse", "message": "What dashboard would you like?"}
+            return {"type": "UserResponse", "message": "你想要什麼樣的儀表板？"}
 
         patch_triggers = [
             "change ", "rename ", "remove ", "delete ", "add a ", "add an ",
@@ -1136,7 +1346,7 @@ class MockHelperRuntime:
                 "type": "PatchIntent",
                 "target_dashboard_id": current,
                 "requested_changes": [msg],
-                "message_to_user": "Working on those changes.",
+                "message_to_user": "正在處理這些修改。",
             }
 
         # Alert-rule intent: an alert keyword PLUS a threshold-ish signal.
@@ -1154,7 +1364,7 @@ class MockHelperRuntime:
                 "type": "AlertRuleIntent",
                 "summary": msg[:120],
                 "request_text": msg,
-                "message_to_user": "Setting up that alert rule now.",
+                "message_to_user": "正在設定這條警示規則。",
             }
 
         # Saved-library recall — checked before the prometheus/dashboard
@@ -1174,8 +1384,8 @@ class MockHelperRuntime:
                 return {
                     "type": "UserResponse",
                     "message": (
-                        "Your dashboard library is empty — build a "
-                        "dashboard and I'll offer to save it."
+                        "你的儀表板資料庫目前是空的——先建立一個儀表板，"
+                        "我會詢問是否儲存。"
                     ),
                 }
             matches = fuzzy_match_saved(low, saved)
@@ -1187,15 +1397,15 @@ class MockHelperRuntime:
                     "saved_id": m.get("saved_id"),
                     "name_query": (name or msg)[:96],
                     "message_to_user": (
-                        f"Loading {name!r} from your library."
+                        f"正在從資料庫開啟「{name}」。"
                     ),
                 }
             names = ", ".join(
                 str(s.get("name") or "") for s in saved[:10]
             )
             question = (
-                f"Which saved dashboard would you like? "
-                f"Your library has: {names}."
+                f"你想開啟哪一個已儲存的儀表板？"
+                f"你的資料庫裡有：{names}。"
             )
             return {
                 "type": "ClarificationRequest",
@@ -1207,7 +1417,7 @@ class MockHelperRuntime:
             return {
                 "type": "PrometheusIntent",
                 "question": msg,
-                "message_to_user": "Let me check your Prometheus data.",
+                "message_to_user": "我來查看你的 Prometheus 資料。",
             }
 
         if any(t in low for t in [
@@ -1236,14 +1446,13 @@ class MockHelperRuntime:
                     "metric_catalog_available": catalog_available,
                 },
                 "clarification_needed": False,
-                "message_to_user": "Building that dashboard now.",
+                "message_to_user": "正在建立這個儀表板。",
             }
 
         return {
             "type": "UserResponse",
             "message": (
-                "Tell me what you'd like to see — for example "
-                "'a CPU and memory dashboard for my nodes'."
+                "告訴我你想看什麼——例如「幫我做一個節點 CPU 與記憶體的儀表板」。"
             ),
         }
 
@@ -1958,6 +2167,10 @@ def _build_default_widgets(widget_hints: list[str], metric_hints: list[str]) -> 
     # widget types) — "盯心率和血氧" must chart BOTH vitals even when
     # only one widget type was hinted.
     slots = max(len(wants), len(metrics)) if metrics else len(wants)
+    # One instant-value widget per PromQL: a "stat"+"gauge" hint on the
+    # same metric must not show the same number twice (mirrors the
+    # bin/helpercode heuristic; DESIGN §4 forbids stat_card+gauge twins).
+    instant_promqls: set[str] = set()
     for slot in range(slots):
         wtype_name = wants[slot % len(wants)]
         metric = metrics[slot % len(metrics)] if metrics else None
@@ -1965,6 +2178,11 @@ def _build_default_widgets(widget_hints: list[str], metric_hints: list[str]) -> 
             promql = _promql_for_metric(metric, wtype_name)
         else:
             promql = _default_promql_for(wtype_name)
+        if wtype_name in {"stat_card", "gauge"}:
+            norm = " ".join(promql.split())
+            if norm in instant_promqls:
+                continue
+            instant_promqls.add(norm)
         w = 6 if wtype_name in {"line_chart", "table"} else 3
         h = 6 if wtype_name in {"line_chart", "table"} else 4
         if x + w > 12:

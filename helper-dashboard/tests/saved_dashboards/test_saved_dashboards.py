@@ -18,14 +18,43 @@ from app.services.saved_dashboard_store import SavedDashboardStore
 from app.specs import DashboardSpec
 
 
-def _reset_storage():
+_STORAGE_SUBDIRS = ("dashboards", "tickets", "evaluation_reports", "saved_dashboards")
+
+
+@pytest.fixture(autouse=True)
+def _isolated_storage():
+    """Give every test in this module an empty view of the real storage
+    dirs WITHOUT ever deleting real data: back up existing *.json files
+    in-memory, clear the dirs for the test, then restore the originals
+    and remove anything the test created. `backend/app/storage/` is not
+    test-isolated at the module level (unlike devfix_runs/system_rules,
+    see tests/conftest.py) because DashboardStore/SavedDashboardStore
+    resolve an absolute, non-redirectable `_STORAGE_ROOT` by design —
+    see the "immutable" comment in dashboard_store.py. Running this
+    suite against the real app (e.g. on a live deployment box) must
+    never wipe or leak into real saved dashboards/tickets/reports."""
     root = Path("backend/app/storage")
-    for sub in ("dashboards", "tickets", "evaluation_reports", "saved_dashboards"):
+    backups: dict[Path, bytes] = {}
+    for sub in _STORAGE_SUBDIRS:
         d = root / sub
         if d.exists():
             for p in d.glob("*.json"):
+                backups[p] = p.read_bytes()
                 p.unlink()
     _PENDING_SAVE.clear()
+    try:
+        yield
+    finally:
+        for sub in _STORAGE_SUBDIRS:
+            d = root / sub
+            if d.exists():
+                for p in d.glob("*.json"):
+                    if p not in backups:
+                        p.unlink()
+        for p, content in backups.items():
+            p.parent.mkdir(parents=True, exist_ok=True)
+            p.write_bytes(content)
+        _PENDING_SAVE.clear()
 
 
 def test_store_save_list_load_delete(tmp_path):
@@ -98,7 +127,6 @@ def _chat_post_and_wait(client, payload: dict, timeout_s: float = 10.0) -> dict:
 
 
 def test_api_save_list_delete(monkeypatch):
-    _reset_storage()
     monkeypatch.delenv("HELPER_DASHBOARD_PRE_OUTPUT_REVIEW", raising=False)
     monkeypatch.delenv("HELPER_DASHBOARD_HELPERCODE", raising=False)
     client = TestClient(app)
@@ -141,7 +169,6 @@ def test_api_save_list_delete(monkeypatch):
 
 
 def test_api_save_dashboard_not_found():
-    _reset_storage()
     client = TestClient(app)
     r = client.post("/api/saved_dashboards/save", json={
         "dashboard_id": "no-such-dashboard",
@@ -151,7 +178,6 @@ def test_api_save_dashboard_not_found():
 
 
 def test_orchestrator_save_prompt_yes(monkeypatch):
-    _reset_storage()
     monkeypatch.delenv("HELPER_DASHBOARD_PRE_OUTPUT_REVIEW", raising=False)
     monkeypatch.delenv("HELPER_DASHBOARD_HELPERCODE", raising=False)
     o = Orchestrator()
@@ -161,17 +187,16 @@ def test_orchestrator_save_prompt_yes(monkeypatch):
     )
     assert r1["intent_type"] == "DashboardSpec"
     assert r1["save_prompt_for"] is not None
-    # Reply contains the save prompt text.
-    assert "save this dashboard" in r1["user_reply"].lower()
+    # Reply contains the (繁中) save prompt text.
+    assert "存到你的資料庫" in r1["user_reply"]
 
     r2 = o.handle_user_message(session_id="sp-1", message="prod cpu")
-    assert "Saved" in r2["user_reply"]
+    assert "已儲存為「prod cpu」" in r2["user_reply"]
     sums = SavedDashboardStore().summaries()
     assert any(s.name == "prod cpu" for s in sums)
 
 
 def test_orchestrator_save_prompt_no(monkeypatch):
-    _reset_storage()
     monkeypatch.delenv("HELPER_DASHBOARD_PRE_OUTPUT_REVIEW", raising=False)
     monkeypatch.delenv("HELPER_DASHBOARD_HELPERCODE", raising=False)
     o = Orchestrator()
@@ -181,7 +206,7 @@ def test_orchestrator_save_prompt_no(monkeypatch):
     )
     assert r1["save_prompt_for"] is not None
     r2 = o.handle_user_message(session_id="sp-2", message="no")
-    assert "not saving" in r2["user_reply"].lower()
+    assert "不儲存" in r2["user_reply"]
     sums = SavedDashboardStore().summaries()
     assert all(s.name != "no" for s in sums)
 
@@ -190,7 +215,6 @@ def test_orchestrator_save_prompt_falls_through_on_next_request(monkeypatch):
     """If user replies to a save prompt with a brand-new dashboard
     request, the save prompt is dropped and the new dashboard is
     built."""
-    _reset_storage()
     monkeypatch.delenv("HELPER_DASHBOARD_PRE_OUTPUT_REVIEW", raising=False)
     monkeypatch.delenv("HELPER_DASHBOARD_HELPERCODE", raising=False)
     o = Orchestrator()

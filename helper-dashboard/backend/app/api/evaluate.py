@@ -1,15 +1,21 @@
-"""Evaluate API — run browser evaluation against a stored dashboard."""
+"""Evaluate API — run browser evaluation against a stored dashboard.
+
+Developer-gated (`X-Developer-Token`): a run launches Playwright and the
+reports carry debugging traces, neither of which belongs in a user
+deployment.
+"""
 
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from ..services.browser_evaluator import BrowserEvaluator
 from ..services.dashboard_store import DashboardStore
+from ._auth import require_dev
 
 
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(require_dev)])
 _store = DashboardStore()
 _evaluator = BrowserEvaluator()
 

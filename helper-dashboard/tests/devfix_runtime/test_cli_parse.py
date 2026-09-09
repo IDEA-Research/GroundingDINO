@@ -407,11 +407,18 @@ def test_happy_run_streams_live_log(tmp_path, monkeypatch, stub_worktree, devfix
         "step_start", "reasoning", "tool_use", "text",
     ]
 
-    # meta.json reached the terminal status.
+    # meta.json reached the terminal status (report "resolved" ->
+    # meta vocabulary "success", applied because copy-back ran).
     meta = json.loads((run_dir / "meta.json").read_text(encoding="utf-8"))
-    assert meta["status"] == "resolved"
+    assert meta["status"] == "success"
+    assert meta["report_status"] == "resolved"
+    assert meta["applied"]["status"] == "applied"
+    assert meta["source"] == "auto"
+    assert meta["pid"] is not None
     assert meta["ticket_id"] == "t-9"
     assert meta["finished_at"] is not None
+    assert out["run_id"] == run_dir.name
+    assert (run_dir / "diff.patch").exists()
 
     # log.txt: rendered lifecycle + event lines, in order.
     log = (run_dir / "log.txt").read_text(encoding="utf-8")
@@ -423,7 +430,7 @@ def test_happy_run_streams_live_log(tmp_path, monkeypatch, stub_worktree, devfix
     assert any(line.split(" ", 1)[1].startswith("💬") for line in lines
                if " " in line)
     assert any("copy-back: 0 files applied" in line for line in lines)
-    assert lines[-1].endswith("🏁 run finished: resolved")
+    assert lines[-1].endswith("🏁 run finished: success (resolved)")
 
 
 def test_rejected_run_logs_rejected_no_copyback_note(
@@ -439,10 +446,12 @@ def test_rejected_run_logs_rejected_no_copyback_note(
 
     run_dir = _only_run_dir(tmp_path)
     meta = json.loads((run_dir / "meta.json").read_text(encoding="utf-8"))
-    assert meta["status"] == "rejected"
+    assert meta["status"] == "waiting"
+    assert meta["report_status"] == "rejected"
+    assert meta["applied"]["status"] == "not_applied"
     log = (run_dir / "log.txt").read_text(encoding="utf-8")
     assert "copy-back" not in log
-    assert "🏁 run finished: rejected" in log
+    assert "🏁 run finished: waiting (rejected)" in log
 
 
 def test_timeout_marks_run_failed_timeout(
@@ -455,10 +464,11 @@ def test_timeout_marks_run_failed_timeout(
 
     run_dir = _only_run_dir(tmp_path)
     meta = json.loads((run_dir / "meta.json").read_text(encoding="utf-8"))
-    assert meta["status"] == "failed"
+    assert meta["status"] == "timeout"
     assert meta["error_kind"] == "timeout"
+    assert meta["report_status"] == "timeout"
     log = (run_dir / "log.txt").read_text(encoding="utf-8")
-    assert "🏁 run finished: failed (timeout)" in log
+    assert "🏁 run finished: timeout" in log
 
 
 def test_non_json_final_message_marks_run_failed(

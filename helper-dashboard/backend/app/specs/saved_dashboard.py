@@ -30,6 +30,12 @@ class SavedDashboard(BaseModel):
     summary: dict = Field(default_factory=dict)
     created_at: str | None = None
     used_count: int = 0
+    # Last rename / re-tag / restore (ISO). None on entries written
+    # before this field existed.
+    updated_at: str | None = None
+    # SOFT delete marker (ISO). A stamped entry is invisible to every
+    # default listing/lookup and to Helper's prompt; `restore` clears it.
+    deleted_at: str | None = None
 
 
 class SavedDashboardSummary(BaseModel):
@@ -44,3 +50,6 @@ class SavedDashboardSummary(BaseModel):
     widget_types: list[str] = Field(default_factory=list)
     promqls: list[str] = Field(default_factory=list)
     used_count: int = 0
+    # Only ever non-null in developer listings (`?include_deleted=1`);
+    # default summaries exclude deleted entries entirely.
+    deleted_at: str | None = None

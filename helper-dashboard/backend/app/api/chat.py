@@ -60,6 +60,9 @@ class ChatResponse(BaseModel):
     # When the orchestrator is asking "Would you like to save this?",
     # carries the dashboard_id the next user message will save.
     save_prompt_for: str | None = None
+    # Library entry the chat flow just saved (「已儲存為…」) or opened
+    # (LoadSavedIntent); the frontend links its save-state chip to it.
+    saved_id: str | None = None
     # Internal artifacts (tickets, memory) are never returned here.
 
 

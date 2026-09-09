@@ -2,7 +2,9 @@
 
 With the frontend running but the backend down, the UI should:
   - show a red connection dot within ~15 s
-  - present an improved error message when the user tries to send
+  - keep the Helper drawer's 傳送 button disabled so nothing is sent
+    into the void (the drawer is collapsed by default — the test opens
+    it with the 詢問 Helper button first)
 
 Skipped when Playwright isn't installed. Starts the Next.js
 production server itself so the test is self-contained.
@@ -95,12 +97,14 @@ def test_backend_down_ux_shows_disconnected_and_improved_error():
             browser = p.chromium.launch(headless=True)
             page = browser.new_page()
             page.goto(f"http://127.0.0.1:{port}/",
-                       wait_until="domcontentloaded")
+                      wait_until="domcontentloaded")
 
             # The connection dot flips to "down" within ~15s of the
             # first health probe failing. We poll the semantic
             # data-backend-status attribute (not a styling class, so
-            # theme changes cannot break this test).
+            # theme changes cannot break this test). The ChatPanel stays
+            # mounted while the Helper drawer is collapsed, so the
+            # attribute is in the DOM even before the drawer opens.
             deadline = time.time() + 25
             dot_red = False
             while time.time() < deadline:
@@ -110,6 +114,14 @@ def test_backend_down_ux_shows_disconnected_and_improved_error():
                     break
                 time.sleep(0.5)
             assert dot_red, "connection dot did not turn red"
+
+            # The Helper drawer is closed by default; open it via the
+            # top-bar 詢問 Helper button (the empty state may render a
+            # second one — either works).
+            page.get_by_role("button", name="詢問 Helper").first.click()
+            page.get_by_role("dialog", name="Helper 對話").or_(
+                page.get_by_role("complementary", name="Helper 對話")
+            ).first.wait_for(state="visible", timeout=5000)
 
             # Try to send a message. The input should be disabled
             # AND/OR the Send button should be disabled. Either way

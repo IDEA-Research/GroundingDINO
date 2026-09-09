@@ -1,0 +1,102 @@
+{
+  "dashboard_id": "tpl-hr-spo2",
+  "title": "心率與血氧監測",
+  "description": "範本：新生兒心率 (HR) 與血氧飽和度 (SpO2) 的即時數值、趨勢與各病患一覽。門檻值留空，由臨床人員自行設定。",
+  "layout": {"columns": 12, "row_height": 40},
+  "variables": [],
+  "refresh_interval": "30s",
+  "widgets": [
+    {
+      "id": "hr-stat",
+      "type": "stat_card",
+      "title": "心率",
+      "description": "目前心率（每位病患取最大值後平均）",
+      "query": {
+        "source": "prometheus",
+        "promql": "max by (patient_id) (patient_heart_rate_bpm)",
+        "query_type": "instant"
+      },
+      "position": {"x": 0, "y": 0, "w": 3, "h": 4},
+      "encoding": {"unit": "bpm"},
+      "thresholds": [],
+      "options": {"decimals": 0}
+    },
+    {
+      "id": "spo2-stat",
+      "type": "stat_card",
+      "title": "血氧飽和度 SpO2",
+      "description": "目前血氧飽和度（每位病患取最大值後平均）",
+      "query": {
+        "source": "prometheus",
+        "promql": "max by (patient_id) (patient_spo2_percentage)",
+        "query_type": "instant"
+      },
+      "position": {"x": 3, "y": 0, "w": 3, "h": 4},
+      "encoding": {"unit": "%"},
+      "thresholds": [],
+      "options": {"decimals": 0}
+    },
+    {
+      "id": "hr-trend",
+      "type": "line_chart",
+      "title": "心率趨勢",
+      "description": "",
+      "query": {
+        "source": "prometheus",
+        "promql": "max by (patient_id) (patient_heart_rate_bpm)",
+        "query_type": "range",
+        "range": "1h",
+        "step": "30s"
+      },
+      "position": {"x": 0, "y": 4, "w": 6, "h": 6},
+      "encoding": {"unit": "bpm", "legend": "心率"},
+      "thresholds": [],
+      "options": {"show_grid": true, "show_legend": false}
+    },
+    {
+      "id": "spo2-trend",
+      "type": "line_chart",
+      "title": "血氧趨勢",
+      "description": "",
+      "query": {
+        "source": "prometheus",
+        "promql": "max by (patient_id) (patient_spo2_percentage)",
+        "query_type": "range",
+        "range": "1h",
+        "step": "30s"
+      },
+      "position": {"x": 6, "y": 4, "w": 6, "h": 6},
+      "encoding": {"unit": "%", "legend": "SpO2"},
+      "thresholds": [],
+      "options": {"show_grid": true, "show_legend": false}
+    },
+    {
+      "id": "patients-table",
+      "type": "table",
+      "title": "各病患一覽",
+      "description": "每位病患的心率與血氧，依 patient_id 配對；缺值顯示為 —",
+      "queries": [
+        {
+          "source": "prometheus",
+          "promql": "max by (patient_id) (patient_heart_rate_bpm)",
+          "query_type": "instant",
+          "key": "hr",
+          "label": "心率",
+          "unit": "bpm"
+        },
+        {
+          "source": "prometheus",
+          "promql": "max by (patient_id) (patient_spo2_percentage)",
+          "query_type": "instant",
+          "key": "spo2",
+          "label": "血氧 SpO2",
+          "unit": "%"
+        }
+      ],
+      "position": {"x": 0, "y": 10, "w": 12, "h": 6},
+      "encoding": {},
+      "thresholds": [],
+      "options": {"columns": ["patient_id", "hr", "spo2"], "sort_by": "patient_id", "sort_dir": "asc"}
+    }
+  ]
+}

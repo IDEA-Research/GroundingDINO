@@ -163,7 +163,7 @@ def main() -> int:
         "session_id": "t2-a",
         "message": "prod cpu mem",
     })
-    ok = status == 200 and "Saved as" in (body4.get("user_reply") or "")
+    ok = status == 200 and "已儲存為" in (body4.get("user_reply") or "")
     record(
         "save prompt answered with name -> saved",
         ok,

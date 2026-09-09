@@ -1,0 +1,182 @@
+{
+  "dashboard_id": "tpl-vitals-overview",
+  "title": "生命徵象總覽",
+  "description": "範本：心率、血氧與左右側腦部血氧的即時數值、趨勢與各病患一覽。門檻值留空，由臨床人員自行設定。",
+  "layout": {"columns": 12, "row_height": 40},
+  "variables": [],
+  "refresh_interval": "30s",
+  "widgets": [
+    {
+      "id": "hr-stat",
+      "type": "stat_card",
+      "title": "心率",
+      "description": "",
+      "query": {
+        "source": "prometheus",
+        "promql": "max by (patient_id) (patient_heart_rate_bpm)",
+        "query_type": "instant"
+      },
+      "position": {"x": 0, "y": 0, "w": 3, "h": 4},
+      "encoding": {"unit": "bpm"},
+      "thresholds": [],
+      "options": {"decimals": 0}
+    },
+    {
+      "id": "spo2-stat",
+      "type": "stat_card",
+      "title": "血氧飽和度 SpO2",
+      "description": "",
+      "query": {
+        "source": "prometheus",
+        "promql": "max by (patient_id) (patient_spo2_percentage)",
+        "query_type": "instant"
+      },
+      "position": {"x": 3, "y": 0, "w": 3, "h": 4},
+      "encoding": {"unit": "%"},
+      "thresholds": [],
+      "options": {"decimals": 0}
+    },
+    {
+      "id": "rso2-left-stat",
+      "type": "stat_card",
+      "title": "左側 rSO2",
+      "description": "",
+      "query": {
+        "source": "prometheus",
+        "promql": "max by (patient_id) (cerebral_rso2_left_percentage)",
+        "query_type": "instant"
+      },
+      "position": {"x": 6, "y": 0, "w": 3, "h": 4},
+      "encoding": {"unit": "%"},
+      "thresholds": [],
+      "options": {"decimals": 0}
+    },
+    {
+      "id": "rso2-right-stat",
+      "type": "stat_card",
+      "title": "右側 rSO2",
+      "description": "",
+      "query": {
+        "source": "prometheus",
+        "promql": "max by (patient_id) (cerebral_rso2_right_percentage)",
+        "query_type": "instant"
+      },
+      "position": {"x": 9, "y": 0, "w": 3, "h": 4},
+      "encoding": {"unit": "%"},
+      "thresholds": [],
+      "options": {"decimals": 0}
+    },
+    {
+      "id": "hr-trend",
+      "type": "line_chart",
+      "title": "心率趨勢",
+      "description": "",
+      "query": {
+        "source": "prometheus",
+        "promql": "max by (patient_id) (patient_heart_rate_bpm)",
+        "query_type": "range",
+        "range": "1h",
+        "step": "30s"
+      },
+      "position": {"x": 0, "y": 4, "w": 6, "h": 6},
+      "encoding": {"unit": "bpm", "legend": "心率"},
+      "thresholds": [],
+      "options": {"show_grid": true, "show_legend": false}
+    },
+    {
+      "id": "spo2-trend",
+      "type": "line_chart",
+      "title": "血氧趨勢",
+      "description": "",
+      "query": {
+        "source": "prometheus",
+        "promql": "max by (patient_id) (patient_spo2_percentage)",
+        "query_type": "range",
+        "range": "1h",
+        "step": "30s"
+      },
+      "position": {"x": 6, "y": 4, "w": 6, "h": 6},
+      "encoding": {"unit": "%", "legend": "SpO2"},
+      "thresholds": [],
+      "options": {"show_grid": true, "show_legend": false}
+    },
+    {
+      "id": "rso2-left-trend",
+      "type": "line_chart",
+      "title": "左側 rSO2 趨勢",
+      "description": "",
+      "query": {
+        "source": "prometheus",
+        "promql": "max by (patient_id) (cerebral_rso2_left_percentage)",
+        "query_type": "range",
+        "range": "1h",
+        "step": "30s"
+      },
+      "position": {"x": 0, "y": 10, "w": 6, "h": 6},
+      "encoding": {"unit": "%", "legend": "左側 rSO2"},
+      "thresholds": [],
+      "options": {"show_grid": true, "show_legend": false}
+    },
+    {
+      "id": "rso2-right-trend",
+      "type": "line_chart",
+      "title": "右側 rSO2 趨勢",
+      "description": "",
+      "query": {
+        "source": "prometheus",
+        "promql": "max by (patient_id) (cerebral_rso2_right_percentage)",
+        "query_type": "range",
+        "range": "1h",
+        "step": "30s"
+      },
+      "position": {"x": 6, "y": 10, "w": 6, "h": 6},
+      "encoding": {"unit": "%", "legend": "右側 rSO2"},
+      "thresholds": [],
+      "options": {"show_grid": true, "show_legend": false}
+    },
+    {
+      "id": "patients-table",
+      "type": "table",
+      "title": "各病患一覽",
+      "description": "每位病患的心率、血氧與左右側 rSO2，依 patient_id 配對；缺值顯示為 —",
+      "queries": [
+        {
+          "source": "prometheus",
+          "promql": "max by (patient_id) (patient_heart_rate_bpm)",
+          "query_type": "instant",
+          "key": "hr",
+          "label": "心率",
+          "unit": "bpm"
+        },
+        {
+          "source": "prometheus",
+          "promql": "max by (patient_id) (patient_spo2_percentage)",
+          "query_type": "instant",
+          "key": "spo2",
+          "label": "血氧 SpO2",
+          "unit": "%"
+        },
+        {
+          "source": "prometheus",
+          "promql": "max by (patient_id) (cerebral_rso2_left_percentage)",
+          "query_type": "instant",
+          "key": "rso2_left",
+          "label": "左側 rSO2",
+          "unit": "%"
+        },
+        {
+          "source": "prometheus",
+          "promql": "max by (patient_id) (cerebral_rso2_right_percentage)",
+          "query_type": "instant",
+          "key": "rso2_right",
+          "label": "右側 rSO2",
+          "unit": "%"
+        }
+      ],
+      "position": {"x": 0, "y": 16, "w": 12, "h": 6},
+      "encoding": {},
+      "thresholds": [],
+      "options": {"columns": ["patient_id", "hr", "spo2", "rso2_left", "rso2_right"], "sort_by": "patient_id", "sort_dir": "asc"}
+    }
+  ]
+}

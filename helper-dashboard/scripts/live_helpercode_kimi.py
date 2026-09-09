@@ -197,7 +197,7 @@ def main():
             page.wait_for_function(
                 """() => Array.from(document.querySelectorAll('*'))
                     .some(e => e.textContent &&
-                               e.textContent.includes('Saved as'))""",
+                               e.textContent.includes('已儲存為'))""",
                 timeout=10_000,
             )
             print("  library: 'api observability' saved")

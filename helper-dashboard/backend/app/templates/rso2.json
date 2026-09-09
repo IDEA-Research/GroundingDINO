@@ -1,0 +1,74 @@
+{
+  "dashboard_id": "tpl-rso2",
+  "title": "腦部血氧 rSO2 監測",
+  "description": "範本：新生兒左右側腦部血氧飽和度 (rSO2) 的即時數值與趨勢。門檻值留空，由臨床人員自行設定。",
+  "layout": {"columns": 12, "row_height": 40},
+  "variables": [],
+  "refresh_interval": "30s",
+  "widgets": [
+    {
+      "id": "rso2-left-stat",
+      "type": "stat_card",
+      "title": "左側 rSO2",
+      "description": "目前左側腦部血氧（每位病患取最大值後平均）",
+      "query": {
+        "source": "prometheus",
+        "promql": "max by (patient_id) (cerebral_rso2_left_percentage)",
+        "query_type": "instant"
+      },
+      "position": {"x": 0, "y": 0, "w": 3, "h": 4},
+      "encoding": {"unit": "%"},
+      "thresholds": [],
+      "options": {"decimals": 0}
+    },
+    {
+      "id": "rso2-right-stat",
+      "type": "stat_card",
+      "title": "右側 rSO2",
+      "description": "目前右側腦部血氧（每位病患取最大值後平均）",
+      "query": {
+        "source": "prometheus",
+        "promql": "max by (patient_id) (cerebral_rso2_right_percentage)",
+        "query_type": "instant"
+      },
+      "position": {"x": 3, "y": 0, "w": 3, "h": 4},
+      "encoding": {"unit": "%"},
+      "thresholds": [],
+      "options": {"decimals": 0}
+    },
+    {
+      "id": "rso2-left-trend",
+      "type": "line_chart",
+      "title": "左側 rSO2 趨勢",
+      "description": "",
+      "query": {
+        "source": "prometheus",
+        "promql": "max by (patient_id) (cerebral_rso2_left_percentage)",
+        "query_type": "range",
+        "range": "1h",
+        "step": "30s"
+      },
+      "position": {"x": 0, "y": 4, "w": 6, "h": 6},
+      "encoding": {"unit": "%", "legend": "左側 rSO2"},
+      "thresholds": [],
+      "options": {"show_grid": true, "show_legend": false}
+    },
+    {
+      "id": "rso2-right-trend",
+      "type": "line_chart",
+      "title": "右側 rSO2 趨勢",
+      "description": "",
+      "query": {
+        "source": "prometheus",
+        "promql": "max by (patient_id) (cerebral_rso2_right_percentage)",
+        "query_type": "range",
+        "range": "1h",
+        "step": "30s"
+      },
+      "position": {"x": 6, "y": 4, "w": 6, "h": 6},
+      "encoding": {"unit": "%", "legend": "右側 rSO2"},
+      "thresholds": [],
+      "options": {"show_grid": true, "show_legend": false}
+    }
+  ]
+}

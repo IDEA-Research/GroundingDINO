@@ -46,6 +46,36 @@ class DashboardVariable(BaseModel):
         return v
 
 
+# Fastest refresh the dashboard may run at. Anything faster (LLMs like
+# to emit "1s" or "500ms") is clamped: every widget fires a Prometheus
+# query per tick, and sub-5s ticks made the Jetson's Prometheus fall
+# behind its own scrapes. Millisecond values are accepted and converted.
+MIN_REFRESH_SECONDS = 5
+
+
+def clamp_refresh_interval(value: str) -> str:
+    """Normalise a refresh interval: `ms` -> whole seconds, and never
+    below MIN_REFRESH_SECONDS. Values already >= 5s are returned as-is
+    (so '30s', '5m', '1h' round-trip byte-for-byte)."""
+    m = re.match(r"^(\d{1,4})(ms|s|m|h)$", value)
+    if not m:
+        return value
+    num, unit = int(m.group(1)), m.group(2)
+    if unit == "ms":
+        seconds = num / 1000.0
+    elif unit == "s":
+        seconds = float(num)
+    elif unit == "m":
+        seconds = num * 60.0
+    else:
+        seconds = num * 3600.0
+    if seconds >= MIN_REFRESH_SECONDS:
+        if unit == "ms":
+            return f"{int(round(seconds))}s"
+        return value
+    return f"{MIN_REFRESH_SECONDS}s"
+
+
 class DashboardSpec(BaseModel):
     """Full dashboard definition."""
 
@@ -74,9 +104,10 @@ class DashboardSpec(BaseModel):
     @field_validator("refresh_interval")
     @classmethod
     def _refresh_interval(cls, v: str) -> str:
-        if not re.match(r"^\d{1,4}(ms|s|m|h)$", v):
+        m = re.match(r"^(\d{1,4})(ms|s|m|h)$", v)
+        if not m:
             raise ValueError("refresh_interval must look like '30s', '5m', '1h'")
-        return v
+        return clamp_refresh_interval(v)
 
     @model_validator(mode="after")
     def _unique_widget_ids_and_layout(self) -> "DashboardSpec":

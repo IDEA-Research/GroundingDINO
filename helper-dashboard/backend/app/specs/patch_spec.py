@@ -43,6 +43,9 @@ UPDATE_WIDGET_FIELDS: set[str] = {
     "title",
     "description",
     "query",
+    # Multi-metric table columns (table widgets only). The patched widget
+    # is re-validated as a full WidgetSpec, which enforces the lockstep.
+    "queries",
     "position",
     "encoding",
     "thresholds",

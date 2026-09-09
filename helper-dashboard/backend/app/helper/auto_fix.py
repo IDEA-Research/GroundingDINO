@@ -41,6 +41,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import threading
 import time
 from datetime import datetime, timezone
@@ -48,8 +49,9 @@ from pathlib import Path
 from typing import Any
 
 from ..specs.developer_ticket import DeveloperTicket, TicketStatus
+from . import devfix_log
 from .extend_gate import check_user_message_safety
-from .runtime import RuntimeError_
+from .runtime import RuntimeError_, _resolve_devfix_model
 
 
 _REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -149,6 +151,13 @@ def _consume_quota() -> None:
 def reset_quota_for_tests() -> None:
     with _QUOTA_LOCK:
         _QUOTA_STATE.clear()
+
+
+def quota_status() -> tuple[int, int]:
+    """(limit, used_today) — one budget shared by auto-fix and manual runs."""
+    with _QUOTA_LOCK:
+        used = _QUOTA_STATE.get(_today_key(), 0)
+    return _quota_max(), used
 
 
 # ---------------------------------------------------------------------------
@@ -347,39 +356,77 @@ def schedule_auto_fix(
 
 
 def _run(
-    *, ticket: DeveloperTicket, runtime: Any, store: Any, user_intent: str,
+    *,
+    ticket: DeveloperTicket,
+    runtime: Any,
+    store: Any,
+    user_intent: str,
+    run_id: str | None = None,
+    auto: bool = True,
+    title: str | None = None,
+    instruction: str | None = None,
 ) -> None:
     """The background run. Own its errors completely — a crash here
-    must never surface anywhere near the user path."""
+    must never surface anywhere near the user path.
+
+    `run_id`: a pre-created devfix run record (manual queue) that the
+    runtime resumes via args["run_id"]. When None, an "auto" record is
+    created here so EVERY developer_fix run — whichever executor
+    answers — shows up in the devfix history with an honest verdict.
+    """
     with _RUN_LOCK:
         t0 = time.monotonic()
+        source = "auto" if auto else "manual"
+        instruction_text = (
+            instruction
+            if isinstance(instruction, str) and instruction.strip()
+            else ticket.requested_action
+        )
         try:
             store.save_ticket(ticket.model_copy(
                 update={"status": TicketStatus.in_progress},
             ))
+            if run_id is None:
+                run_id = _create_run_record(
+                    ticket, instruction_text, source=source, title=title,
+                )
+            elif run_id:
+                # Pre-created (queued) record: it is running from here on,
+                # whichever executor answers.
+                try:
+                    devfix_log.mark_running(run_id)
+                except Exception:
+                    pass
             snap = _snapshot()
 
             report: dict[str, Any] | None = None
             error: str | None = None
+            error_kind: str | None = None
+            args: dict[str, Any] = {
+                "ticket_id": ticket.ticket_id,
+                "ticket": ticket.model_dump(mode="json"),
+                "instruction": instruction_text,
+                "auto": auto,
+            }
+            if run_id:
+                args["run_id"] = run_id
+            if title:
+                args["title"] = title
             try:
                 raw = runtime.invoke_operation(
-                    "developer_fix",
-                    {
-                        "ticket_id": ticket.ticket_id,
-                        "ticket": ticket.model_dump(mode="json"),
-                        "instruction": ticket.requested_action,
-                        "auto": True,
-                    },
-                    developer=True,
+                    "developer_fix", args, developer=True,
                 )
                 if isinstance(raw, dict) and raw.get("type") == "DeveloperReport":
                     report = raw
                 else:
                     error = f"unexpected developer_fix response: {type(raw).__name__}"
+                    error_kind = "bad_response"
             except RuntimeError_ as exc:
                 error = f"runtime: {exc}"
+                error_kind = _classify_runtime_error(str(exc))
             except Exception as exc:  # pragma: no cover - defensive
                 error = f"unexpected: {type(exc).__name__}: {exc}"
+                error_kind = "internal_error"
 
             resolved = bool(report) and report.get("status") == "resolved"
 
@@ -388,6 +435,7 @@ def _run(
                 # Hard reject no matter what the report says.
                 resolved = False
                 error = f"protected paths modified: {violations}"
+                error_kind = "protected_violation"
 
             rollback: dict[str, Any] | None = None
             if not resolved:
@@ -397,6 +445,7 @@ def _run(
                 "ts": datetime.now(timezone.utc).isoformat(),
                 "resolved": resolved,
                 "report_id": (report or {}).get("report_id"),
+                "run_id": run_id,
                 "summary": str((report or {}).get("summary") or error or "")[:512],
                 "actions_taken": list((report or {}).get("actions_taken") or [])[:8],
                 "tests_run": list((report or {}).get("tests_run") or [])[:8],
@@ -417,8 +466,20 @@ def _run(
                 ).model_copy(update={"status": TicketStatus.open})
             store.save_ticket(updated)
 
+            _finalize_run_record(
+                run_id,
+                report=report,
+                error=error,
+                error_kind=error_kind,
+                resolved=resolved,
+                violations=violations,
+                rollback=rollback,
+            )
+
             _write_audit({
                 "ticket_id": ticket.ticket_id,
+                "run_id": run_id,
+                "source": source,
                 "allowed": True,
                 "resolved": resolved,
                 "error": error,
@@ -433,8 +494,167 @@ def _run(
         except Exception as exc:  # pragma: no cover - last-ditch guard
             _write_audit({
                 "ticket_id": ticket.ticket_id,
+                "run_id": run_id,
+                "source": source,
                 "allowed": True,
                 "resolved": False,
                 "error": f"auto-fix crashed: {type(exc).__name__}: {exc}",
                 "duration_ms": int((time.monotonic() - t0) * 1000),
             })
+            _finalize_run_record(
+                run_id,
+                report=None,
+                error=f"auto-fix crashed: {type(exc).__name__}: {exc}",
+                error_kind="internal_error",
+                resolved=False,
+                violations=[],
+                rollback=None,
+            )
+
+
+def run_manual(
+    *,
+    ticket: DeveloperTicket,
+    runtime: Any,
+    store: Any,
+    run_id: str,
+    instruction: str,
+    title: str | None = None,
+) -> None:
+    """Developer-initiated run (POST /api/devfix/runs via the queue).
+    Same lifecycle and guards as an auto run — snapshot, protected-path
+    byte check, rollback, ticket transition, audit — under the same
+    single-flight lock, so a manual run and an auto-fix never overlap.
+    Blocks until the run finishes (the queue worker calls it)."""
+    _run(
+        ticket=ticket,
+        runtime=runtime,
+        store=store,
+        user_intent="",
+        run_id=run_id,
+        auto=False,
+        title=title,
+        instruction=instruction,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Run record glue (devfix_log) — observability only, never raises
+# ---------------------------------------------------------------------------
+
+
+def _create_run_record(
+    ticket: DeveloperTicket,
+    instruction: str,
+    *,
+    source: str,
+    title: str | None,
+) -> str | None:
+    try:
+        logger = devfix_log.start_run(
+            ticket.ticket_id,
+            instruction=instruction,
+            model=_resolve_devfix_model(),
+            status="running",
+            source=source,
+            title=title,
+        )
+        run_id = logger.run_id
+        logger.close()  # the runtime re-opens it via args["run_id"]
+        return run_id
+    except Exception:
+        return None
+
+
+_RUNTIME_FAILURE_KIND_RE = re.compile(r"failure \((\w+)\)")
+
+
+def _classify_runtime_error(message: str) -> str:
+    low = message.lower()
+    if "user_cancel" in low:
+        return "user_cancel"
+    if "(timeout)" in low or "timeout after" in low:
+        return "timeout"
+    if "outside allow-list" in low:
+        return "copyback_violation"
+    m = _RUNTIME_FAILURE_KIND_RE.search(message)
+    if m:
+        return m.group(1)
+    return "runtime_error"
+
+
+def _finalize_run_record(
+    run_id: str | None,
+    *,
+    report: dict[str, Any] | None,
+    error: str | None,
+    error_kind: str | None,
+    resolved: bool,
+    violations: list[str],
+    rollback: dict[str, Any] | None,
+) -> None:
+    """Post-hoc verdict on the run record. The runtime finalizes the
+    log from the CLI's point of view (report status, copy-back); this
+    layer knows what happened AFTER — the protected-path byte check and
+    the rollback — and corrects the record so the UI never shows
+    "success" for a run whose changes were reverted."""
+    if not run_id:
+        return
+    try:
+        meta = devfix_log.read_meta(run_id) or {}
+        fields: dict[str, Any] = {}
+        report_status = (
+            str(report.get("status")) if report and report.get("status") else None
+        )
+        if report:
+            fields["report_summary"] = str(report.get("summary") or "")[:512]
+        applied = dict(meta.get("applied") or {})
+        rolled_back = bool(
+            rollback and (rollback.get("restored") or rollback.get("deleted"))
+        )
+        if violations:
+            fields["applied"] = {"status": "violation", "files": list(violations)}
+            fields["failure_summary"] = (
+                "protected paths modified (reverted): " + ", ".join(violations)
+            )[:300]
+            final_status, final_kind, final_report = "failed", "protected_violation", "failed"
+        elif resolved:
+            if applied.get("status") in (None, "n/a"):
+                fields["applied"] = {
+                    "status": "applied", "files": list(applied.get("files") or []),
+                }
+            final_status, final_kind, final_report = "success", None, "resolved"
+        elif report is not None and report_status in ("rejected", "needs_context"):
+            fields["applied"] = {"status": "not_applied", "files": []}
+            final_status, final_kind, final_report = "waiting", None, report_status
+        else:
+            if rolled_back or applied.get("status") in (None, "n/a"):
+                fields["applied"] = {"status": "not_applied", "files": []}
+            final_status = "failed"
+            final_kind = error_kind or "runtime_error"
+            final_report = "failed"
+        if rolled_back:
+            fields["rollback"] = {
+                "restored": list(rollback.get("restored") or [])[:50],
+                "deleted": list(rollback.get("deleted") or [])[:50],
+            }
+        current = meta.get("status")
+        still_active = not current or current in devfix_log.ACTIVE_STATUSES
+        if violations and not still_active and current != "failed":
+            # Runtime already finalized "success" — the byte guard overrides.
+            fields["status"] = "failed"
+            fields["error_kind"] = "protected_violation"
+            fields["report_status"] = "failed"
+        # Fields first, terminal transition LAST: a poller that sees a
+        # terminal status must already see the verdict fields.
+        devfix_log.update_meta(run_id, fields)
+        if still_active:
+            # The executor never touched the log (mock/helpercode paths):
+            # the verdict computed here IS the record.
+            devfix_log.finalize_run(
+                run_id, final_status, final_kind,
+                report_status=final_report,
+                failure_summary=(error or "")[:300] if final_status == "failed" else None,
+            )
+    except Exception:
+        pass

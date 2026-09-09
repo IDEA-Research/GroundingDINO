@@ -142,9 +142,13 @@ permission flags). In order of priority:
 7. The frontend renderer uses a fixed widget toolkit. Nothing in the
    spec is ever passed to `eval`, `new Function`, or
    `dangerouslySetInnerHTML`.
-8. The `/api/developer/*` endpoints are gated by
-   `HELPER_DASHBOARD_DEV_TOKEN`. They are the only path that ever
-   triggers `developer_fix`.
+8. The `/api/developer/*` (tickets) and `/api/devfix/*` (Big Guy runs)
+   endpoints are gated by `HELPER_DASHBOARD_DEV_TOKEN`
+   (`X-Developer-Token`). Developer-initiated runs go through
+   `POST /api/devfix/runs`, which additionally requires
+   `HELPER_DASHBOARD_DEVFIX_LOCAL_RUNS=1`; together with the chat
+   auto-fix pipeline these are the only paths that ever trigger
+   `developer_fix`.
 
 See `docs/SECURITY_BOUNDARIES.md` for the rationale.
 

@@ -55,6 +55,7 @@ be extended. Do not invent unlisted types.
           "range": "<e.g. 1h>",          // only for range
           "step": "<e.g. 30s>"            // only for range
         },
+        // table ONLY, instead of "query": "queries": [ { ...QuerySpec, "key": "hr", "label": "心率", "unit": "bpm" }, ... ]
         "position": { "x": 0, "y": 0, "w": 6, "h": 6 },
         "encoding": { "unit": "<optional>", "legend": "<optional>" },
         "thresholds": [],
@@ -68,12 +69,22 @@ be extended. Do not invent unlisted types.
 
 ### Exact sub-schemas (DO NOT add extra fields)
 
-- `WidgetThreshold`: exactly `{"value": <number>, "color": "<hex or name>", "label": "<optional string>"}`.
+- `WidgetThreshold`: `{"value": <number>, "color": "<hex or name>", "label": "<optional string>", "direction": "above" | "below"}`.
+  `direction` is optional but SHOULD be set explicitly — `"below"` for
+  lower-bound alarms (e.g. SpO2 < 90%), `"above"` for upper bounds.
   Never add `op`, `condition`, `operator`, `mode`, or anything else.
 - `WidgetEncoding`: only `unit`, `legend`, `color` are allowed. No
   `format`, `scale`, `axis`, etc.
 - `WidgetPosition`: only `x`, `y`, `w`, `h` (non-negative integers).
-- `QuerySpec`: only `source`, `promql`, `query_type`, `range`, `step`.
+- `QuerySpec`: `source`, `promql`, `query_type`, `range`, `step`, plus the
+  optional column fields `key` (`[a-zA-Z_][a-zA-Z0-9_]{0,31}`), `label`
+  (繁中 column header) and `unit`. Those three only mean something inside
+  a table's `queries` list.
+- `queries` (table widgets ONLY, max 6 entries): a list of `QuerySpec`
+  entries, each run as an instant query (set `"query_type": "instant"`),
+  one column each, joined server-side by `patient_id`
+  (e.g. 各病患一覽 with HR + SpO2 columns). When `queries` is present the
+  widget's `query` may be omitted. Never put `queries` on another type.
 - `options`: use ONLY these keys (anything else is rejected):
   `decimals`, `show_grid`, `show_legend`, `stacked`, `fill`, `min`,
   `max`, `columns`, `severity_filter`, `row_limit`, `sort_by`,

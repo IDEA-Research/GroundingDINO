@@ -134,7 +134,7 @@ def main() -> int:
         "session_id": "t2-api",
         "message": "api obs",
     })
-    ok = r.status_code == 200 and "Saved as" in (r.json().get("user_reply") or "")
+    ok = r.status_code == 200 and "已儲存為" in (r.json().get("user_reply") or "")
     record("save prompt answered -> library updated", ok,
            f"reply={(r.json() or {}).get('user_reply', '')[:100]}")
 

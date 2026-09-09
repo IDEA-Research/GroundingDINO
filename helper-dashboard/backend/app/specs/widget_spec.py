@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import re
 from enum import Enum
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -52,8 +52,18 @@ class QueryType(str, Enum):
     range = "range"
 
 
+_QUERY_KEY_PATTERN = r"^[a-zA-Z_][a-zA-Z0-9_]{0,31}$"
+
+
 class QuerySpec(BaseModel):
-    """A single query attached to a widget."""
+    """A single query attached to a widget.
+
+    `key` / `label` / `unit` are only meaningful inside a table widget's
+    `queries` list (multi-metric tables): `key` names the pivoted column
+    (defaults to `q1`, `q2`, ... when omitted), `label` is the column
+    header shown to the user, `unit` the per-column unit. They are
+    accepted (and ignored) on a plain `query` for symmetry.
+    """
 
     model_config = ConfigDict(extra="forbid")
 
@@ -62,6 +72,16 @@ class QuerySpec(BaseModel):
     query_type: QueryType = QueryType.range
     range: str | None = Field(default=None, max_length=16)
     step: str | None = Field(default=None, max_length=16)
+    key: str | None = Field(default=None, pattern=_QUERY_KEY_PATTERN)
+    label: str | None = Field(default=None, max_length=64)
+    unit: str | None = Field(default=None, max_length=32)
+
+    @field_validator("label", "unit")
+    @classmethod
+    def _safe_column_text(cls, v: str | None) -> str | None:
+        if v is None:
+            return v
+        return _assert_safe_text(v, "query column text")
 
     @field_validator("promql")
     @classmethod
@@ -321,11 +341,23 @@ class WidgetEncoding(BaseModel):
 
 
 class WidgetThreshold(BaseModel):
+    """One threshold band.
+
+    `direction` says which side of `value` is the alarmed side:
+    `"above"` (reading >= value alarms — error rates, latency, HR high)
+    or `"below"` (reading <= value alarms — SpO2, rSO2, availability).
+    When omitted the effective direction is resolved for the WHOLE
+    widget by `specs/threshold_semantics.resolve_direction` (severity
+    ordering, then `<`/`≤`/`低於` in labels, else "above"). Values are
+    never invented or altered here — direction only changes rendering.
+    """
+
     model_config = ConfigDict(extra="forbid")
 
     value: float
     color: str = Field(..., pattern=r"^#[0-9a-fA-F]{3,8}$|^[a-zA-Z]{3,20}$")
     label: str | None = Field(default=None, max_length=32)
+    direction: Literal["above", "below"] | None = None
 
     @field_validator("label")
     @classmethod
@@ -360,6 +392,11 @@ ALLOWED_OPTION_KEYS: set[str] = {
     "color_scale",
 }
 
+# Upper bound on `queries` (multi-metric table columns). Six vitals side
+# by side is already the widest table a NICU overview needs; more would
+# not fit a tablet and would fan out into 6+ Prometheus calls per tick.
+MAX_TABLE_QUERIES = 6
+
 FORBIDDEN_WIDGET_FIELDS: set[str] = {
     "raw_html",
     "script",
@@ -384,11 +421,18 @@ class WidgetSpec(BaseModel):
     type: WidgetType
     title: str = Field(..., min_length=1, max_length=128)
     description: str | None = Field(default=None, max_length=512)
-    query: QuerySpec
+    # Required for every widget EXCEPT a table that carries `queries`
+    # (see `_queries_lockstep`). Kept first so the wire shape of every
+    # existing spec is unchanged.
+    query: QuerySpec | None = None
     position: WidgetPosition
     encoding: WidgetEncoding = Field(default_factory=WidgetEncoding)
     thresholds: list[WidgetThreshold] = Field(default_factory=list, max_length=16)
     options: dict[str, Any] = Field(default_factory=dict)
+    # Multi-metric table (e.g. 各病患一覽 with HR + SpO2 columns): one
+    # instant query per column, joined server-side by a label
+    # (patient_id). Table widgets only; max 6 columns.
+    queries: list[QuerySpec] | None = Field(default=None, max_length=MAX_TABLE_QUERIES)
     # Present only for type == decision_flow. The nested nodes/edges/steps +
     # multi-input labeled query set. None (and forbidden) for every other type.
     decision_flow: DecisionFlowSpec | None = None
@@ -399,6 +443,36 @@ class WidgetSpec(BaseModel):
         if v is None:
             return v
         return _assert_safe_text(v, "widget text field")
+
+    @model_validator(mode="after")
+    def _queries_lockstep(self) -> "WidgetSpec":
+        # `queries` is a table-only feature. A table may then omit
+        # `query`; every other type still requires exactly `query`.
+        queries = self.queries
+        if queries is not None and len(queries) == 0:
+            # Empty list is the same as "not provided".
+            self.queries = None
+            queries = None
+        if queries:
+            if self.type != WidgetType.table:
+                raise ValueError(
+                    "'queries' is only valid on a table widget; use 'query' "
+                    "for other widget types"
+                )
+            keys: list[str] = []
+            filled: list[QuerySpec] = []
+            for i, q in enumerate(queries):
+                key = q.key or f"q{i + 1}"
+                if key in keys:
+                    raise ValueError(f"queries[{i}].key {key!r} is duplicated")
+                keys.append(key)
+                filled.append(q if q.key == key else q.model_copy(update={"key": key}))
+            self.queries = filled
+        elif self.query is None:
+            raise ValueError(
+                "query is required (a table may provide 'queries' instead)"
+            )
+        return self
 
     @model_validator(mode="after")
     def _decision_flow_lockstep(self) -> "WidgetSpec":
@@ -416,6 +490,19 @@ class WidgetSpec(BaseModel):
                 "'decision_flow' config is only valid on a decision_flow widget"
             )
         return self
+
+    def all_queries(self) -> list[QuerySpec]:
+        """Every query this widget runs: `query` (when set) followed by
+        `queries` (multi-metric table columns). Use this instead of
+        touching `.query` directly — it is None on a `queries` table."""
+        out: list[QuerySpec] = []
+        if self.query is not None:
+            out.append(self.query)
+        out.extend(self.queries or [])
+        return out
+
+    def promqls(self) -> list[str]:
+        return [q.promql for q in self.all_queries()]
 
     @field_validator("options")
     @classmethod

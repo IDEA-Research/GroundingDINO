@@ -603,7 +603,7 @@ _REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
 def _frontmatter(path: Path) -> str:
-    text = path.read_text()
+    text = path.read_text(encoding="utf-8")
     assert text.startswith("---"), f"{path.name} missing frontmatter"
     _, frontmatter, _ = text.split("---", 2)
     return frontmatter
@@ -666,6 +666,29 @@ def test_big_guy_devfix_md_is_primary_with_default_deny():
         assert re.search(rf"^\s+{key}:\s*deny\s*$", frontmatter, re.M), (
             f"expected `{key}: deny`"
         )
+
+    # Bash allow-list is EXACTLY the test/check commands. `node *` was an
+    # arbitrary-code hole (node -e '<js>' inside the worktree) and must
+    # never come back.
+    assert '"node *"' not in frontmatter
+    assert "node *" not in frontmatter
+    bash_block = frontmatter.split("  bash:\n", 1)[1].split("\n  read:", 1)[0]
+    bash_allow = re.findall(r'^\s+"([^"]+)":\s*allow\s*$', bash_block, re.M)
+    assert bash_allow == [
+        "python3 -m pytest*", "pytest*", "npm test*", "npx tsc*", "npm run build*",
+    ], bash_allow
+    # Edit allow globs match the ABSOLUTE worktree path (`**/` prefix) and
+    # cover exactly the render layer + tests.
+    edit_block = frontmatter.split("  edit:\n", 1)[1].split("\n  bash:", 1)[0]
+    edit_allow = re.findall(r'^\s+"([^"]+)":\s*allow\s*$', edit_block, re.M)
+    assert edit_allow and all(g.startswith("**/") for g in edit_allow), edit_allow
+    assert set(edit_allow) == {
+        "**/backend/app/services/browser_evaluator.py",
+        "**/frontend/lib/renderer.tsx",
+        "**/frontend/lib/spec-schema.ts",
+        "**/frontend/widget-toolkit/**",
+        "**/tests/**",
+    }, edit_allow
 
 
 def test_opencode_json_locks_helper_permissions_and_gates_developer_fix():

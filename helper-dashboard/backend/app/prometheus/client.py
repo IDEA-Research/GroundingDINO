@@ -104,6 +104,50 @@ class PrometheusClient:
         return data
 
     # ------------------------------------------------------------
+    def label_values(
+        self,
+        label: str,
+        *,
+        start: int | None = None,
+        end: int | None = None,
+        match: list[str] | None = None,
+    ) -> list[str]:
+        """GET /api/v1/label/<label>/values, time-scoped + optional
+        series matchers. Raises `PrometheusUnavailable` on failure.
+        Callers validate `label` against an allow-list — this method
+        never builds PromQL from user input."""
+        args: list[tuple[str, Any]] = []
+        if start is not None:
+            args.append(("start", int(start)))
+        if end is not None:
+            args.append(("end", int(end)))
+        for m in match or []:
+            args.append(("match[]", m))
+        params = urllib_parse.urlencode(args)
+        path = f"/api/v1/label/{urllib_parse.quote(label, safe='')}/values"
+        if params:
+            path = f"{path}?{params}"
+        try:
+            data = self._get(path)
+        except Exception as exc:
+            raise PrometheusUnavailable(
+                f"label values query failed: {exc}"
+            ) from exc
+        values = (data or {}).get("data") or []
+        return sorted(str(v) for v in values)
+
+    def targets(self) -> list[dict[str, Any]]:
+        """GET /api/v1/targets -> the `activeTargets` list (each with
+        `labels.job`, `health`, `lastError`, `lastScrape`). Raises
+        `PrometheusUnavailable` on failure."""
+        try:
+            data = self._get("/api/v1/targets?state=active")
+        except Exception as exc:
+            raise PrometheusUnavailable(f"targets query failed: {exc}") from exc
+        active = ((data or {}).get("data") or {}).get("activeTargets") or []
+        return [t for t in active if isinstance(t, dict)]
+
+    # ------------------------------------------------------------
     def _query(self, promql: str, time_s: int | None = None) -> dict[str, Any]:
         query_args: dict[str, Any] = {"query": promql}
         if time_s is not None:

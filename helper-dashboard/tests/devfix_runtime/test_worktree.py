@@ -221,6 +221,70 @@ def test_copy_back_custom_predicate(scratch_repo):
 
 
 # ---------------------------------------------------------------------------
+# capture_diff — unified diff of in-run changes, against what the agent
+# started from (the overlaid tree), untracked files as new-file diffs
+# ---------------------------------------------------------------------------
+
+
+def test_capture_diff_modified_added_deleted_binary(scratch_repo):
+    root = scratch_repo
+    # Dirty overlay in the main tree: part of the baseline, NOT a run change.
+    (root / "helper-dashboard" / "frontend" / "lib" / "renderer.tsx").write_text(
+        "export const A = 2;  // dirty\n"
+    )
+    h = dw.create("t-diff", git_root=root)
+    try:
+        baseline = h.baseline_content["frontend/lib/renderer.tsx"]
+        assert baseline.replace(b"\r\n", b"\n") == b"export const A = 2;  // dirty\n"
+        (h.project_dir / "frontend" / "lib" / "renderer.tsx").write_text(
+            "export const A = 3;  // agent\n"
+        )
+        (h.project_dir / "frontend" / "widget-toolkit" / "New.tsx").write_text(
+            "brand new widget\n"
+        )
+        (h.project_dir / "frontend" / "widget-toolkit" / "Existing.tsx").unlink()
+        (h.project_dir / "backend" / "app" / "main.py").write_bytes(b"\x00\x01binary")
+
+        out = dw.capture_diff(h)
+        files = {f["path"]: f for f in out["files"]}
+        assert set(files) == {
+            "frontend/lib/renderer.tsx", "frontend/widget-toolkit/New.tsx",
+            "frontend/widget-toolkit/Existing.tsx", "backend/app/main.py",
+        }
+        assert files["frontend/lib/renderer.tsx"]["status"] == "modified"
+        assert files["frontend/widget-toolkit/New.tsx"]["status"] == "added"
+        assert files["frontend/widget-toolkit/New.tsx"]["additions"] == 1
+        assert files["frontend/widget-toolkit/Existing.tsx"]["status"] == "deleted"
+        assert files["frontend/widget-toolkit/Existing.tsx"]["deletions"] == 1
+        assert files["backend/app/main.py"]["status"] == "modified"
+
+        patch = out["patch"]
+        # Against the overlay the agent started from, not HEAD.
+        assert "-export const A = 2;  // dirty" in patch
+        assert "+export const A = 3;  // agent" in patch
+        assert "export const A = 1;" not in patch
+        assert "diff --git a/frontend/widget-toolkit/New.tsx b/frontend/widget-toolkit/New.tsx" in patch
+        assert "new file mode 100644" in patch
+        assert "--- /dev/null" in patch and "+++ b/frontend/widget-toolkit/New.tsx" in patch
+        assert "+brand new widget" in patch
+        assert "deleted file mode 100644" in patch and "-existing widget" in patch
+        assert "Binary files a/backend/app/main.py and b/backend/app/main.py differ" in patch
+        assert patch.endswith("\n")
+    finally:
+        dw.remove(h)
+
+
+def test_capture_diff_empty_when_nothing_changed(scratch_repo):
+    h = dw.create("t-nodiff", git_root=scratch_repo)
+    try:
+        assert dw.capture_diff(h) == {"patch": "", "files": []}
+        # Explicit change list is honoured (runtime passes collect_changes()).
+        assert dw.capture_diff(h, []) == {"patch": "", "files": []}
+    finally:
+        dw.remove(h)
+
+
+# ---------------------------------------------------------------------------
 # remove / sweep
 # ---------------------------------------------------------------------------
 

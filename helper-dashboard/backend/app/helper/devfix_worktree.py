@@ -15,7 +15,10 @@ detached worktree of the repo:
   3. `copy_back()` — byte-for-byte copy of changed files into the main
      tree, but ONLY if *every* changed path passes the copy-back
      allow-list. All-or-nothing: one violation means zero copies.
-  4. `remove()` / `sweep_stale()` — cleanup, tolerant of already-gone.
+  4. `capture_diff()` — unified diff of the in-run changes (untracked
+     files as new-file diffs), taken BEFORE the worktree is removed so
+     every terminal state keeps a reviewable patch.
+  5. `remove()` / `sweep_stale()` — cleanup, tolerant of already-gone.
 
 The copy-back allow-list below mirrors `auto_fix.py`'s write scope
 INDEPENDENTLY (no import — two trust boundaries, same philosophy as
@@ -28,6 +31,7 @@ Pure git + filesystem. No LLM, no network, no imports from runtime.py
 
 from __future__ import annotations
 
+import difflib
 import hashlib
 import json
 import os
@@ -119,6 +123,10 @@ class WorktreeHandle:
     # only changes made DURING the run count (a dirty main tree must
     # not poison the all-or-nothing copy-back check).
     baseline: dict[str, str] = field(default_factory=dict)
+    # Bytes of the same baseline paths, so capture_diff() can diff the
+    # run's edits against what the agent actually started from (not
+    # against HEAD, which would re-report the overlay).
+    baseline_content: dict[str, bytes | None] = field(default_factory=dict)
 
 
 # ---------------------------------------------------------------------------
@@ -228,6 +236,9 @@ def create(
         # the overlay, not from the run.
         for rel in _status_changes(handle):
             handle.baseline[rel] = _content_hash(handle.project_dir / rel)
+            handle.baseline_content[rel] = _read_bytes_or_none(
+                handle.project_dir / rel
+            )
     except Exception:
         # Half-built worktree is useless — clean up before re-raising.
         remove(handle)
@@ -261,6 +272,15 @@ def _content_hash(path: Path) -> str:
         return hashlib.sha256(path.read_bytes()).hexdigest()
     except OSError:
         return _MISSING_HASH
+
+
+def _read_bytes_or_none(path: Path) -> bytes | None:
+    try:
+        if not path.is_file() or path.is_symlink():
+            return None
+        return path.read_bytes()
+    except OSError:
+        return None
 
 
 # Paths that mutate as SIDE EFFECTS of running code in the worktree
@@ -356,6 +376,97 @@ def copy_back(
             dst.unlink()
         applied.append(rel)
     return applied
+
+
+# ---------------------------------------------------------------------------
+# Diff capture (read-only; pure difflib + `git show` for HEAD content)
+# ---------------------------------------------------------------------------
+
+_DIFF_MAX_FILE_BYTES = 2_000_000
+
+
+def _git_show_head_bytes(handle: WorktreeHandle, rel: str) -> bytes | None:
+    """Content of `rel` at the worktree's HEAD, or None when untracked."""
+    try:
+        proc = subprocess.run(  # noqa: S603 - shell=False, fixed argv
+            [
+                "git", "-C", str(handle.worktree_root),
+                "show", f"HEAD:{_PROJECT_SUBDIR}/{rel}",
+            ],
+            capture_output=True,
+            timeout=_GIT_TIMEOUT_S,
+            check=False,
+            shell=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if proc.returncode != 0:
+        return None
+    return proc.stdout
+
+
+def _looks_binary(data: bytes | None) -> bool:
+    return data is not None and b"\0" in data[:8000]
+
+
+def _unified_diff(rel: str, old: bytes | None, new: bytes | None) -> tuple[str, int, int]:
+    """git-style unified diff for one path -> (text, additions, deletions).
+    Untracked files come out as new-file diffs against /dev/null."""
+    header = [f"diff --git a/{rel} b/{rel}"]
+    if old is None:
+        header.append("new file mode 100644")
+    if new is None:
+        header.append("deleted file mode 100644")
+    a_name = "/dev/null" if old is None else f"a/{rel}"
+    b_name = "/dev/null" if new is None else f"b/{rel}"
+    if _looks_binary(old) or _looks_binary(new):
+        header.append(f"Binary files {a_name} and {b_name} differ")
+        return "\n".join(header), 0, 0
+    if (old is not None and len(old) > _DIFF_MAX_FILE_BYTES) or (
+        new is not None and len(new) > _DIFF_MAX_FILE_BYTES
+    ):
+        header.append(f"(file too large to diff: {a_name} -> {b_name})")
+        return "\n".join(header), 0, 0
+    old_lines = old.decode("utf-8", "replace").splitlines() if old is not None else []
+    new_lines = new.decode("utf-8", "replace").splitlines() if new is not None else []
+    body = list(difflib.unified_diff(
+        old_lines, new_lines, fromfile=a_name, tofile=b_name, lineterm="",
+    ))
+    additions = sum(1 for ln in body if ln.startswith("+") and not ln.startswith("+++"))
+    deletions = sum(1 for ln in body if ln.startswith("-") and not ln.startswith("---"))
+    return "\n".join(header + body), additions, deletions
+
+
+def capture_diff(
+    handle: WorktreeHandle, changes: list[str] | None = None,
+) -> dict[str, Any]:
+    """{patch, files:[{path, additions, deletions, status}]} for the
+    files changed DURING the run (`collect_changes` semantics). Never
+    mutates the worktree; safe to call in any terminal state."""
+    rels = list(changes) if changes is not None else collect_changes(handle)
+    chunks: list[str] = []
+    files: list[dict[str, Any]] = []
+    for rel in rels:
+        new = _read_bytes_or_none(handle.project_dir / rel)
+        if rel in handle.baseline_content:
+            old = handle.baseline_content.get(rel)
+        else:
+            old = _git_show_head_bytes(handle, rel)
+        if old is None and new is None:
+            continue
+        status = "added" if old is None else ("deleted" if new is None else "modified")
+        text, additions, deletions = _unified_diff(rel, old, new)
+        chunks.append(text)
+        files.append({
+            "path": rel,
+            "additions": additions,
+            "deletions": deletions,
+            "status": status,
+        })
+    patch = "\n".join(chunks)
+    if patch:
+        patch += "\n"
+    return {"patch": patch, "files": files}
 
 
 def remove(handle: WorktreeHandle) -> None:

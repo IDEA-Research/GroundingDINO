@@ -13,7 +13,7 @@ from pathlib import Path
 
 import pytest
 
-from app.helper import auto_fix
+from app.helper import auto_fix, devfix_log
 from app.specs.developer_ticket import DeveloperTicket, TicketStatus
 
 
@@ -250,3 +250,110 @@ def test_schedule_runs_in_background_and_resolves(sandbox):
     thread.join(timeout=10)
     assert not thread.is_alive()
     assert store.saved[-1].status == TicketStatus.resolved
+
+
+# ---------------------------------------------------------------------------
+# Run records (devfix_log) — every run leaves an honest history entry
+# ---------------------------------------------------------------------------
+
+
+def test_auto_run_creates_record_with_success_verdict(sandbox):
+    store = _Store()
+    rt = _Runtime(report=_resolved_report())
+    auto_fix._run(ticket=_ticket(), runtime=rt, store=store, user_intent="x")
+
+    runs = devfix_log.list_runs()
+    assert len(runs) == 1
+    meta = runs[0]
+    assert meta["source"] == "auto"
+    assert meta["ticket_id"] == "tkt-autofix-test"
+    assert meta["status"] == "success"
+    assert meta["report_status"] == "resolved"
+    assert meta["applied"]["status"] == "applied"
+    assert meta["report_summary"] == "fixed the race"
+    # The runtime was handed the record id so it can resume the same dir.
+    args = rt.calls[0][1]
+    assert args["run_id"] == meta["run_id"]
+    assert args["auto"] is True
+    assert args["instruction"] == "investigate evaluator race"
+    lines = _audit_lines(sandbox["audit_dir"])
+    assert lines[-1]["run_id"] == meta["run_id"]
+    assert lines[-1]["source"] == "auto"
+
+
+def test_rejected_run_record_is_waiting_and_not_applied(sandbox):
+    store = _Store()
+
+    def _mess_with_files():
+        sandbox["writable_file"].write_text("llm-garbage", encoding="utf-8")
+
+    rt = _Runtime(report=_resolved_report(status="rejected"), side_effect=_mess_with_files)
+    auto_fix._run(ticket=_ticket(), runtime=rt, store=store, user_intent="x")
+    meta = devfix_log.list_runs()[0]
+    assert meta["status"] == "waiting"
+    assert meta["report_status"] == "rejected"
+    assert meta["applied"] == {"status": "not_applied", "files": []}
+    assert meta["rollback"]["restored"]
+
+
+def test_protected_violation_record_is_failed_violation(sandbox):
+    store = _Store()
+
+    def _touch_clinical():
+        sandbox["protected_file"].write_text("tampered", encoding="utf-8")
+
+    rt = _Runtime(report=_resolved_report(), side_effect=_touch_clinical)
+    auto_fix._run(ticket=_ticket(), runtime=rt, store=store, user_intent="x")
+    meta = devfix_log.list_runs()[0]
+    assert meta["status"] == "failed"
+    assert meta["error_kind"] == "protected_violation"
+    assert meta["applied"]["status"] == "violation"
+    assert "anomaly_core.py" in meta["applied"]["files"][0]
+    assert "protected paths modified" in meta["failure_summary"]
+
+
+def test_runtime_timeout_record_is_timeout(sandbox):
+    from app.helper.runtime import RuntimeError_
+    store = _Store()
+    rt = _Runtime(error=RuntimeError_(
+        "helpercode runtime failure (timeout): timeout after 600.0s",
+    ))
+    auto_fix._run(ticket=_ticket(), runtime=rt, store=store, user_intent="x")
+    meta = devfix_log.list_runs()[0]
+    assert meta["status"] == "timeout"
+    assert meta["error_kind"] == "timeout"
+    assert "timeout after" in meta["failure_summary"]
+
+
+def test_run_manual_resumes_precreated_record(sandbox):
+    store = _Store()
+    rt = _Runtime(report=_resolved_report())
+    pre = devfix_log.start_run(
+        "tkt-autofix-test", instruction="do it", model="m", status="queued",
+        source="manual", title="T",
+    )
+    pre.close()
+
+    auto_fix.run_manual(
+        ticket=_ticket(), runtime=rt, store=store, run_id=pre.run_id,
+        instruction="do it", title="T",
+    )
+
+    runs = devfix_log.list_runs()
+    assert [r["run_id"] for r in runs] == [pre.run_id]  # no second record
+    meta = runs[0]
+    assert meta["status"] == "success"
+    assert meta["source"] == "manual"
+    assert meta["title"] == "T"
+    args = rt.calls[0][1]
+    assert args["run_id"] == pre.run_id
+    assert args["auto"] is False
+    assert args["instruction"] == "do it"
+    assert args["title"] == "T"
+    assert store.saved[-1].status == TicketStatus.resolved
+
+
+def test_quota_status_counts_consumption(sandbox):
+    assert auto_fix.quota_status() == (10, 0)
+    auto_fix._consume_quota()
+    assert auto_fix.quota_status() == (10, 1)

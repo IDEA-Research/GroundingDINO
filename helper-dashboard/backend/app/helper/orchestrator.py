@@ -21,6 +21,7 @@ background scheduler — never synchronously, never blocking the user.
 
 from __future__ import annotations
 
+import re
 import uuid
 from datetime import datetime, timezone
 from typing import Any, Callable
@@ -56,6 +57,91 @@ from .semantic_contracts import (
 # the user "Would you like to save this?" and remembers the id until
 # the user's next message answers yes/no.
 _PENDING_SAVE: dict[str, str] = {}
+
+
+# ---------------------------------------------------------------------------
+# Widget-title normaliser (五.3 時間範圍與標題一致)
+#
+# LLM-authored titles like "心率趨勢（過去 1 小時）" go stale the moment the
+# user picks 5分 in the time-range control (the UI shows the EFFECTIVE range
+# next to every chart instead). Strip a trailing time-range parenthetical —
+# suffix-anchored and narrow so measurement words ("心率", "SpO2") that the
+# colour mapping keys on are never touched.
+# ---------------------------------------------------------------------------
+_TITLE_RANGE_SUFFIX_RE = re.compile(
+    r"\s*[（(]\s*(?:過去|最近|近|last|past)\s*"
+    r"[\d一二兩三四五六七八九十百]+\s*"
+    r"(?:分鐘|分|小時|小时|天|秒|hours?|hrs?|h|minutes?|mins?|m|days?|d|seconds?|secs?|s)"
+    r"\s*[)）]\s*$",
+    re.IGNORECASE,
+)
+
+
+def normalize_widget_title(title: str) -> str:
+    """Return `title` without a trailing time-range parenthetical
+    (`（過去 1 小時）`, `(last 1h)`, `（最近 5 分鐘）`). Idempotent; returns
+    the input unchanged when nothing matches or stripping would empty it."""
+    if not title:
+        return title
+    stripped = _TITLE_RANGE_SUFFIX_RE.sub("", title).rstrip()
+    return stripped if stripped else title
+
+
+def normalize_widget_titles(spec: DashboardSpec) -> tuple[DashboardSpec, list[str]]:
+    """Apply `normalize_widget_title` to every widget title. Returns the
+    (possibly) rebuilt spec and one developer-facing note per change."""
+    changes: list[str] = []
+    widgets = []
+    for w in spec.widgets:
+        new_title = normalize_widget_title(w.title)
+        if new_title != w.title:
+            changes.append(f"title normalized: {w.title!r} -> {new_title!r}")
+            widgets.append(w.model_copy(update={"title": new_title}))
+        else:
+            widgets.append(w)
+    if not changes:
+        return spec, []
+    return spec.model_copy(update={"widgets": widgets}), changes
+
+
+# ---------------------------------------------------------------------------
+# Save-answer guard (chat 儲存 prompt)
+#
+# After every generated/patched dashboard Helper asks for a library name.
+# The NEXT message is a name only if it is short AND contains none of the
+# 繁中 follow-up verbs/nouns ("改成5分", "把血氧換成心率" are edits, not
+# names) AND is not a question. Everything else falls through to normal
+# classification so a follow-up edit is never swallowed as a library name.
+# ---------------------------------------------------------------------------
+_SAVE_NAME_MAX_LEN = 24
+_SAVE_NAME_BLOCKED_CJK: tuple[str, ...] = (
+    "改", "加", "幫", "請", "把", "看", "顯示", "刪", "換", "調", "設",
+    "新增", "移除", "範圍", "分", "小時",
+)
+_SAVE_NAME_BLOCKED_EN: tuple[str, ...] = (
+    "show me", "add a ", "remove", "delete", "rename", "change ", "give me ",
+    "build ", "make ", "dashboard", "chart", "graph", "metric", "query",
+)
+_SAVE_DECLINE_WORDS: frozenset[str] = frozenset({
+    "no", "nope", "n", "skip", "not now", "cancel", "not save",
+    "不用", "不要", "不存", "不儲存", "不用了", "否", "略過", "跳過", "取消", "先不用",
+})
+
+
+def looks_like_library_name(message: str) -> bool:
+    clean = (message or "").strip()
+    if not (1 <= len(clean) <= _SAVE_NAME_MAX_LEN):
+        return False
+    if "\n" in clean:
+        return False
+    if clean.endswith("?") or clean.endswith("？"):
+        return False
+    if any(tok in clean for tok in _SAVE_NAME_BLOCKED_CJK):
+        return False
+    low = clean.lower()
+    if any(tok in low for tok in _SAVE_NAME_BLOCKED_EN):
+        return False
+    return True
 
 
 class Orchestrator:
@@ -562,7 +648,7 @@ class Orchestrator:
                 str(q)[:512]
                 for q in (result.get("questions") or [])
                 if isinstance(q, str)
-            ] or ["Could you clarify what dashboard you'd like?"]
+            ] or ["可以再說明一下你想要的儀表板嗎？"]
             return self._response(
                 user_reply=str(result.get("message_to_user", "")) or qs[0],
                 intent_type="ClarificationRequest",
@@ -624,32 +710,31 @@ class Orchestrator:
                 # failure (LLM tried, didn't pass). The gate error string
                 # starts with "gate refused (...)"; everything else is a
                 # real failure.
+                # The English tags in parentheses are technical markers
+                # (developer view + tests); the sentence is 繁中.
                 if err.startswith("gate refused"):
                     user_reply = (
-                        f"I can't add a `{extend_attempt['widget_type']}` "
-                        f"widget right now ({err}). Try `bar_chart` or "
-                        f"`table` for the same data."
+                        f"目前無法加入 `{extend_attempt['widget_type']}` 元件"
+                        f"（{err}）。同樣的資料可以改用 `bar_chart` 或 `table`。"
                     )
                 else:
                     user_reply = (
-                        f"I tried to add a `{extend_attempt['widget_type']}` "
-                        f"widget but the build didn't pass — try `bar_chart` "
-                        f"or `table` for the same data."
+                        f"我嘗試加入 `{extend_attempt['widget_type']}` 元件，"
+                        f"但建置沒有通過（tried, build didn't pass）——"
+                        f"同樣的資料可以改用 `bar_chart` 或 `table`。"
                     )
             elif ext is not None:
                 # Extend wasn't attempted (e.g. ticket parsed but extend
                 # branch didn't run). Still avoid "not in the toolkit" —
                 # frame it as a build that didn't happen.
                 user_reply = (
-                    f"I couldn't build the `{ext.widget_type}` widget on "
-                    f"this turn — try `bar_chart` or `table` for the same "
-                    f"data, or ask again."
+                    f"這一輪沒能建置 `{ext.widget_type}` 元件——"
+                    f"同樣的資料可以改用 `bar_chart` 或 `table`，或再試一次。"
                 )
             else:
                 user_reply = (
-                    "That isn't something I could build on this turn — "
-                    "I've logged a diagnostic and will keep improving. "
-                    "Try describing it differently or ask again."
+                    "這一輪沒能做出這個項目。我已記錄診斷（logged a diagnostic）"
+                    "並會持續改進；請換個方式描述，或再試一次。"
                 )
             return self._response(
                 user_reply=user_reply,
@@ -734,10 +819,13 @@ class Orchestrator:
                 runtime_meta=runtime_meta,
             )
 
+        # 五.3: strip time-range parentheticals from widget titles BEFORE
+        # review/persist — the UI shows the effective range itself.
+        spec, title_notes = normalize_widget_titles(spec)
         final_spec, outcome = self._review_or_passthrough(
             spec, user_intent=message
         )
-        warnings = _retry_warnings(retry_outcome)
+        warnings = _retry_warnings(retry_outcome) + title_notes
         return self._finalize(
             session_id=session_id,
             message=message,
@@ -762,7 +850,7 @@ class Orchestrator:
     ) -> dict[str, Any]:
         if current_dashboard is None:
             return self._response(
-                user_reply="I don't have a dashboard loaded to modify yet.",
+                user_reply="目前沒有已開啟的儀表板可以修改，請先建立或開啟一個。",
                 intent_type="PatchSpec",
                 runtime_meta=runtime_meta,
             )
@@ -770,10 +858,7 @@ class Orchestrator:
         if retry_outcome and retry_outcome.accepted is None:
             self._file_retry_ticket(retry_outcome, source="patch-agent")
             return self._response(
-                user_reply=(
-                    "I couldn't apply that change cleanly — I've logged a "
-                    "diagnostic. Try rephrasing the change."
-                ),
+                user_reply=_patch_failed_reply(),
                 intent_type="PatchSpec",
                 warnings=[
                     f"patch rejected after {retry_outcome.attempts_used} "
@@ -796,19 +881,17 @@ class Orchestrator:
             )
             self._save_ticket_and_schedule_fix(ticket, user_intent=message)
             return self._response(
-                user_reply=(
-                    "I couldn't apply that change cleanly — I've logged a "
-                    "diagnostic. Try rephrasing the change."
-                ),
+                user_reply=_patch_failed_reply(),
                 intent_type="PatchSpec",
                 warnings=["patch failed validation"],
                 runtime_meta=runtime_meta,
             )
 
+        new_spec, title_notes = normalize_widget_titles(new_spec)
         final_spec, outcome = self._review_or_passthrough(
             new_spec, user_intent=message,
         )
-        warnings = _retry_warnings(retry_outcome)
+        warnings = _retry_warnings(retry_outcome) + title_notes
         return self._finalize(
             session_id=session_id,
             message=message,
@@ -860,8 +943,7 @@ class Orchestrator:
                     str(m.get("name") or "") for m in matches[:10]
                 )
                 question = (
-                    f"Which saved dashboard did you mean? "
-                    f"Matching entries: {names}."
+                    f"你指的是哪一個已儲存的儀表板？符合的項目：{names}。"
                 )
                 return self._response(
                     user_reply=question,
@@ -878,17 +960,12 @@ class Orchestrator:
                 s.name for s in self._saved.summaries()[:10]
             )
             listing = (
-                f"Your library has: {names}."
+                f"你的資料庫裡有：{names}。"
                 if names
-                else (
-                    "Your library is empty — build a dashboard and "
-                    "I'll offer to save it."
-                )
+                else "你的資料庫目前是空的——先建立一個儀表板，我會詢問是否儲存。"
             )
             return self._response(
-                user_reply=(
-                    f"I couldn't find that saved dashboard. {listing}"
-                ),
+                user_reply=f"找不到那個已儲存的儀表板。{listing}",
                 intent_type="UserResponse",
                 runtime_meta=runtime_meta,
             )
@@ -905,7 +982,7 @@ class Orchestrator:
         )
         reply = (
             str(intent.get("message_to_user") or "")
-            or f"Loaded {entry.name!r} from your library."
+            or f"已從資料庫開啟「{entry.name}」。"
         )
         return self._response(
             user_reply=reply,
@@ -914,6 +991,7 @@ class Orchestrator:
             # the frontend renders this dump directly.
             dashboard=clone.model_dump(mode="json", by_alias=True),
             runtime_meta=runtime_meta,
+            saved_id=entry.saved_id,
         )
 
     # ---------------------------------------------------------------
@@ -942,10 +1020,9 @@ class Orchestrator:
             )
             return self._response(
                 user_reply=(
-                    "I couldn't turn that into a valid alert rule "
-                    f"({errs}). Try naming the metric (CPU, disk, memory, "
-                    "load), a threshold, and a duration — e.g. 'alert me "
-                    "when CPU is above 90% for 5 minutes'."
+                    f"無法把這段話轉成有效的警示規則（{errs}）。"
+                    "請說明指標（CPU、磁碟、記憶體、負載）、門檻與持續時間，"
+                    "例如「CPU 超過 90% 持續 5 分鐘時提醒我」。"
                 ),
                 intent_type="AlertRuleIntent",
                 warnings=["alert rule failed validation"],
@@ -953,15 +1030,15 @@ class Orchestrator:
             )
 
         system_rules.get_service().add_rule(rule)
+        # "SHADOW" / "diagnosis" are kept as technical markers (the rule
+        # mode name and the LD-6 disclaimer tests key on them).
         return self._response(
             user_reply=(
-                f"Alert rule created: {rule.human_summary()}.\n\n"
-                "It starts in SHADOW mode — breaches are recorded as "
-                "would-fire events (visible under /api/system-rules and "
-                "its alerts feed) but nothing pages. If the metric source "
-                "is unreachable or stale the rule reports SIGNAL_LOST "
-                "instead of guessing. This is decision support, not a "
-                "diagnosis."
+                f"已建立警示規則：{rule.human_summary()}。\n\n"
+                "規則先以 SHADOW（影子）模式啟動——超標只會記錄為「原本會觸發」"
+                "的事件（可在 /api/system-rules 及其警示清單查看），不會發出通知。"
+                "若指標來源無法連線或資料過期，規則會回報 SIGNAL_LOST 而不是猜測。"
+                "這是決策支援，並非診斷（not a diagnosis）。"
             ),
             intent_type="SystemAlertRule",
             runtime_meta=runtime_meta,
@@ -1008,9 +1085,8 @@ class Orchestrator:
             )
             _PENDING_SAVE[session_id] = spec.dashboard_id
             pending_save_question = (
-                f"Would you like to save this dashboard to your library "
-                f"for later? Reply with a name (e.g. 'prod CPU'), or 'no' "
-                f"to skip."
+                "要把這個儀表板存到你的資料庫嗎？回覆一個名稱（例如「新生兒心率」）"
+                "就會儲存；回覆「不用」則略過。"
             )
 
         review_trail = outcome.trail if outcome else []
@@ -1020,7 +1096,7 @@ class Orchestrator:
                 user_reply=(
                     outcome.questions[0]
                     if outcome.questions
-                    else "Could you clarify what you'd like?"
+                    else "可以再說明一下你想要的儀表板嗎？"
                 ),
                 intent_type="ClarificationRequest",
                 clarification=outcome.questions,
@@ -1045,23 +1121,24 @@ class Orchestrator:
                 # truthful that diagnosis is automated.
                 return self._response(
                     user_reply=(
-                        "I couldn't finish building that dashboard this "
-                        "turn — I've logged a diagnostic for the automated "
-                        "pipeline. Please ask again, or describe what you "
-                        "need differently."
+                        "這一輪沒能完成這個儀表板，我已記錄診斷"
+                        "（logged a diagnostic）交給自動修復流程。"
+                        "請再試一次，或換個方式描述你的需求。"
                     ),
                     intent_type="UserResponse",
                     warnings=["render check failed — diagnostic logged"],
                     review_trail=review_trail,
                     runtime_meta=runtime_meta,
                 )
+            # The English tags in parentheses are technical markers the
+            # developer view and the retry-loop tests key on; the sentence
+            # itself is the user-facing 繁中 text.
             render_caveat = (
-                "Note: my automated render check couldn't confirm every "
-                "widget drew correctly, so I've logged a diagnostic"
-                + (" and started an automatic background fix"
+                "注意：自動畫面檢查無法確認每個元件都正確繪製，"
+                "我已記錄診斷（logged a diagnostic）"
+                + ("並啟動自動背景修復（automatic background fix）"
                    if fix_scheduled else "")
-                + ". If anything looks empty, refresh or ask me to "
-                "rebuild it."
+                + "。若有元件是空白的，請重新整理或請我重建。"
             )
 
         if outcome is not None and outcome.kind == "failed":
@@ -1078,9 +1155,9 @@ class Orchestrator:
         base_reply = (
             intent.get("message_to_user")
             or (
-                f"Here is your '{spec.title}' dashboard."
+                f"已建立「{spec.title}」儀表板。"
                 if action == "created" and spec
-                else "Updated."
+                else "已更新儀表板。"
             )
         )
         reply = base_reply
@@ -1118,42 +1195,34 @@ class Orchestrator:
             return None
         clean = message.strip()
         low = clean.lower()
-        if low in {"no", "nope", "n", "skip", "not now", "cancel", "not save"}:
+        if low in _SAVE_DECLINE_WORDS or clean in _SAVE_DECLINE_WORDS:
             _PENDING_SAVE.pop(session_id, None)
             return self._response(
-                user_reply="Okay — not saving.",
+                user_reply="好的，不儲存。",
                 intent_type="UserResponse",
                 runtime_meta={"runtime_used": None, "fallback_reason": None},
             )
-        # If the message looks like a short name (<= 64 chars, no "show me"
-        # / "add a" triggers), treat it as the library name.
-        if (
-            1 <= len(clean) <= 64
-            and not any(k in low for k in [
-                "show me", "add a ", "remove", "delete", "rename",
-                "change ", "give me ", "build ", "make ", "dashboard",
-                "chart", "graph", "metric", "query",
-            ])
-            and ("\n" not in clean)
-        ):
+        # A library name only when it is short, contains no edit
+        # verbs/nouns (改/加/換/範圍/分/小時…, "show me", "add a"…) and is
+        # not a question — see `looks_like_library_name`. "改成5分" must
+        # fall through to normal classification, never become a name.
+        if looks_like_library_name(clean):
             spec = self._store.load_dashboard(pending)
             _PENDING_SAVE.pop(session_id, None)
             if spec is None:
                 return self._response(
-                    user_reply=(
-                        "I couldn't find the dashboard to save. "
-                        "Let's start fresh."
-                    ),
+                    user_reply="找不到要儲存的儀表板，請重新建立一個。",
                     intent_type="UserResponse",
                     runtime_meta={"runtime_used": None, "fallback_reason": None},
                 )
             entry = self._saved.save(spec, name=clean)
             return self._response(
                 user_reply=(
-                    f"Saved as {entry.name!r}. Ask for it again anytime."
+                    f"已儲存為「{entry.name}」，之後隨時可以請我開啟。"
                 ),
                 intent_type="UserResponse",
                 runtime_meta={"runtime_used": None, "fallback_reason": None},
+                saved_id=entry.saved_id,
             )
         # Otherwise, drop the prompt and continue normally.
         _PENDING_SAVE.pop(session_id, None)
@@ -1219,7 +1288,7 @@ class Orchestrator:
             if current_dashboard is None:
                 return {
                     "type": "UserResponse",
-                    "message": "I don't have a dashboard loaded yet — create one first.",
+                    "message": "目前沒有已開啟的儀表板，請先建立或開啟一個。",
                 }
             return self._runtime.invoke_operation(
                 "patch_dashboard",
@@ -1283,7 +1352,7 @@ class Orchestrator:
             if current_dashboard is None:
                 return {
                     "type": "UserResponse",
-                    "message": "I don't have a dashboard loaded yet — create one first.",
+                    "message": "目前沒有已開啟的儀表板，請先建立或開啟一個。",
                 }, None
             requested = intent.get("requested_changes") or []
             contract = contract_for_patch(requested, current_dashboard)
@@ -1322,6 +1391,7 @@ class Orchestrator:
         review_trail: list[dict[str, Any]] | None = None,
         clarification: list[str] | None = None,
         save_prompt: str | None = None,
+        saved_id: str | None = None,
     ) -> dict[str, Any]:
         meta = runtime_meta or {"runtime_used": None, "fallback_reason": None}
         return {
@@ -1335,6 +1405,9 @@ class Orchestrator:
             "review_trail": review_trail or [],
             "clarification_questions": clarification,
             "save_prompt_for": save_prompt,
+            # Library entry this turn saved or opened (None otherwise) —
+            # the shell links its save-state chip to it.
+            "saved_id": saved_id,
         }
 
     def _save_ticket_and_schedule_fix(
@@ -1408,18 +1481,27 @@ def _retry_warnings(outcome: RetryOutcome | None) -> list[str]:
 
 
 def _safe_user_reply_on_error() -> str:
+    # The parenthetical English tag is a technical marker the developer
+    # view (and the retry-loop tests) key on; the sentence is 繁中.
     return (
-        "Something went wrong while putting that together. "
-        "I've logged a diagnostic — please try asking again."
+        "整理這個請求時出了點問題。我已記錄診斷（logged a diagnostic），"
+        "請再試著問一次。"
+    )
+
+
+def _patch_failed_reply() -> str:
+    return (
+        "這個修改沒能順利套用，我已記錄診斷（logged a diagnostic）。"
+        "請換個方式描述要改的地方。"
     )
 
 
 def _summarize_prometheus(report: dict[str, Any]) -> str:
     suggestions = report.get("metric_suggestions") or []
     if not suggestions:
-        return report.get("notes") or "I couldn't find useful metric suggestions."
+        return report.get("notes") or "找不到合適的指標建議。"
     names = ", ".join(s.get("metric", "") for s in suggestions[:5])
-    return f"Some metrics that might help: {names}."
+    return f"可能有幫助的指標：{names}。"
 
 
 def _ticket_from_raw(raw: dict[str, Any], *, source_agent: str):

@@ -16,11 +16,15 @@ from .api import (
     anomaly,
     chat,
     dashboard,
+    datasource,
+    dev_simulation,
     evaluate,
     developer,
     devfix,
+    capabilities,
     saved_dashboards,
     system_rules as system_rules_api,
+    templates,
 )
 
 
@@ -119,6 +123,14 @@ def create_app() -> FastAPI:
 
     app.include_router(chat.router, prefix="/api/chat", tags=["chat"])
     app.include_router(dashboard.router, prefix="/api/dashboard", tags=["dashboard"])
+    # Data-source status (public, booleans/timestamps/host only), built-in
+    # templates (user-facing), and the developer-only simulation switch
+    # (gated inside the router by require_dev + env kill switch).
+    app.include_router(datasource.router, prefix="/api/datasource", tags=["datasource"])
+    app.include_router(templates.router, prefix="/api/templates", tags=["templates"])
+    app.include_router(
+        dev_simulation.router, prefix="/api/dev/simulation", tags=["dev"],
+    )
     app.include_router(evaluate.router, prefix="/api/evaluate", tags=["evaluate"])
     app.include_router(
         saved_dashboards.router, prefix="/api/saved_dashboards",
@@ -126,9 +138,15 @@ def create_app() -> FastAPI:
     )
     # Internal-only, behind a developer gate inside the router.
     app.include_router(developer.router, prefix="/api/developer", tags=["developer"])
-    # Devfix run logs (read-only): the frontend DevFixMonitor tails
-    # these to show what Big Guy thinks and does, live.
+    # Devfix execution layer (every route dev-gated inside the router):
+    # config, start/cancel/retry, run meta + log/events/diff that the
+    # developer workspace Big Guy panel polls.
     app.include_router(devfix.router, prefix="/api/devfix", tags=["devfix"])
+    # Public capability flags (booleans only — they never authorize
+    # anything; every developer route checks X-Developer-Token itself).
+    app.include_router(
+        capabilities.router, prefix="/api/capabilities", tags=["capabilities"],
+    )
     # Anomaly read surface (alerts the decision_flow widget consumes) + the
     # ANOMALY_DEMO-only driver. The /alerts endpoint fails loud (store_unavailable)
     # when no evaluator is wired, so it is always safe to mount.

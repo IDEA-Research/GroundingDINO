@@ -40,27 +40,30 @@ class PrometheusValidator:
     def validate_dashboard(self, spec: DashboardSpec) -> list[QueryCheckResult]:
         results: list[QueryCheckResult] = []
         for widget in spec.widgets:
-            q = widget.query.promql
-            issues: list[str] = []
-            syntax_ok = True
-            for pat in _BAD_PROMQL_PATTERNS:
-                if pat.search(q):
-                    syntax_ok = False
-                    issues.append(f"forbidden token: {pat.pattern!r}")
-            reachable = False
-            returns_data: bool | None = None
-            try:
-                reachable, returns_data = self._client.probe(q)
-            except Exception as exc:  # pragma: no cover - network
-                issues.append(f"probe failed: {exc}")
-            results.append(
-                QueryCheckResult(
-                    widget_id=widget.id,
-                    promql=q,
-                    syntax_ok=syntax_ok,
-                    reachable=reachable,
-                    returns_data=returns_data,
-                    issues=issues,
+            # `widget.query` is None on a table that carries `queries`;
+            # all_queries() yields every PromQL the widget runs.
+            for query in widget.all_queries():
+                q = query.promql
+                issues: list[str] = []
+                syntax_ok = True
+                for pat in _BAD_PROMQL_PATTERNS:
+                    if pat.search(q):
+                        syntax_ok = False
+                        issues.append(f"forbidden token: {pat.pattern!r}")
+                reachable = False
+                returns_data: bool | None = None
+                try:
+                    reachable, returns_data = self._client.probe(q)
+                except Exception as exc:  # pragma: no cover - network
+                    issues.append(f"probe failed: {exc}")
+                results.append(
+                    QueryCheckResult(
+                        widget_id=widget.id,
+                        promql=q,
+                        syntax_ok=syntax_ok,
+                        reachable=reachable,
+                        returns_data=returns_data,
+                        issues=issues,
+                    )
                 )
-            )
         return results

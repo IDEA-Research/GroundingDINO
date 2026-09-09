@@ -372,6 +372,36 @@ def _pick_model(operation: str) -> str:
     return os.getenv("HELPERCODE_HELPER_MODEL", "moonshotai/kimi-k2-thinking")
 
 
+# Appended to the generate_dashboard / patch_dashboard system prompts.
+# Kept in lockstep with backend/app/specs/widget_schema_doc.py
+# `_authoring_rules_section` (that block carries the field shapes; this
+# one is the short imperative checklist the model reads last).
+_DASHBOARD_AUTHORING_RULES = (
+    "\n## Dashboard authoring rules (override any older guidance above)\n\n"
+    "1. Widget titles name the measurement only (`心率趨勢`, `SpO2`). NEVER "
+    "put a time range in a title — no `（過去 1 小時）`, `(last 1h)`, "
+    "`（最近 5 分鐘）`. The UI shows the active range next to each chart and "
+    "the user can change it; a range in the title becomes wrong at once.\n"
+    "2. Never emit a `stat_card` AND a `gauge` for the same PromQL. One "
+    "instant-value widget per query; prefer the stat_card. Do not pad a "
+    "dashboard by repeating a value.\n"
+    "3. A table that shows several metrics per row (e.g. HR and SpO2 per "
+    "patient) MUST use `queries`: a list of 1..6 instant queries "
+    "`{source, promql, query_type: \"instant\", key, label, unit}` joined "
+    "server-side by `patient_id`; omit `query` on that widget. Never use a "
+    "PromQL `or` union for this — it cannot carry two values per patient.\n"
+    "4. Every threshold you emit MUST set `direction`: `\"above\"` when high "
+    "readings alarm (error rate, latency, tachycardia) or `\"below\"` when low "
+    "readings alarm (SpO2, rSO2, availability). `direction` IS an accepted "
+    "WidgetThreshold field (`{value, color, label?, direction}`); do not add "
+    "`op`/`condition`/`operator`. Never invent clinical threshold values — "
+    "vitals default to `thresholds: []` unless the user gave numbers.\n"
+    "5. A two-vital clinical request is complete with 2 stat_cards + 2 "
+    "line_charts + 1 `queries` table. Clinical metrics are always "
+    "`max by (patient_id) (<metric>)`.\n"
+)
+
+
 def _build_system_prompt(operation: str, agent: str, model: str) -> str:
     agent_md = _AGENTS_DIR / f"{agent}.md"
     if not agent_md.exists():
@@ -466,6 +496,12 @@ def _build_system_prompt(operation: str, agent: str, model: str) -> str:
             "doesn't map to a catalog metric, return a "
             "ClarificationRequest instead.\n"
         )
+
+    # Dashboard authoring rules (DESIGN 2026-09-07 §4): the agent .md files
+    # predate `queries` / `direction` and still say "never add fields to a
+    # threshold"; this block is appended AFTER the agent body so it wins.
+    if operation in ("generate_dashboard", "patch_dashboard"):
+        contract += _DASHBOARD_AUTHORING_RULES
 
     # Fix 4: append the authoritative widget-toolkit schema for any
     # operation that authors / evaluates widget specs. Without this,
@@ -1307,6 +1343,9 @@ def _build_widgets(widget_hints: list[str],
     idx = 0
     wants = list(dict.fromkeys(widget_hints)) or ["line_chart", "stat_card"]
     allowed = {"line_chart", "stat_card", "gauge", "table", "alert_list"}
+    # One instant-value widget per PromQL: a "stat"+"gauge" hint on the
+    # same metric must not produce the same number twice.
+    instant_promqls: set[str] = set()
     for wtype in wants:
         if wtype not in allowed:
             continue
@@ -1321,6 +1360,11 @@ def _build_widgets(widget_hints: list[str],
                 promql = f"avg({metric})"
             elif wtype == "table":
                 promql = f"topk(10, {metric})"
+        if wtype in {"stat_card", "gauge"}:
+            norm = " ".join(promql.split())
+            if norm in instant_promqls:
+                continue
+            instant_promqls.add(norm)
         w = 6 if wtype in {"line_chart", "table"} else 3
         h = 6 if wtype in {"line_chart", "table"} else 4
         if x + w > 12:
@@ -1425,8 +1469,10 @@ def _api_observability_widgets():
          "position": {"x": 6, "y": 0, "w": 6, "h": 6},
          "encoding": {"unit": "%"},
          "thresholds": [
-             {"value": 0.01, "color": "#f59e0b", "label": "warn >1%"},
-             {"value": 0.05, "color": "#ef4444", "label": "crit >5%"},
+             {"value": 0.01, "color": "#f59e0b", "label": "warn >1%",
+              "direction": "above"},
+             {"value": 0.05, "color": "#ef4444", "label": "crit >5%",
+              "direction": "above"},
          ],
          "options": {}},
         {"id": "w-latency-p95", "type": "line_chart",
@@ -1437,8 +1483,10 @@ def _api_observability_widgets():
          "position": {"x": 0, "y": 6, "w": 6, "h": 6},
          "encoding": {"unit": "s"},
          "thresholds": [
-             {"value": 0.5, "color": "#f59e0b", "label": "warn >500ms"},
-             {"value": 1.0, "color": "#ef4444", "label": "crit >1s"},
+             {"value": 0.5, "color": "#f59e0b", "label": "warn >500ms",
+              "direction": "above"},
+             {"value": 1.0, "color": "#ef4444", "label": "crit >1s",
+              "direction": "above"},
          ],
          "options": {}},
         {"id": "w-latency-p99", "type": "line_chart",
@@ -1449,8 +1497,10 @@ def _api_observability_widgets():
          "position": {"x": 6, "y": 6, "w": 6, "h": 6},
          "encoding": {"unit": "s"},
          "thresholds": [
-             {"value": 1.0, "color": "#f59e0b", "label": "warn >1s"},
-             {"value": 2.0, "color": "#ef4444", "label": "crit >2s"},
+             {"value": 1.0, "color": "#f59e0b", "label": "warn >1s",
+              "direction": "above"},
+             {"value": 2.0, "color": "#ef4444", "label": "crit >2s",
+              "direction": "above"},
          ],
          "options": {}},
         {"id": "w-availability", "type": "gauge",
@@ -1461,8 +1511,10 @@ def _api_observability_widgets():
          "position": {"x": 0, "y": 12, "w": 3, "h": 4},
          "encoding": {},
          "thresholds": [
-             {"value": 0.95, "color": "#f59e0b", "label": "warn <95%"},
-             {"value": 0.99, "color": "#34d399", "label": "healthy"},
+             {"value": 0.95, "color": "#f59e0b", "label": "warn <95%",
+              "direction": "below"},
+             {"value": 0.99, "color": "#34d399", "label": "healthy",
+              "direction": "below"},
          ],
          "options": {"min": 0, "max": 1, "decimals": 2}},
         {"id": "w-cpu", "type": "line_chart",
