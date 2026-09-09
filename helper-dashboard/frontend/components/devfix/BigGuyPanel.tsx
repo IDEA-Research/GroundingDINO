@@ -153,9 +153,9 @@ function RunCard({
           <Badge tone="neutral">第 {meta.attempt} 次</Badge>
         ) : null}
         {isCurrent ? null : <span className="text-xs text-ink-faint">歷史</span>}
-        <span className="ml-auto font-mono text-xs tabular-nums text-ink-dim">
+        <Badge tone="neutral" className="ml-auto font-mono tabular-nums">
           {elapsedLabel(meta, now)}
-        </span>
+        </Badge>
       </div>
       <div className="mt-1.5 break-words text-sm font-medium text-ink">{title}</div>
       <div className="mt-0.5 break-all font-mono text-xs text-ink-faint">
