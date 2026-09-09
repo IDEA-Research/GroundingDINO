@@ -4,6 +4,8 @@ import React from "react";
 
 import { Badge } from "@/components/ui/Badge";
 import { Spinner } from "@/components/ui/Button";
+import { IconButton } from "@/components/ui/IconButton";
+import { Menu } from "@/components/ui/Menu";
 import { cx } from "@/components/ui/cx";
 import type { QueryStatus, WidgetData } from "@/lib/useQueryData";
 
@@ -43,6 +45,20 @@ export interface WidgetFrameProps {
   // express (e.g. StatCardWidget's optional severity background wash) —
   // not for general use, prefer className for anything static.
   style?: React.CSSProperties;
+  // Panel hover menu callbacks (Grafana panel-menu parity). Each is a bare
+  // callback — the actual behavior (opening a fullscreen view, an edit
+  // drawer, cloning/removing the widget in the dashboard spec) is owned by
+  // whoever composes WidgetFrame, not by WidgetFrame itself. The "..."
+  // trigger only appears once at least one of these is provided, so every
+  // widget that does not pass them (i.e. every widget today, pre-Phase 5)
+  // renders byte-for-byte the same as before this prop existed. `onEdit`
+  // is expected to stay a placeholder until Phase 5 builds the edit
+  // drawer; `onDuplicate`/`onRemove` likewise until they're wired to the
+  // dashboard data layer.
+  onView?: () => void;
+  onEdit?: () => void;
+  onDuplicate?: () => void;
+  onRemove?: () => void;
 }
 
 export function WidgetFrame({
@@ -60,9 +76,14 @@ export function WidgetFrame({
   className,
   bodyClassName,
   style,
+  onView,
+  onEdit,
+  onDuplicate,
+  onRemove,
 }: WidgetFrameProps) {
   const stale = status === "stale";
   const staleText = reason && reason.trim() ? reason : "資料過期";
+  const hasMenu = Boolean(onView || onEdit || onDuplicate || onRemove);
 
   if (compact) {
     return (
@@ -83,29 +104,47 @@ export function WidgetFrame({
       data-widget-type={widget.type}
       data-state={stale ? "stale" : undefined}
       className={cx(
-        "hd-card flex h-full min-h-0 flex-col rounded-lg border border-edge bg-surface p-3 text-ink shadow-card",
+        "hd-card group/panel flex h-full min-h-0 flex-col rounded-lg border border-edge bg-surface p-3 text-ink shadow-card",
         className,
       )}
       style={style}
     >
       {/* dash-drag-handle: the panel's react-grid-layout draggableHandle
-          target (DashboardGrid.tsx). Title/description/badges only — no
-          click targets live here, so it is safe to grab whole-row. */}
+          target (DashboardGrid.tsx). Title/description/badges/menu only —
+          the info button and "..." menu are real interactive elements
+          that live here too; react-grid-layout only intercepts the
+          mousedown that STARTS a drag, so nested buttons keep working
+          (LineChartWidget's pinned-value badge already relies on this). */}
       <div className="dash-drag-handle mb-2 flex shrink-0 items-start justify-between gap-2">
-        <div className="min-w-0">
+        <div className="flex min-w-0 flex-1 items-start gap-1">
           <h3
-            className="line-clamp-2 text-sm font-semibold leading-5 text-ink"
+            className="line-clamp-2 min-w-0 flex-1 text-sm font-medium leading-5 text-ink"
             title={widget.title}
           >
             {widget.title}
           </h3>
           {widget.description ? (
-            <p
-              className="line-clamp-1 text-xs text-ink-faint"
-              title={widget.description}
-            >
-              {widget.description}
-            </p>
+            <span className="group/desc relative mt-0.5 inline-flex shrink-0">
+              <button
+                type="button"
+                aria-label="面板說明"
+                className="inline-flex rounded text-ink-faint hover:text-ink focus-visible:text-ink focus-visible:outline focus-visible:outline-1 focus-visible:outline-focus"
+              >
+                <SeverityIcon severity="info" className="h-3.5 w-3.5" />
+              </button>
+              {/* Hover/focus only — Grafana's panel-description pattern.
+                  A native `title` attribute would ALSO show a tooltip but
+                  only after a long OS-controlled delay and cannot be
+                  styled, so this uses an explicit group-hover panel
+                  instead (kept in the DOM, not remounted, so it never
+                  flashes/reflows the header). */}
+              <span
+                role="tooltip"
+                className="pointer-events-none absolute left-0 top-full z-20 mt-1 hidden w-max max-w-[16rem] rounded-md border border-edge-strong bg-surface-2 px-2 py-1 text-xs leading-snug text-ink shadow-pop group-hover/desc:block group-focus-within/desc:block"
+              >
+                {widget.description}
+              </span>
+            </span>
           ) : null}
         </div>
         <div className="flex shrink-0 flex-wrap items-center justify-end gap-1">
@@ -126,6 +165,41 @@ export function WidgetFrame({
             >
               <Spinner className="h-3.5 w-3.5" />
             </span>
+          ) : null}
+          {hasMenu ? (
+            <Menu
+              align="end"
+              label={`${widget.title} 面板選單`}
+              trigger={
+                <IconButton
+                  label="面板選單"
+                  size="sm"
+                  variant="ghost"
+                  className="opacity-0 transition-opacity group-hover/panel:opacity-100 group-focus-within/panel:opacity-100"
+                >
+                  <MoreIcon className="h-4 w-4" />
+                </IconButton>
+              }
+              items={[
+                {
+                  label: "全螢幕檢視",
+                  onSelect: onView,
+                  disabled: !onView,
+                },
+                { label: "編輯", onSelect: onEdit, disabled: !onEdit },
+                {
+                  label: "複製",
+                  onSelect: onDuplicate,
+                  disabled: !onDuplicate,
+                },
+                {
+                  label: "移除",
+                  onSelect: onRemove,
+                  disabled: !onRemove,
+                  tone: "danger",
+                },
+              ]}
+            />
           ) : null}
         </div>
       </div>
@@ -243,4 +317,20 @@ export function SeverityIcon({
         </svg>
       );
   }
+}
+
+// Panel hover-menu trigger glyph ("more" / kebab, vertical).
+function MoreIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      aria-hidden="true"
+      viewBox="0 0 16 16"
+      className={cx("h-4 w-4 shrink-0", className)}
+      fill="currentColor"
+    >
+      <circle cx="8" cy="3.4" r="1.35" />
+      <circle cx="8" cy="8" r="1.35" />
+      <circle cx="8" cy="12.6" r="1.35" />
+    </svg>
+  );
 }
