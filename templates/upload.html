@@ -24,6 +24,342 @@
         font-size: 1.5em;
     }
 
+    .dataset-section {
+        padding: 22px;
+        background: #f8fbff;
+    }
+
+    .dataset-section h2 {
+        margin: 0 0 16px;
+        color: #1e3a5f;
+        font-size: 1.35rem;
+    }
+
+    .dataset-controls {
+        display: grid;
+        grid-template-columns: minmax(180px, 1fr) auto;
+        gap: 10px;
+        margin-bottom: 12px;
+    }
+
+    .dataset-controls > .btn {
+        align-self: start;
+    }
+
+    .dataset-create-actions {
+        display: flex;
+        align-items: stretch;
+        gap: 8px;
+    }
+
+    .dataset-refresh-btn {
+        width: 46px;
+        min-width: 46px;
+        padding: 0;
+        border: 1px solid #cbd5e1;
+        border-radius: 9px;
+        background: #fff;
+        color: #475569;
+        font-size: 1.25rem;
+        cursor: pointer;
+        transition: color 0.15s ease, border-color 0.15s ease, transform 0.15s ease;
+    }
+
+    .dataset-refresh-btn:hover {
+        border-color: #38bdf8;
+        color: #0284c7;
+        transform: rotate(20deg);
+    }
+
+    .dataset-controls input,
+    .dataset-controls select {
+        width: 100%;
+        min-width: 0;
+        padding: 10px 12px;
+        border: 1px solid #cbd5e1;
+        border-radius: 8px;
+        background: #fff;
+    }
+
+    .dataset-video-list {
+        margin: 10px 0 14px;
+        padding: 10px 14px;
+        border-radius: 8px;
+        background: #fff;
+        color: #475569;
+        max-height: 130px;
+        overflow-y: auto;
+    }
+
+    .dataset-run-row {
+        display: flex;
+        align-items: flex-start;
+        gap: 10px;
+    }
+
+    .dataset-run-row .dataset-video-list {
+        flex: 1;
+        min-width: 0;
+        margin: 0;
+        padding: 9px 12px;
+        font-size: 0.9rem;
+    }
+
+    .dataset-run-row .btn {
+        flex: 0 0 auto;
+    }
+
+    .dataset-card-list {
+        min-height: 120px;
+        max-height: 240px;
+        overflow-y: auto;
+        padding: 6px;
+        border: 1px solid #cbd5e1;
+        border-radius: 10px;
+        background: #eef4f8;
+        scrollbar-gutter: stable;
+    }
+
+    .dataset-card {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        align-items: center;
+        width: 100%;
+        padding: 0;
+        border: 2px solid transparent;
+        border-radius: 8px;
+        background: #fff;
+        color: #334155;
+        transition: border-color 0.15s ease, background 0.15s ease, transform 0.15s ease;
+    }
+
+    .dataset-card + .dataset-card {
+        margin-top: 7px;
+    }
+
+    .dataset-card:hover {
+        border-color: #7dd3fc;
+        transform: translateY(-1px);
+    }
+
+    .dataset-card.selected {
+        border-color: #22d3ee;
+        background: #ecfeff;
+        box-shadow: 0 0 0 2px rgba(34, 211, 238, 0.12);
+    }
+
+    .dataset-card-progress {
+        grid-column: 1 / -1;
+        height: 4px;
+        overflow: hidden;
+        border-radius: 0 0 6px 6px;
+        background: #dbeafe;
+        opacity: 0;
+        transition: opacity 0.15s ease;
+    }
+
+    .dataset-card-progress.is-visible {
+        opacity: 1;
+    }
+
+    .dataset-card-progress-bar {
+        width: 0;
+        height: 100%;
+        border-radius: inherit;
+        background: linear-gradient(90deg, #38bdf8, #22d3ee);
+        transition: width 0.15s ease;
+    }
+
+    .dataset-card-select {
+        min-width: 0;
+        padding: 12px 14px;
+        border: 0;
+        background: transparent;
+        color: inherit;
+        text-align: left;
+        cursor: pointer;
+    }
+
+    .dataset-card-add {
+        width: 36px;
+        height: 36px;
+        border: 0;
+        border-radius: 50%;
+        background: linear-gradient(135deg, #38bdf8, #22d3ee);
+        color: #fff;
+        font-size: 1.45rem;
+        font-weight: 700;
+        line-height: 1;
+        cursor: pointer;
+        box-shadow: 0 2px 6px rgba(14, 165, 233, 0.25);
+    }
+
+    .dataset-card-add:hover {
+        transform: scale(1.08);
+    }
+
+    .dataset-card-add:disabled {
+        opacity: 0.55;
+        cursor: wait;
+        transform: none;
+    }
+
+    .dataset-card-add.is-uploading {
+        animation: dataset-upload-spin 0.9s linear infinite;
+    }
+
+    @keyframes dataset-upload-spin {
+        to {
+            transform: rotate(360deg);
+        }
+    }
+
+    .dataset-video-list.is-uploading {
+        color: #0284c7;
+        background: #ecfeff;
+    }
+
+    .dataset-card-actions {
+        display: flex;
+        align-items: center;
+        gap: 5px;
+        margin-right: 9px;
+    }
+
+    .dataset-card-menu-button {
+        width: 34px;
+        height: 36px;
+        padding: 0;
+        border: 0;
+        border-radius: 8px;
+        background: transparent;
+        color: #64748b;
+        font-size: 1.35rem;
+        line-height: 1;
+        cursor: pointer;
+    }
+
+    .dataset-card-menu-button:hover,
+    .dataset-card-menu-button[aria-expanded="true"] {
+        background: #e2e8f0;
+        color: #0f172a;
+    }
+
+    .dataset-card-menu {
+        position: fixed;
+        z-index: 1300;
+        width: 170px;
+        padding: 6px;
+        border: 1px solid #cbd5e1;
+        border-radius: 9px;
+        background: #fff;
+        box-shadow: 0 10px 24px rgba(15, 23, 42, 0.18);
+    }
+
+    .dataset-card-menu[hidden] {
+        display: none;
+    }
+
+    .dataset-card-menu-item {
+        display: block;
+        width: 100%;
+        padding: 9px 11px;
+        border: 0;
+        border-radius: 6px;
+        background: transparent;
+        color: #334155;
+        text-align: left;
+        cursor: pointer;
+    }
+
+    .dataset-card-menu-item:hover {
+        background: #f1f5f9;
+    }
+
+    .dataset-card-menu-item.danger {
+        color: #dc2626;
+    }
+
+    .dataset-card-menu-item.danger:hover {
+        background: #fef2f2;
+    }
+
+    .dataset-card-name {
+        display: block;
+        margin-bottom: 4px;
+        color: #0f172a;
+        font-weight: 700;
+        overflow-wrap: anywhere;
+    }
+
+    .dataset-card-meta {
+        display: flex;
+        justify-content: space-between;
+        gap: 10px;
+        color: #64748b;
+        font-size: 0.82rem;
+    }
+
+    .dataset-card-empty {
+        padding: 18px 12px;
+        color: #64748b;
+        text-align: center;
+    }
+
+    .dataset-batch-status {
+        margin-top: 14px;
+        padding: 14px;
+        border-left: 4px solid #4facfe;
+        border-radius: 8px;
+        background: #fff;
+    }
+
+    .source-card {
+        overflow: hidden;
+        border: 1px solid #dbe2ea;
+        border-radius: 12px;
+        background: #fff;
+    }
+
+    .source-tabs {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        border-bottom: 1px solid #dbe2ea;
+        background: #f8fafc;
+    }
+
+    .source-tab {
+        padding: 14px 16px;
+        border: 0;
+        border-bottom: 3px solid transparent;
+        background: transparent;
+        color: #64748b;
+        font-size: 1rem;
+        font-weight: 700;
+        cursor: pointer;
+    }
+
+    .source-tab:hover {
+        color: #0284c7;
+        background: #f0f9ff;
+    }
+
+    .source-tab.active {
+        border-bottom-color: #22d3ee;
+        background: #fff;
+        color: #0284c7;
+    }
+
+    .source-panel[hidden] {
+        display: none;
+    }
+
+    .source-card .upload-section {
+        margin-bottom: 0;
+        border: 0;
+        border-radius: 0;
+    }
+
     .upload-toolbar {
         display: flex;
         align-items: center;
@@ -442,6 +778,14 @@
         .main-content {
             grid-template-columns: 1fr;
         }
+
+        .dataset-controls {
+            grid-template-columns: 1fr;
+        }
+
+        .dataset-controls.dataset-create-row {
+            grid-template-columns: minmax(0, 1fr) auto;
+        }
         
         .medical-values-list {
             grid-template-columns: 1fr;
@@ -483,41 +827,99 @@
 </div>
 
 <div class="main-content">
-    <!-- 上傳區域 -->
-    <div class="upload-section">
-        <h2>📁 上傳影片</h2>
-        <form id="uploadForm" enctype="multipart/form-data">
-            <div class="form-group">
-                <label for="videoFile">選擇影片檔案：</label>
-                <input type="file" id="videoFile" name="video" accept="video/*" required>
-            </div>
+    <div class="source-card">
+        <div class="source-tabs" role="tablist" aria-label="影片來源">
+            <button type="button" id="source-tab-upload" class="source-tab active" role="tab" aria-selected="true" aria-controls="source-panel-upload" data-source-tab="upload">📁 上傳單部影片</button>
+            <button type="button" id="source-tab-dataset" class="source-tab" role="tab" aria-selected="false" aria-controls="source-panel-dataset" data-source-tab="dataset" tabindex="-1">🗂️ 資料集批次分析</button>
+        </div>
 
-            <div class="form-group">
-                <label for="providerSelect">選擇模型廠商 (Provider)：</label>
-                <select id="providerSelect" name="provider" style="width: 100%; padding: 12px; border: 2px solid #e9ecef; border-radius: 8px; font-size: 16px;" onchange="updateModelOptions()">
-                    <option value="openrouter" selected>OpenRouter</option>
-                    <option value="local">地端模型 (Local)</option>
-                </select>
-            </div>
+        <div id="source-panel-upload" class="source-panel" role="tabpanel" aria-labelledby="source-tab-upload" data-source-panel="upload">
+            <div class="upload-section">
+                <form id="uploadForm" enctype="multipart/form-data">
+                    <div class="form-group">
+                        <label for="videoFile">選擇影片檔案：</label>
+                        <input type="file" id="videoFile" name="video" accept="video/*" required>
+                    </div>
 
-            <div class="form-group">
-                <label for="modelSelect">選擇模型 (Model)：</label>
-                <select id="modelSelect" name="model" style="width: 100%; padding: 12px; border: 2px solid #e9ecef; border-radius: 8px; font-size: 16px;" required>
-                    <!-- 選項會由 JavaScript 動態生成 -->
-                </select>
-            </div>
+                    <div class="form-group">
+                        <label for="providerSelect">選擇模型廠商 (Provider)：</label>
+                        <select id="providerSelect" name="provider" style="width: 100%; padding: 12px; border: 2px solid #e9ecef; border-radius: 8px; font-size: 16px;" onchange="updateModelOptions()">
+                            <option value="openrouter" selected>OpenRouter</option>
+                            <option value="local">地端模型 (Local)</option>
+                        </select>
+                    </div>
 
-            <div class="form-group" style="display: flex; align-items: center; gap: 10px;">
-                <input type="checkbox" id="removeScreenContent" name="remove_screen_content" style="width: 18px; height: 18px;">
-                <label for="removeScreenContent" style="margin: 0; font-weight: 600;">
-                    分析前移除螢幕內容（DALL-E，失敗時自動改為黑屏）
-                </label>
-            </div>
+                    <div class="form-group">
+                        <label for="modelSelect">選擇模型 (Model)：</label>
+                        <select id="modelSelect" name="model" style="width: 100%; padding: 12px; border: 2px solid #e9ecef; border-radius: 8px; font-size: 16px;" required>
+                            <!-- 選項會由 JavaScript 動態生成 -->
+                        </select>
+                    </div>
 
-            <button type="submit" class="btn" id="uploadBtn">
-                🚀 開始處理
-            </button>
-        </form>
+                    <div class="form-group" style="display: flex; align-items: center; gap: 10px;">
+                        <input type="checkbox" id="removeScreenContent" name="remove_screen_content" style="width: 18px; height: 18px;">
+                        <label for="removeScreenContent" style="margin: 0; font-weight: 600;">
+                            分析前移除螢幕內容（DALL-E，失敗時自動改為黑屏）
+                        </label>
+                    </div>
+
+                    <button type="submit" class="btn" id="uploadBtn">🚀 開始處理</button>
+                </form>
+            </div>
+        </div>
+
+        <div id="source-panel-dataset" class="source-panel" role="tabpanel" aria-labelledby="source-tab-dataset" data-source-panel="dataset" hidden>
+            <section class="dataset-section" aria-labelledby="source-tab-dataset">
+                <div class="dataset-controls dataset-create-row">
+                    <input type="text" id="newDatasetName" maxlength="100" placeholder="輸入新資料集名稱">
+                    <div class="dataset-create-actions">
+                        <button type="button" class="btn" id="createDatasetBtn">建立資料集</button>
+                        <button type="button" id="refreshDatasetsBtn" class="dataset-refresh-btn" title="重新整理資料集" aria-label="重新整理資料集">↻</button>
+                    </div>
+                </div>
+                <input type="hidden" id="datasetSelect" value="">
+                <div id="datasetCardList" class="dataset-card-list" role="list" aria-label="選擇資料集">
+                    <div class="dataset-card-empty">載入資料集中...</div>
+                </div>
+                <div id="datasetCardMenu" class="dataset-card-menu" role="menu" hidden>
+                    <button type="button" id="renameDatasetMenuItem" class="dataset-card-menu-item" role="menuitem">重新命名</button>
+                    <button type="button" id="deleteDatasetMenuItem" class="dataset-card-menu-item danger" role="menuitem">刪除資料集</button>
+                </div>
+                <input type="file" id="datasetVideoFiles" accept="video/*" multiple hidden>
+
+                <div class="form-group">
+                    <label for="datasetProviderSelect">選擇模型廠商 (Provider)：</label>
+                    <select id="datasetProviderSelect" style="width: 100%; padding: 12px; border: 2px solid #e9ecef; border-radius: 8px; font-size: 16px;" onchange="updateDatasetModelOptions()">
+                        <option value="openrouter" selected>OpenRouter</option>
+                        <option value="local">地端模型 (Local)</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="datasetModelSelect">選擇模型 (Model)：</label>
+                    <select id="datasetModelSelect" style="width: 100%; padding: 12px; border: 2px solid #e9ecef; border-radius: 8px; font-size: 16px;" required></select>
+                </div>
+                <div class="form-group" style="display: flex; align-items: center; gap: 10px;">
+                    <input type="checkbox" id="datasetRemoveScreenContent" style="width: 18px; height: 18px;">
+                    <label for="datasetRemoveScreenContent" style="margin: 0; font-weight: 600;">
+                        分析前移除螢幕內容（DALL-E，失敗時自動改為黑屏）
+                    </label>
+                </div>
+                <div class="dataset-run-row">
+                    <button type="button" class="btn" id="runDatasetBtn" title="執行整個資料集" aria-label="執行整個資料集">🚀 開始處理</button>
+                    <div id="datasetVideoList" class="dataset-video-list">請先選擇資料集</div>
+                </div>
+
+                <div id="datasetBatchStatus" class="dataset-batch-status hidden">
+                    <p id="datasetBatchSummary">批次準備中...</p>
+                    <p id="datasetCurrentVideo">目前影片：-</p>
+                    <div class="progress-container">
+                        <div class="progress-bar" id="datasetProgressBar"></div>
+                    </div>
+                    <p id="datasetProgressText">整體進度：0%</p>
+                    <button type="button" class="btn btn-secondary" id="stopDatasetBtn">停止整批</button>
+                </div>
+            </section>
+        </div>
     </div>
 
     <!-- 狀態區域 -->
@@ -632,9 +1034,18 @@
     let lastResultsLength = 0;
     const UPLOAD_SESSION_KEY = 'uploadSessionId';
     const UPLOAD_STOPPED_KEY = 'uploadStopped';
+    const DATASET_RUN_KEY = 'datasetRunId';
     const MIN_UPLOAD_INTERVAL_MINUTES = 1;
     const MAX_UPLOAD_INTERVAL_MINUTES = 60;
     let activeUploadSettingsTab = 'interval';
+    let currentDatasetRunId = null;
+    let datasetPollingInterval = null;
+    let datasetPollingFailures = 0;
+    let datasetPollInFlight = false;
+    let pendingDatasetUploadId = null;
+    let activeDatasetMenuItem = null;
+    let activeDatasetMenuButton = null;
+    let datasetListRequestVersion = 0;
 
     function parseUploadIntervalMinutes(rawValue) {
         const parsed = Number(rawValue);
@@ -839,9 +1250,9 @@
         ]
     };
 
-    function updateModelOptions() {
-        const provider = document.getElementById('providerSelect').value;
-        const modelSelect = document.getElementById('modelSelect');
+    function populateModelOptions(providerSelectId, modelSelectId) {
+        const provider = document.getElementById(providerSelectId).value;
+        const modelSelect = document.getElementById(modelSelectId);
         modelSelect.innerHTML = ''; // 清空選項
 
         if (modelsByProvider[provider]) {
@@ -852,6 +1263,53 @@
                 modelSelect.appendChild(option);
             });
         }
+    }
+
+    function updateModelOptions() {
+        populateModelOptions('providerSelect', 'modelSelect');
+    }
+
+    function updateDatasetModelOptions() {
+        populateModelOptions('datasetProviderSelect', 'datasetModelSelect');
+    }
+
+    function activateSourceTab(tabName, focusTab = false) {
+        const tabs = Array.from(document.querySelectorAll('[data-source-tab]'));
+        const panels = Array.from(document.querySelectorAll('[data-source-panel]'));
+        if (!tabs.some(tab => tab.dataset.sourceTab === tabName)) return;
+
+        tabs.forEach(tab => {
+            const active = tab.dataset.sourceTab === tabName;
+            tab.classList.toggle('active', active);
+            tab.setAttribute('aria-selected', String(active));
+            tab.tabIndex = active ? 0 : -1;
+            if (active && focusTab) tab.focus();
+        });
+        panels.forEach(panel => {
+            const active = panel.dataset.sourcePanel === tabName;
+            panel.hidden = !active;
+            panel.setAttribute('aria-hidden', String(!active));
+        });
+    }
+
+    function initializeSourceTabs() {
+        const tabs = Array.from(document.querySelectorAll('[data-source-tab]'));
+        tabs.forEach(tab => {
+            tab.addEventListener('click', () => activateSourceTab(tab.dataset.sourceTab));
+            tab.addEventListener('keydown', event => {
+                if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+                event.preventDefault();
+                const currentIndex = tabs.indexOf(tab);
+                let nextIndex;
+                if (event.key === 'Home') nextIndex = 0;
+                else if (event.key === 'End') nextIndex = tabs.length - 1;
+                else {
+                    const direction = event.key === 'ArrowRight' ? 1 : -1;
+                    nextIndex = (currentIndex + direction + tabs.length) % tabs.length;
+                }
+                activateSourceTab(tabs[nextIndex].dataset.sourceTab, true);
+            });
+        });
     }
 
     function saveUploadSession(sessionId) {
@@ -970,10 +1428,529 @@
         }
     }
 
+    async function readJsonResponse(response) {
+        const result = await response.json();
+        if (!response.ok || !result.success) {
+            throw new Error(result.error || `請求失敗 (${response.status})`);
+        }
+        return result;
+    }
+
+    function uploadDatasetFilesWithProgress(datasetId, formData, onProgress) {
+        return new Promise((resolve, reject) => {
+            const xhr = new XMLHttpRequest();
+            xhr.open('POST', `/api/datasets/${encodeURIComponent(datasetId)}/videos`);
+            xhr.upload.addEventListener('progress', event => {
+                if (event.lengthComputable) {
+                    onProgress(Math.round((event.loaded / event.total) * 100));
+                }
+            });
+            xhr.addEventListener('load', () => {
+                let result;
+                try {
+                    result = JSON.parse(xhr.responseText);
+                } catch (error) {
+                    reject(new Error(`伺服器回應格式錯誤 (${xhr.status})`));
+                    return;
+                }
+                if (xhr.status >= 200 && xhr.status < 300 && result.success) {
+                    resolve(result);
+                } else {
+                    reject(new Error(result.error || `上傳失敗 (${xhr.status})`));
+                }
+            });
+            xhr.addEventListener('error', () => reject(new Error('網路連線失敗')));
+            xhr.addEventListener('abort', () => reject(new Error('上傳已取消')));
+            xhr.send(formData);
+        });
+    }
+
+    function selectDatasetCard(datasetId, shouldLoadVideos = true) {
+        const selectedInput = document.getElementById('datasetSelect');
+        selectedInput.value = datasetId || '';
+        document.querySelectorAll('.dataset-card').forEach(card => {
+            const selected = card.dataset.datasetId === selectedInput.value;
+            card.classList.toggle('selected', selected);
+            card.querySelector('.dataset-card-select')
+                ?.setAttribute('aria-pressed', String(selected));
+        });
+        if (shouldLoadVideos) loadDatasetVideos();
+    }
+
+    function closeDatasetCardMenu() {
+        const menu = document.getElementById('datasetCardMenu');
+        menu.hidden = true;
+        activeDatasetMenuButton?.setAttribute('aria-expanded', 'false');
+        activeDatasetMenuButton = null;
+        activeDatasetMenuItem = null;
+    }
+
+    function openDatasetCardMenu(dataset, anchorButton) {
+        const menu = document.getElementById('datasetCardMenu');
+        if (activeDatasetMenuButton === anchorButton && !menu.hidden) {
+            closeDatasetCardMenu();
+            return;
+        }
+        closeDatasetCardMenu();
+        activeDatasetMenuItem = dataset;
+        activeDatasetMenuButton = anchorButton;
+        anchorButton.setAttribute('aria-expanded', 'true');
+        menu.hidden = false;
+        menu.style.visibility = 'hidden';
+
+        const rect = anchorButton.getBoundingClientRect();
+        const menuWidth = 170;
+        const menuHeight = menu.offsetHeight;
+        const left = Math.max(8, Math.min(rect.right - menuWidth, window.innerWidth - menuWidth - 8));
+        let top = rect.bottom + 5;
+        if (top + menuHeight > window.innerHeight - 8) {
+            top = Math.max(8, rect.top - menuHeight - 5);
+        }
+        menu.style.left = `${left}px`;
+        menu.style.top = `${top}px`;
+        menu.style.visibility = 'visible';
+    }
+
+    async function renameDatasetFromMenu() {
+        const dataset = activeDatasetMenuItem;
+        closeDatasetCardMenu();
+        if (!dataset) return;
+        const newName = window.prompt('請輸入新的資料集名稱', dataset.name);
+        if (newName === null || newName.trim() === dataset.name) return;
+        if (!newName.trim()) {
+            showMessage('資料集名稱不可為空', 'error');
+            return;
+        }
+        try {
+            await readJsonResponse(await fetch(
+                `/api/datasets/${encodeURIComponent(dataset.dataset_id)}`,
+                {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ name: newName.trim() }),
+                }
+            ));
+            await loadDatasets(dataset.dataset_id);
+            showMessage('資料集已重新命名', 'success');
+        } catch (error) {
+            showMessage('重新命名失敗: ' + error.message, 'error');
+        }
+    }
+
+    async function deleteDatasetFromMenu() {
+        const dataset = activeDatasetMenuItem;
+        closeDatasetCardMenu();
+        if (!dataset) return;
+        const count = dataset.video_count || 0;
+        const confirmed = window.confirm(
+            `確定刪除資料集「${dataset.name}」及其中 ${count} 部原始影片？\n\n歷史分析結果會保留，此操作無法復原。`
+        );
+        if (!confirmed) return;
+        try {
+            const result = await readJsonResponse(await fetch(
+                `/api/datasets/${encodeURIComponent(dataset.dataset_id)}`,
+                { method: 'DELETE' }
+            ));
+            if (document.getElementById('datasetSelect').value === dataset.dataset_id) {
+                document.getElementById('datasetSelect').value = '';
+            }
+            await loadDatasets();
+            showMessage(
+                result.warning || result.message || '資料集已刪除',
+                result.warning ? 'warning' : 'success'
+            );
+        } catch (error) {
+            showMessage('刪除資料集失敗: ' + error.message, 'error');
+        }
+    }
+
+    async function loadDatasets(preferredDatasetId = null) {
+        closeDatasetCardMenu();
+        const requestVersion = ++datasetListRequestVersion;
+        const selectedInput = document.getElementById('datasetSelect');
+        const cardList = document.getElementById('datasetCardList');
+        try {
+            const result = await readJsonResponse(await fetch('/api/datasets'));
+            if (requestVersion !== datasetListRequestVersion) return;
+            const previousValue = preferredDatasetId || selectedInput.value;
+            cardList.innerHTML = '';
+
+            if (!result.data.length) {
+                selectedInput.value = '';
+                cardList.innerHTML = '<div class="dataset-card-empty">尚未建立資料集</div>';
+                await loadDatasetVideos();
+                return;
+            }
+
+            result.data.forEach(dataset => {
+                const card = document.createElement('div');
+                card.className = 'dataset-card';
+                card.dataset.datasetId = dataset.dataset_id;
+                card.setAttribute('role', 'listitem');
+
+                const selectButton = document.createElement('button');
+                selectButton.type = 'button';
+                selectButton.className = 'dataset-card-select';
+                selectButton.setAttribute('aria-pressed', 'false');
+
+                const name = document.createElement('span');
+                name.className = 'dataset-card-name';
+                name.textContent = dataset.name;
+
+                const meta = document.createElement('span');
+                meta.className = 'dataset-card-meta';
+                const count = document.createElement('span');
+                count.textContent = `${dataset.video_count || 0} 部影片`;
+                const date = document.createElement('span');
+                const createdAt = dataset.created_at ? new Date(dataset.created_at) : null;
+                date.textContent = createdAt && !Number.isNaN(createdAt.getTime())
+                    ? createdAt.toLocaleDateString('zh-TW')
+                    : '';
+                meta.append(count, date);
+                selectButton.append(name, meta);
+                selectButton.addEventListener('click', () => selectDatasetCard(dataset.dataset_id));
+
+                const addButton = document.createElement('button');
+                addButton.type = 'button';
+                addButton.className = 'dataset-card-add';
+                addButton.textContent = '+';
+                addButton.title = `加入影片至「${dataset.name}」`;
+                addButton.setAttribute('aria-label', `加入影片至「${dataset.name}」`);
+                addButton.addEventListener('click', () => {
+                    selectDatasetCard(dataset.dataset_id);
+                    pendingDatasetUploadId = dataset.dataset_id;
+                    const fileInput = document.getElementById('datasetVideoFiles');
+                    fileInput.value = '';
+                    fileInput.click();
+                });
+
+                const menuButton = document.createElement('button');
+                menuButton.type = 'button';
+                menuButton.className = 'dataset-card-menu-button';
+                menuButton.textContent = '⋮';
+                menuButton.title = `管理「${dataset.name}」`;
+                menuButton.setAttribute('aria-label', `管理「${dataset.name}」`);
+                menuButton.setAttribute('aria-haspopup', 'menu');
+                menuButton.setAttribute('aria-expanded', 'false');
+                menuButton.addEventListener('click', event => {
+                    event.stopPropagation();
+                    openDatasetCardMenu(dataset, menuButton);
+                });
+
+                const actions = document.createElement('div');
+                actions.className = 'dataset-card-actions';
+                actions.append(addButton, menuButton);
+
+                const uploadProgress = document.createElement('div');
+                uploadProgress.className = 'dataset-card-progress';
+                uploadProgress.setAttribute('aria-hidden', 'true');
+                const uploadProgressBar = document.createElement('div');
+                uploadProgressBar.className = 'dataset-card-progress-bar';
+                uploadProgress.appendChild(uploadProgressBar);
+
+                card.append(selectButton, actions, uploadProgress);
+                cardList.appendChild(card);
+            });
+
+            const selectedId = result.data.some(dataset => dataset.dataset_id === previousValue)
+                ? previousValue
+                : '';
+            selectDatasetCard(selectedId, false);
+            await loadDatasetVideos();
+        } catch (error) {
+            if (requestVersion !== datasetListRequestVersion) return;
+            selectedInput.value = '';
+            cardList.innerHTML = '<div class="dataset-card-empty">資料集載入失敗</div>';
+            showMessage('資料集載入失敗: ' + error.message, 'error');
+        }
+    }
+
+    async function loadDatasetVideos() {
+        const datasetId = document.getElementById('datasetSelect').value;
+        const list = document.getElementById('datasetVideoList');
+        const runButton = document.getElementById('runDatasetBtn');
+        if (!datasetId) {
+            list.textContent = '請先選擇資料集';
+            runButton.disabled = true;
+            return;
+        }
+        try {
+            const result = await readJsonResponse(
+                await fetch(`/api/datasets/${encodeURIComponent(datasetId)}/videos`)
+            );
+            if (document.getElementById('datasetSelect').value !== datasetId) {
+                return;
+            }
+            runButton.disabled = result.data.length === 0;
+            if (!result.data.length) {
+                list.textContent = '這個資料集尚未加入影片';
+                return;
+            }
+            list.innerHTML = '';
+            result.data.forEach((video, index) => {
+                const row = document.createElement('div');
+                const sizeMb = Number(video.size_bytes || 0) / (1024 * 1024);
+                row.textContent = `${index + 1}. ${video.original_name}（${sizeMb.toFixed(1)} MB）`;
+                list.appendChild(row);
+            });
+        } catch (error) {
+            if (document.getElementById('datasetSelect').value !== datasetId) {
+                return;
+            }
+            list.textContent = '影片清單載入失敗';
+            runButton.disabled = true;
+            showMessage(error.message, 'error');
+        }
+    }
+
+    async function createDataset() {
+        const input = document.getElementById('newDatasetName');
+        const name = input.value.trim();
+        if (!name) {
+            showMessage('請輸入資料集名稱', 'error');
+            return;
+        }
+        const button = document.getElementById('createDatasetBtn');
+        button.disabled = true;
+        try {
+            const result = await readJsonResponse(await fetch('/api/datasets', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name }),
+            }));
+            input.value = '';
+            await loadDatasets(result.dataset_id);
+            showMessage('資料集建立成功', 'success');
+        } catch (error) {
+            showMessage('建立資料集失敗: ' + error.message, 'error');
+        } finally {
+            button.disabled = false;
+        }
+    }
+
+    async function uploadDatasetVideos(targetDatasetId = null) {
+        const datasetId = targetDatasetId || document.getElementById('datasetSelect').value;
+        const fileInput = document.getElementById('datasetVideoFiles');
+        if (!datasetId) {
+            showMessage('請先選擇資料集', 'error');
+            return;
+        }
+        if (!fileInput.files.length) {
+            showMessage('請選擇至少一部影片', 'error');
+            return;
+        }
+        const formData = new FormData();
+        const selectedFiles = Array.from(fileInput.files);
+        selectedFiles.forEach(file => formData.append('videos', file));
+        const addButtons = Array.from(document.querySelectorAll('.dataset-card-add'));
+        addButtons.forEach(button => { button.disabled = true; });
+        const targetCard = Array.from(document.querySelectorAll('.dataset-card'))
+            .find(card => card.dataset.datasetId === datasetId);
+        const targetAddButton = targetCard?.querySelector('.dataset-card-add');
+        const cardProgress = targetCard?.querySelector('.dataset-card-progress');
+        const cardProgressBar = targetCard?.querySelector('.dataset-card-progress-bar');
+        if (targetAddButton) {
+            targetAddButton.textContent = '↻';
+            targetAddButton.classList.add('is-uploading');
+        }
+        if (cardProgress && cardProgressBar) {
+            cardProgress.classList.add('is-visible');
+            cardProgress.setAttribute('aria-hidden', 'false');
+            cardProgressBar.style.width = '0%';
+        }
+        const videoList = document.getElementById('datasetVideoList');
+        videoList.textContent = `正在上傳 ${selectedFiles.length} 部影片，請稍候…`;
+        videoList.classList.add('is-uploading');
+        try {
+            const result = await uploadDatasetFilesWithProgress(
+                datasetId,
+                formData,
+                percent => {
+                    if (cardProgressBar) cardProgressBar.style.width = `${percent}%`;
+                    videoList.textContent = `正在上傳 ${selectedFiles.length} 部影片：${percent}%`;
+                }
+            );
+            fileInput.value = '';
+            await loadDatasets(datasetId);
+            showMessage(`已加入 ${result.count} 部影片`, 'success');
+        } catch (error) {
+            await loadDatasetVideos();
+            showMessage('加入影片失敗: ' + error.message, 'error');
+        } finally {
+            pendingDatasetUploadId = null;
+            videoList.classList.remove('is-uploading');
+            if (cardProgress && cardProgressBar) {
+                cardProgress.classList.remove('is-visible');
+                cardProgress.setAttribute('aria-hidden', 'true');
+                cardProgressBar.style.width = '0%';
+            }
+            document.querySelectorAll('.dataset-card-add').forEach(button => {
+                button.disabled = false;
+                button.classList.remove('is-uploading');
+                button.textContent = '+';
+            });
+        }
+    }
+
+    function startDatasetPolling(runId) {
+        currentDatasetRunId = runId;
+        datasetPollingFailures = 0;
+        activateSourceTab('dataset');
+        sessionStorage.setItem(DATASET_RUN_KEY, runId);
+        document.getElementById('datasetBatchStatus').classList.remove('hidden');
+        if (datasetPollingInterval) clearInterval(datasetPollingInterval);
+        pollDatasetRun();
+        datasetPollingInterval = setInterval(pollDatasetRun, 1000);
+    }
+
+    async function pollDatasetRun() {
+        if (!currentDatasetRunId || datasetPollInFlight) return;
+        datasetPollInFlight = true;
+        try {
+            const [runResult, videoStatus] = await Promise.all([
+                readJsonResponse(await fetch(
+                    `/api/dataset-runs/${encodeURIComponent(currentDatasetRunId)}/status`
+                )),
+                fetch('/status/').then(response => response.json()),
+            ]);
+            const run = runResult.data;
+            datasetPollingFailures = 0;
+            const finished = (run.completed_videos || 0) + (run.failed_videos || 0);
+            const currentFraction = run.status === 'running' && videoStatus.is_processing
+                ? (Number(videoStatus.progress_percentage || 0) / 100)
+                : 0;
+            const percent = run.total_videos
+                ? Math.min(100, Math.round(((finished + currentFraction) / run.total_videos) * 100))
+                : 0;
+            const activeItem = (run.items || []).find(item => item.status === 'running');
+
+            document.getElementById('datasetBatchSummary').textContent =
+                `資料集：${run.dataset_name}｜完成 ${run.completed_videos || 0}｜失敗 ${run.failed_videos || 0}｜共 ${run.total_videos}`;
+            document.getElementById('datasetCurrentVideo').textContent =
+                `目前影片：${activeItem?.video_name || '-'}`;
+            document.getElementById('datasetProgressBar').style.width = `${percent}%`;
+            document.getElementById('datasetProgressText').textContent = `整體進度：${percent}%`;
+
+            if (['completed', 'failed', 'stopped'].includes(run.status)) {
+                clearInterval(datasetPollingInterval);
+                datasetPollingInterval = null;
+                sessionStorage.removeItem(DATASET_RUN_KEY);
+                document.getElementById('stopDatasetBtn').disabled = true;
+                const label = run.status === 'completed' ? '完成' : (run.status === 'stopped' ? '已停止' : '失敗');
+                showMessage(`資料集批次分析${label}：成功 ${run.completed_videos || 0}、失敗 ${run.failed_videos || 0}`, run.status === 'failed' ? 'error' : 'success');
+                await loadDatasets(run.dataset_id);
+            }
+        } catch (error) {
+            datasetPollingFailures += 1;
+            console.error('讀取批次進度失敗:', error);
+            if (datasetPollingFailures === 1) {
+                showMessage('批次進度暫時無法讀取，系統將自動重試', 'warning');
+            }
+            if (datasetPollingFailures >= 5) {
+                if (datasetPollingInterval) clearInterval(datasetPollingInterval);
+                datasetPollingInterval = null;
+                document.getElementById('runDatasetBtn').disabled = false;
+                showMessage('連續無法讀取批次進度: ' + error.message, 'error');
+            }
+        } finally {
+            datasetPollInFlight = false;
+        }
+    }
+
+    async function runSelectedDataset() {
+        const datasetId = document.getElementById('datasetSelect').value;
+        const provider = document.getElementById('datasetProviderSelect').value;
+        const model = document.getElementById('datasetModelSelect').value;
+        const apiKey = localStorage.getItem('openrouter_api_key') || '';
+        if (!datasetId) {
+            showMessage('請先選擇資料集', 'error');
+            return;
+        }
+        if (provider === 'openrouter' && !apiKey) {
+            showMessage('請先在「設定」中輸入並儲存 OpenRouter API Key', 'error');
+            openUploadSettings('api-key');
+            return;
+        }
+        const button = document.getElementById('runDatasetBtn');
+        button.disabled = true;
+        try {
+            const result = await readJsonResponse(await fetch(
+                `/api/datasets/${encodeURIComponent(datasetId)}/run`,
+                {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        provider,
+                        model,
+                        api_key: apiKey,
+                        remove_screen_content: document.getElementById('datasetRemoveScreenContent').checked,
+                    }),
+                }
+            ));
+            document.getElementById('stopDatasetBtn').disabled = false;
+            showMessage(result.message, 'success');
+            startDatasetPolling(result.run_id);
+        } catch (error) {
+            showMessage('啟動資料集失敗: ' + error.message, 'error');
+            button.disabled = false;
+        }
+    }
+
+    async function stopDatasetRun() {
+        if (!currentDatasetRunId) return;
+        const button = document.getElementById('stopDatasetBtn');
+        button.disabled = true;
+        try {
+            await readJsonResponse(await fetch(
+                `/api/dataset-runs/${encodeURIComponent(currentDatasetRunId)}/stop`,
+                { method: 'POST' }
+            ));
+            showMessage('正在停止資料集批次工作...', 'warning');
+        } catch (error) {
+            button.disabled = false;
+            showMessage('停止批次工作失敗: ' + error.message, 'error');
+        }
+    }
+
+    function initializeDatasets() {
+        document.getElementById('createDatasetBtn').addEventListener('click', createDataset);
+        document.getElementById('refreshDatasetsBtn').addEventListener('click', () => loadDatasets());
+        document.getElementById('renameDatasetMenuItem').addEventListener('click', renameDatasetFromMenu);
+        document.getElementById('deleteDatasetMenuItem').addEventListener('click', deleteDatasetFromMenu);
+        document.addEventListener('click', event => {
+            const menu = document.getElementById('datasetCardMenu');
+            if (
+                !menu.hidden
+                && !menu.contains(event.target)
+                && !event.target.closest('.dataset-card-menu-button')
+            ) {
+                closeDatasetCardMenu();
+            }
+        });
+        document.getElementById('datasetCardList').addEventListener('scroll', closeDatasetCardMenu);
+        window.addEventListener('resize', closeDatasetCardMenu);
+        document.getElementById('datasetVideoFiles').addEventListener('change', event => {
+            if (event.target.files.length) {
+                uploadDatasetVideos(pendingDatasetUploadId);
+            }
+        });
+        document.getElementById('runDatasetBtn').addEventListener('click', runSelectedDataset);
+        document.getElementById('stopDatasetBtn').addEventListener('click', stopDatasetRun);
+        document.getElementById('newDatasetName').addEventListener('keydown', event => {
+            if (event.key === 'Enter') createDataset();
+        });
+        loadDatasets();
+        const savedRunId = sessionStorage.getItem(DATASET_RUN_KEY);
+        if (savedRunId) startDatasetPolling(savedRunId);
+    }
+
     document.addEventListener('DOMContentLoaded', function() {
         updateModelOptions();
+        updateDatasetModelOptions();
+        initializeSourceTabs();
         restoreProcessingStateOnLoad();
         initializeUploadSettings();
+        initializeDatasets();
     });
 
     // 表單提交處理

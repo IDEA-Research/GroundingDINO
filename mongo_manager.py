@@ -11,6 +11,7 @@ import signal
 import shutil
 import subprocess
 import atexit
+import uuid
 from pathlib import Path
 from pymongo import MongoClient
 from pymongo.errors import ServerSelectionTimeoutError
@@ -216,7 +217,10 @@ security:
         """設置數據庫和索引"""
         try:
             # 創建 collections
-            collections = ['video_analysis', 'frame_results', 'screen_analysis', 'stream_sessions']
+            collections = [
+                'video_analysis', 'frame_results', 'screen_analysis', 'stream_sessions',
+                'datasets', 'dataset_videos', 'dataset_runs', 'dataset_run_items'
+            ]
             for collection_name in collections:
                 if collection_name not in self.db.list_collection_names():
                     self.db.create_collection(collection_name)
@@ -250,6 +254,17 @@ security:
             self.db.stream_sessions.create_index("session_id", unique=True)
             self.db.stream_sessions.create_index("camera_name")
             self.db.stream_sessions.create_index("rtsp_url")
+
+            # Dataset / batch run indexes
+            self.db.datasets.create_index("dataset_id", unique=True)
+            self.db.datasets.create_index([("created_at", -1)])
+            self.db.dataset_videos.create_index("video_id", unique=True)
+            self.db.dataset_videos.create_index([("dataset_id", 1), ("created_at", 1)])
+            self.db.dataset_runs.create_index("run_id", unique=True)
+            self.db.dataset_runs.create_index([("dataset_id", 1), ("created_at", -1)])
+            self.db.dataset_run_items.create_index(
+                [("run_id", 1), ("position", 1)], unique=True
+            )
             
             print("📊 索引創建完成")
             
@@ -280,7 +295,7 @@ security:
         self.stop_medical_monitoring()
         self.stop_mongodb()
     
-    def save_analysis_result(self, video_path, session_id, results, source="manual", llm_model="unknown", camera_name=None):
+    def save_analysis_result(self, video_path, session_id, results, source="manual", llm_model="unknown", camera_name=None, dataset_id=None, dataset_video_id=None, dataset_run_id=None, original_video_name=None):
         """儲存分析結果到 MongoDB (檔案路徑版本)"""
         if self.db is None:
             raise Exception("MongoDB 連接未建立")
@@ -299,7 +314,10 @@ security:
             # 1. 更新或建立 VideoAnalysis 記錄 (使用 upsert 避免重複)
             video_analysis_doc = {
                 "video_path": video_path,
-                "video_name": Path(video_path).stem,
+                "video_name": (
+                    Path(original_video_name).stem
+                    if original_video_name else Path(video_path).stem
+                ),
                 "session_id": session_id,
                 "timestamp": datetime.now(),
                 "total_frames": len(results),
@@ -307,7 +325,11 @@ security:
                 "source": source,  # manual, stream 等
                 "llm_model": llm_model,  # 記錄使用的 LLM 模型
                 "camera_name": camera_name, # 記錄攝影機名稱 (用於串流)
-                "task_name": task_name # 記錄任務名稱 (用於串流)
+                "task_name": task_name, # 記錄任務名稱 (用於串流)
+                "dataset_id": dataset_id,
+                "dataset_video_id": dataset_video_id,
+                "dataset_run_id": dataset_run_id,
+                "original_video_name": original_video_name,
             }
             
             # 使用 session_id 作為唯一標識進行 upsert
@@ -866,6 +888,158 @@ security:
         except Exception as e:
             print(f"❌ 更新畫面品質標註失敗: {e}")
             return False
+
+    def create_dataset(self, name, description=""):
+        """建立可重複使用的影片資料集。"""
+        if self.db is None:
+            return None
+        now = datetime.now()
+        dataset_id = str(uuid.uuid4())
+        self.db.datasets.insert_one({
+            "dataset_id": dataset_id,
+            "name": name,
+            "description": description,
+            "created_at": now,
+            "updated_at": now,
+        })
+        return dataset_id
+
+    def get_dataset(self, dataset_id):
+        """取得單一資料集。"""
+        if self.db is None:
+            return None
+        return self.db.datasets.find_one({"dataset_id": dataset_id})
+
+    def get_datasets(self):
+        """取得資料集清單並附上影片數量。"""
+        if self.db is None:
+            return []
+        datasets = list(self.db.datasets.find().sort("created_at", -1))
+        for dataset in datasets:
+            dataset["video_count"] = self.db.dataset_videos.count_documents({
+                "dataset_id": dataset["dataset_id"]
+            })
+        return datasets
+
+    def rename_dataset(self, dataset_id, new_name):
+        """重新命名資料集。"""
+        if self.db is None:
+            return False
+        result = self.db.datasets.update_one(
+            {"dataset_id": dataset_id},
+            {"$set": {
+                "name": new_name,
+                "updated_at": datetime.now(),
+            }}
+        )
+        return result.matched_count > 0
+
+    def delete_dataset(self, dataset_id):
+        """刪除資料集與來源影片中繼資料，保留歷史分析結果。"""
+        if self.db is None:
+            return False
+        dataset = self.db.datasets.find_one({"dataset_id": dataset_id})
+        if not dataset:
+            return False
+        self.db.dataset_videos.delete_many({"dataset_id": dataset_id})
+        result = self.db.datasets.delete_one({"dataset_id": dataset_id})
+        return result.deleted_count > 0
+
+    def add_dataset_video(self, dataset_id, original_name, stored_path, size_bytes):
+        """新增資料集影片的中繼資料。"""
+        if self.db is None:
+            return None
+        video_id = str(uuid.uuid4())
+        self.db.dataset_videos.insert_one({
+            "video_id": video_id,
+            "dataset_id": dataset_id,
+            "original_name": original_name,
+            "stored_path": stored_path,
+            "size_bytes": size_bytes,
+            "created_at": datetime.now(),
+        })
+        self.db.datasets.update_one(
+            {"dataset_id": dataset_id},
+            {"$set": {"updated_at": datetime.now()}}
+        )
+        return video_id
+
+    def get_dataset_videos(self, dataset_id):
+        """依上傳順序取得資料集中的所有影片。"""
+        if self.db is None:
+            return []
+        return list(
+            self.db.dataset_videos.find({"dataset_id": dataset_id})
+            .sort("created_at", 1)
+        )
+
+    def create_dataset_run(self, run_id, dataset_id, dataset_name, model, provider, videos):
+        """建立資料集批次工作及每部影片的工作項目。"""
+        if self.db is None:
+            return False
+        now = datetime.now()
+        self.db.dataset_runs.insert_one({
+            "run_id": run_id,
+            "dataset_id": dataset_id,
+            "dataset_name": dataset_name,
+            "provider": provider,
+            "model": model,
+            "status": "queued",
+            "total_videos": len(videos),
+            "completed_videos": 0,
+            "failed_videos": 0,
+            "created_at": now,
+            "updated_at": now,
+        })
+        if videos:
+            self.db.dataset_run_items.insert_many([
+                {
+                    "run_id": run_id,
+                    "position": position,
+                    "video_id": video["video_id"],
+                    "video_name": video["original_name"],
+                    "status": "queued",
+                    "session_id": None,
+                    "error": None,
+                    "updated_at": now,
+                }
+                for position, video in enumerate(videos, start=1)
+            ])
+        return True
+
+    def update_dataset_run(self, run_id, **fields):
+        """更新批次工作的彙總狀態。"""
+        if self.db is None:
+            return False
+        fields["updated_at"] = datetime.now()
+        result = self.db.dataset_runs.update_one(
+            {"run_id": run_id}, {"$set": fields}
+        )
+        return result.matched_count > 0
+
+    def update_dataset_run_item(self, run_id, video_id, **fields):
+        """更新批次工作中的單一影片狀態。"""
+        if self.db is None:
+            return False
+        fields["updated_at"] = datetime.now()
+        result = self.db.dataset_run_items.update_one(
+            {"run_id": run_id, "video_id": video_id},
+            {"$set": fields}
+        )
+        return result.matched_count > 0
+
+    def get_dataset_run(self, run_id):
+        """取得批次工作與各影片結果。"""
+        if self.db is None:
+            return None
+        run = self.db.dataset_runs.find_one({"run_id": run_id})
+        if not run:
+            return None
+        run["items"] = list(
+            self.db.dataset_run_items.find({"run_id": run_id})
+            .sort("position", 1)
+        )
+        return run
 
     def get_all_videos(self, source_filter=None, search_query=None):
         """取得所有影片分析記錄 (支援搜尋)"""

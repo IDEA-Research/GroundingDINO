@@ -96,10 +96,12 @@ from video_screen_digit_extractor import VideoScreenDigitExtractor
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'your-secret-key-here'
 app.config['UPLOAD_FOLDER'] = 'uploads'
+app.config['DATASET_FOLDER'] = 'datasets'
 app.config['MAX_CONTENT_LENGTH'] = 2000 * 1024 * 1024  # 2GB 最大檔案大小
 
 # 確保上傳目錄存在
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
+os.makedirs(app.config['DATASET_FOLDER'], exist_ok=True)
 os.makedirs('static', exist_ok=True)
 os.makedirs('templates', exist_ok=True)
 
@@ -119,6 +121,22 @@ processing_status = {
     'llm_last_error': None,
     'session_id': None
 }
+
+dataset_batch_status = {
+    'is_running': False,
+    'stop_requested': False,
+    'run_id': None,
+    'dataset_id': None,
+    'dataset_name': None,
+    'current_video': None,
+    'current_index': 0,
+    'total_videos': 0,
+    'completed_videos': 0,
+    'failed_videos': 0,
+    'error': None,
+}
+dataset_batch_lock = threading.Lock()
+dataset_storage_lock = threading.Lock()
 
 
 def parse_env_bool(name, default=False):
@@ -242,19 +260,27 @@ class WebVideoProcessor:
         self.session_id = None
         self.frame_interval_seconds = frame_interval_seconds
         
-    def process_video_with_updates(self, video_path, session_id):
+    def process_video_with_updates(self, video_path, session_id, display_name=None, dataset_context=None):
         """處理影片並更新全域狀態"""
         global processing_status, video_results
         
         self.session_id = session_id
         processing_status['session_id'] = session_id
-        processing_status['is_processing'] = True
-        processing_status['current_video'] = os.path.basename(video_path)
+        if dataset_context:
+            with dataset_batch_lock:
+                if dataset_batch_status['stop_requested']:
+                    return
+                processing_status['is_processing'] = True
+        else:
+            processing_status['is_processing'] = True
+        processing_status['current_video'] = display_name or os.path.basename(video_path)
         processing_status['error'] = None
         processing_status['warning'] = None
         processing_status['llm_failed_count'] = 0
         processing_status['llm_success_count'] = 0
         processing_status['llm_last_error'] = None
+        processing_status['current_minute'] = 0
+        processing_status['progress_percentage'] = 0
         processing_status['results'] = []
         stopped_by_user = False
         
@@ -263,8 +289,9 @@ class WebVideoProcessor:
             self.extractor.load_grounding_model()
             
             # 建立輸出目錄
-            video_name = Path(video_path).stem
-            analysis_dir = os.path.join("video_screen_analysis", video_name)
+            video_name = display_name or Path(video_path).stem
+            analysis_key = session_id
+            analysis_dir = os.path.join("video_screen_analysis", analysis_key)
             #frames_dir = os.extractorpath.join(analysis_dir, "frames")
             frames_dir = os.path.join(analysis_dir, "frames")
             os.makedirs(frames_dir, exist_ok=True)
@@ -313,7 +340,7 @@ class WebVideoProcessor:
                 frame_result = self.extractor.process_single_video_frame(filepath, time_seconds, analysis_dir)
                 
                 # 添加相對路徑供 Web 顯示
-                frame_result['frame_image_url'] = f"./analysis/{video_name}/frames/{filename}"
+                frame_result['frame_image_url'] = f"./analysis/{analysis_key}/frames/{filename}"
                 
                 # 處理螢幕圖片路徑
                 for screen_analysis in frame_result['screen_analyses']:
@@ -339,16 +366,23 @@ class WebVideoProcessor:
             # 新增：儲存到 MongoDB (標記為手動上傳)
             if mongo_manager:
                 try:
+                    context = dataset_context or {}
                     video_analysis_id = mongo_manager.save_analysis_result(
-                        video_path, session_id, results, source="manual",
-                        llm_model=self.extractor.model
+                        video_path, session_id, results,
+                        source="dataset" if dataset_context else "manual",
+                        llm_model=self.extractor.model,
+                        dataset_id=context.get("dataset_id"),
+                        dataset_video_id=context.get("video_id"),
+                        dataset_run_id=context.get("run_id"),
+                        original_video_name=display_name,
                     )
                     print(f"📊 結果已同步到 MongoDB: {video_analysis_id}")
                 except Exception as e:
+                    processing_status['error'] = f'MongoDB 儲存分析結果失敗: {e}'
                     print(f"⚠️  MongoDB 儲存失敗: {e}")
 
             # 分析完成後可自動刪除 uploads 原始影片（僅手動上傳來源）
-            if AUTO_DELETE_UPLOADED_VIDEO and not stopped_by_user:
+            if AUTO_DELETE_UPLOADED_VIDEO and not stopped_by_user and not dataset_context:
                 cleanup_result = safe_delete_uploaded_video(video_path)
                 if cleanup_result['deleted']:
                     print(f"🗑️ 已自動清理上傳原始影片: {video_path} ({cleanup_result['reason']})")
@@ -441,37 +475,45 @@ def upload_video():
     
     if file and allowed_file(file.filename):
         # 檢查是否正在處理其他影片
-        if processing_status['is_processing']:
-            return jsonify({'error': '目前正在處理其他影片，請稍後再試'}), 409
+        with dataset_batch_lock:
+            if processing_status['is_processing'] or dataset_batch_status['is_running']:
+                return jsonify({'error': '目前正在處理其他影片，請稍後再試'}), 409
+            # 在背景執行緒啟動前先保留單工處理權，避免批次請求插入。
+            processing_status['is_processing'] = True
         
         filename = secure_filename(file.filename)
         session_id = str(uuid.uuid4())
         filepath = os.path.join(app.config['UPLOAD_FOLDER'], f"{session_id}_{filename}")
-        file.save(filepath)
-        
-        # 初始化處理器（可配置擷取間隔）
-        frame_interval = 60
-        processor = WebVideoProcessor(
-            provider=provider,
-            base_url=base_url,
-            model=model,
-            api_key=api_key,
-            config_file="groundingdino_source/config/GroundingDINO_SwinT_OGC.py",
-            checkpoint_path="groundingdino_swint_ogc.pth",
-            cpu_only=False,
-            frame_interval_seconds=frame_interval,
-            rtsp_url=None,
-            camera_name=None,
-            remove_screen_content=remove_screen_content
-        )
-        
-        # 在背景執行緒中開始處理
-        thread = threading.Thread(
-            target=processor.process_video_with_updates,
-            args=(filepath, session_id)
-        )
-        thread.daemon = True
-        thread.start()
+        try:
+            file.save(filepath)
+
+            # 初始化處理器（可配置擷取間隔）
+            frame_interval = 60
+            processor = WebVideoProcessor(
+                provider=provider,
+                base_url=base_url,
+                model=model,
+                api_key=api_key,
+                config_file="groundingdino_source/config/GroundingDINO_SwinT_OGC.py",
+                checkpoint_path="groundingdino_swint_ogc.pth",
+                cpu_only=False,
+                frame_interval_seconds=frame_interval,
+                rtsp_url=None,
+                camera_name=None,
+                remove_screen_content=remove_screen_content
+            )
+
+            # 在背景執行緒中開始處理
+            thread = threading.Thread(
+                target=processor.process_video_with_updates,
+                args=(filepath, session_id)
+            )
+            thread.daemon = True
+            thread.start()
+        except Exception as e:
+            processing_status['is_processing'] = False
+            safe_delete_uploaded_video(filepath)
+            return jsonify({'error': f'啟動影片處理失敗: {e}'}), 500
         
         return jsonify({
             'success': True,
@@ -480,6 +522,418 @@ def upload_video():
         })
     
     return jsonify({'error': '不支援的檔案格式'}), 400
+
+def serialize_dataset_document(document):
+    """將資料集 MongoDB 文件轉成可 JSON 化的資料。"""
+    if not document:
+        return document
+    serialized = dict(document)
+    serialized.pop('_id', None)
+    for key, value in list(serialized.items()):
+        if isinstance(value, datetime):
+            serialized[key] = value.isoformat()
+        elif isinstance(value, list):
+            serialized[key] = [
+                serialize_dataset_document(item) if isinstance(item, dict) else item
+                for item in value
+            ]
+    return serialized
+
+
+def normalize_dataset_video_path(stored_path):
+    """將資料集影片路徑限制在 datasets 目錄內。"""
+    if not stored_path:
+        return None
+    datasets_root = Path(app.config['DATASET_FOLDER']).resolve()
+    candidate = Path(stored_path)
+    if not candidate.is_absolute():
+        candidate = (Path('.') / candidate).resolve()
+    else:
+        candidate = candidate.resolve()
+    try:
+        candidate.relative_to(datasets_root)
+    except ValueError:
+        return None
+    return candidate
+
+
+def resolve_dataset_video_path(stored_path):
+    """只允許批次工作讀取 datasets 目錄內的既有影片。"""
+    candidate = normalize_dataset_video_path(stored_path)
+    if candidate is None:
+        return None
+    return candidate if candidate.is_file() else None
+
+
+def run_dataset_batch(run_id, dataset, videos, processor_options):
+    """在單一背景執行緒中依序分析資料集的所有影片。"""
+    global processor, dataset_batch_status
+    completed = 0
+    failed = 0
+    final_status = 'completed'
+
+    try:
+        mongo_manager.update_dataset_run(run_id, status='running', started_at=datetime.now())
+        for index, video in enumerate(videos, start=1):
+            with dataset_batch_lock:
+                if dataset_batch_status['stop_requested']:
+                    final_status = 'stopped'
+                    break
+                dataset_batch_status.update({
+                    'current_video': video['original_name'],
+                    'current_index': index,
+                    'completed_videos': completed,
+                    'failed_videos': failed,
+                })
+
+            video_path = resolve_dataset_video_path(video.get('stored_path'))
+            if video_path is None:
+                failed += 1
+                error = '資料集影片不存在或路徑無效'
+                mongo_manager.update_dataset_run_item(
+                    run_id, video['video_id'], status='failed', error=error
+                )
+                mongo_manager.update_dataset_run(
+                    run_id, completed_videos=completed, failed_videos=failed
+                )
+                continue
+
+            session_id = str(uuid.uuid4())
+            mongo_manager.update_dataset_run_item(
+                run_id, video['video_id'], status='running',
+                session_id=session_id, started_at=datetime.now()
+            )
+
+            processor = WebVideoProcessor(
+                provider=processor_options['provider'],
+                base_url=processor_options['base_url'],
+                model=processor_options['model'],
+                api_key=processor_options['api_key'],
+                config_file="groundingdino_source/config/GroundingDINO_SwinT_OGC.py",
+                checkpoint_path="groundingdino_swint_ogc.pth",
+                cpu_only=False,
+                frame_interval_seconds=60,
+                rtsp_url=None,
+                camera_name=None,
+                remove_screen_content=processor_options['remove_screen_content'],
+            )
+            processor.process_video_with_updates(
+                str(video_path),
+                session_id,
+                display_name=video['original_name'],
+                dataset_context={
+                    'dataset_id': dataset['dataset_id'],
+                    'video_id': video['video_id'],
+                    'run_id': run_id,
+                },
+            )
+
+            with dataset_batch_lock:
+                stop_requested = dataset_batch_status['stop_requested']
+            if stop_requested:
+                mongo_manager.update_dataset_run_item(
+                    run_id, video['video_id'], status='stopped',
+                    error='使用者停止批次工作', finished_at=datetime.now()
+                )
+                final_status = 'stopped'
+                break
+
+            if processing_status.get('error'):
+                failed += 1
+                mongo_manager.update_dataset_run_item(
+                    run_id, video['video_id'], status='failed',
+                    error=processing_status['error'], finished_at=datetime.now()
+                )
+            else:
+                completed += 1
+                mongo_manager.update_dataset_run_item(
+                    run_id, video['video_id'], status='completed',
+                    session_id=session_id, finished_at=datetime.now()
+                )
+            mongo_manager.update_dataset_run(
+                run_id, completed_videos=completed, failed_videos=failed
+            )
+    except Exception as e:
+        final_status = 'failed'
+        with dataset_batch_lock:
+            dataset_batch_status['error'] = str(e)
+        print(f"❌ 資料集批次分析失敗: {e}")
+    finally:
+        try:
+            mongo_manager.update_dataset_run(
+                run_id,
+                status=final_status,
+                completed_videos=completed,
+                failed_videos=failed,
+                finished_at=datetime.now(),
+            )
+        finally:
+            with dataset_batch_lock:
+                dataset_batch_status.update({
+                    'is_running': False,
+                    'current_video': None,
+                    'completed_videos': completed,
+                    'failed_videos': failed,
+                })
+
+
+@app.route('/api/datasets', methods=['GET', 'POST'])
+def datasets_api():
+    """列出或建立影片資料集。"""
+    if not mongo_manager:
+        return jsonify({'error': 'MongoDB 未啟用'}), 503
+    if request.method == 'GET':
+        datasets = [
+            serialize_dataset_document(item)
+            for item in mongo_manager.get_datasets()
+        ]
+        return jsonify({'success': True, 'data': datasets})
+
+    data = request.get_json(silent=True) or {}
+    name = str(data.get('name') or '').strip()
+    description = str(data.get('description') or '').strip()
+    if not name:
+        return jsonify({'error': '資料集名稱不可為空'}), 400
+    if len(name) > 100:
+        return jsonify({'error': '資料集名稱不可超過 100 個字元'}), 400
+    dataset_id = mongo_manager.create_dataset(name, description)
+    if not dataset_id:
+        return jsonify({'error': '建立資料集失敗'}), 500
+    return jsonify({'success': True, 'dataset_id': dataset_id}), 201
+
+
+@app.route('/api/datasets/<dataset_id>', methods=['PATCH', 'DELETE'])
+def dataset_detail_api(dataset_id):
+    """重新命名或刪除資料集；刪除時保留歷史分析結果。"""
+    if not mongo_manager:
+        return jsonify({'error': 'MongoDB 未啟用'}), 503
+
+    with dataset_storage_lock:
+        dataset = mongo_manager.get_dataset(dataset_id)
+        if not dataset:
+            return jsonify({'error': '找不到資料集'}), 404
+
+        if request.method == 'PATCH':
+            data = request.get_json(silent=True) or {}
+            new_name = str(data.get('name') or '').strip()
+            if not new_name:
+                return jsonify({'error': '資料集名稱不可為空'}), 400
+            if len(new_name) > 100:
+                return jsonify({'error': '資料集名稱不可超過 100 個字元'}), 400
+            if not mongo_manager.rename_dataset(dataset_id, new_name):
+                return jsonify({'error': '重新命名資料集失敗'}), 500
+            return jsonify({'success': True, 'name': new_name})
+
+        with dataset_batch_lock:
+            if (
+                dataset_batch_status['is_running']
+                and dataset_batch_status['dataset_id'] == dataset_id
+            ):
+                return jsonify({'error': '資料集正在分析中，請先停止批次工作'}), 409
+
+        videos = mongo_manager.get_dataset_videos(dataset_id)
+        deleted_files = 0
+        cleanup_errors = 0
+        for video in videos:
+            video_path = normalize_dataset_video_path(video.get('stored_path'))
+            if video_path is None:
+                cleanup_errors += 1
+                continue
+            if not video_path.exists():
+                continue
+            if not video_path.is_file():
+                cleanup_errors += 1
+                continue
+            try:
+                video_path.unlink()
+                deleted_files += 1
+            except OSError as e:
+                cleanup_errors += 1
+                print(f"⚠️ 刪除資料集影片失敗: {video_path} ({e})")
+
+        if cleanup_errors:
+            return jsonify({
+                'error': f'有 {cleanup_errors} 個來源影片無法清除，資料集尚未刪除',
+                'deleted_files': deleted_files,
+            }), 500
+
+        if not mongo_manager.delete_dataset(dataset_id):
+            return jsonify({'error': '刪除資料集中繼資料失敗，請重試'}), 500
+
+        dataset_dir = (Path(app.config['DATASET_FOLDER']) / dataset_id).resolve()
+        datasets_root = Path(app.config['DATASET_FOLDER']).resolve()
+        try:
+            dataset_dir.relative_to(datasets_root)
+            dataset_dir.rmdir()
+        except (ValueError, OSError):
+            pass
+
+        return jsonify({
+            'success': True,
+            'deleted_files': deleted_files,
+            'message': '資料集已刪除；歷史分析結果已保留',
+        })
+
+
+@app.route('/api/datasets/<dataset_id>/videos', methods=['GET', 'POST'])
+def dataset_videos_api(dataset_id):
+    """列出影片，或將多部影片永久加入資料集。"""
+    if not mongo_manager:
+        return jsonify({'error': 'MongoDB 未啟用'}), 503
+    dataset = mongo_manager.get_dataset(dataset_id)
+    if not dataset:
+        return jsonify({'error': '找不到資料集'}), 404
+
+    if request.method == 'GET':
+        videos = [
+            serialize_dataset_document(item)
+            for item in mongo_manager.get_dataset_videos(dataset_id)
+        ]
+        return jsonify({'success': True, 'data': videos})
+
+    with dataset_storage_lock:
+        if not mongo_manager.get_dataset(dataset_id):
+            return jsonify({'error': '找不到資料集'}), 404
+        files = request.files.getlist('videos')
+        if not files:
+            return jsonify({'error': '沒有選擇影片'}), 400
+        invalid_names = [
+            file.filename for file in files
+            if not file.filename or not allowed_file(file.filename)
+        ]
+        if invalid_names:
+            return jsonify({
+                'error': '包含不支援的影片格式',
+                'files': invalid_names,
+            }), 400
+
+        dataset_dir = Path(app.config['DATASET_FOLDER']) / dataset_id
+        dataset_dir.mkdir(parents=True, exist_ok=True)
+        uploaded = []
+        for file in files:
+            original_name = file.filename
+            safe_name = secure_filename(original_name) or 'video'
+            stored_path = dataset_dir / f"{uuid.uuid4()}_{safe_name}"
+            file.save(str(stored_path))
+            try:
+                video_id = mongo_manager.add_dataset_video(
+                    dataset_id, original_name, str(stored_path), stored_path.stat().st_size
+                )
+            except Exception:
+                stored_path.unlink(missing_ok=True)
+                raise
+            uploaded.append({'video_id': video_id, 'original_name': original_name})
+        return jsonify({'success': True, 'data': uploaded, 'count': len(uploaded)}), 201
+
+
+@app.route('/api/datasets/<dataset_id>/run', methods=['POST'])
+def start_dataset_run(dataset_id):
+    """依序分析資料集內的全部影片。"""
+    global dataset_batch_status
+    if not mongo_manager:
+        return jsonify({'error': 'MongoDB 未啟用'}), 503
+
+    data = request.get_json(silent=True) or {}
+    provider = data.get('provider')
+    model = data.get('model')
+    user_api_key = data.get('api_key')
+    provider, api_key, base_url, cred_error = resolve_llm_credentials(
+        provider, model, user_api_key
+    )
+    if cred_error:
+        return jsonify({'error': cred_error}), 400
+
+    with dataset_storage_lock:
+        dataset = mongo_manager.get_dataset(dataset_id)
+        if not dataset:
+            return jsonify({'error': '找不到資料集'}), 404
+        videos = mongo_manager.get_dataset_videos(dataset_id)
+        if not videos:
+            return jsonify({'error': '資料集內沒有影片'}), 400
+
+        with dataset_batch_lock:
+            if dataset_batch_status['is_running'] or processing_status['is_processing']:
+                return jsonify({'error': '目前已有影片或資料集正在處理'}), 409
+            run_id = str(uuid.uuid4())
+            dataset_batch_status = {
+                'is_running': True,
+                'stop_requested': False,
+                'run_id': run_id,
+                'dataset_id': dataset_id,
+                'dataset_name': dataset['name'],
+                'current_video': None,
+                'current_index': 0,
+                'total_videos': len(videos),
+                'completed_videos': 0,
+                'failed_videos': 0,
+                'error': None,
+            }
+
+    try:
+        mongo_manager.create_dataset_run(
+            run_id, dataset_id, dataset['name'], model, provider, videos
+        )
+    except Exception as e:
+        with dataset_batch_lock:
+            dataset_batch_status['is_running'] = False
+        return jsonify({'error': f'建立批次工作失敗: {e}'}), 500
+    options = {
+        'provider': provider,
+        'model': model,
+        'api_key': api_key,
+        'base_url': base_url,
+        'remove_screen_content': bool(data.get('remove_screen_content', False)),
+    }
+    try:
+        thread = threading.Thread(
+            target=run_dataset_batch,
+            args=(run_id, dataset, videos, options),
+            daemon=True,
+        )
+        thread.start()
+    except Exception as e:
+        try:
+            try:
+                mongo_manager.update_dataset_run(
+                    run_id,
+                    status='failed',
+                    error=f'無法啟動背景工作: {e}',
+                    finished_at=datetime.now(),
+                )
+            except Exception as update_error:
+                print(f"⚠️ 更新批次啟動失敗狀態時發生錯誤: {update_error}")
+        finally:
+            with dataset_batch_lock:
+                dataset_batch_status['is_running'] = False
+        return jsonify({'error': f'無法啟動批次工作: {e}'}), 500
+    return jsonify({
+        'success': True,
+        'run_id': run_id,
+        'message': f"已開始分析資料集，共 {len(videos)} 部影片",
+    }), 202
+
+
+@app.route('/api/dataset-runs/<run_id>/status')
+def dataset_run_status(run_id):
+    """取得資料集批次工作狀態。"""
+    if not mongo_manager:
+        return jsonify({'error': 'MongoDB 未啟用'}), 503
+    run = mongo_manager.get_dataset_run(run_id)
+    if not run:
+        return jsonify({'error': '找不到批次工作'}), 404
+    return jsonify({'success': True, 'data': serialize_dataset_document(run)})
+
+
+@app.route('/api/dataset-runs/<run_id>/stop', methods=['POST'])
+def stop_dataset_run(run_id):
+    """要求目前的資料集批次工作停止。"""
+    with dataset_batch_lock:
+        if not dataset_batch_status['is_running'] or dataset_batch_status['run_id'] != run_id:
+            return jsonify({'error': '批次工作目前未執行'}), 409
+        dataset_batch_status['stop_requested'] = True
+        processing_status['is_processing'] = False
+    return jsonify({'success': True, 'message': '正在停止批次工作'})
+
 
 def normalize_device_name(llm_returned_name):
     """使用模糊比對將 LLM 回傳的設備名稱正規化"""
@@ -848,6 +1302,9 @@ def stop_processing():
     """停止處理"""
     global processing_status
     processing_status['is_processing'] = False
+    with dataset_batch_lock:
+        if dataset_batch_status['is_running']:
+            dataset_batch_status['stop_requested'] = True
     return jsonify({'success': True, 'message': '已停止處理'})
 
 @app.route('/results/<session_id>')

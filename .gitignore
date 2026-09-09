@@ -147,6 +147,7 @@ grounding/config/configs
 grounding/version.py
 video_screen_analysis/
 uploads/
+datasets/
 test_frames/
 *.mkv
 vis/
