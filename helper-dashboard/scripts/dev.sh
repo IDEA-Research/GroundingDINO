@@ -8,6 +8,14 @@
 # `mock` if unset.
 
 set -euo pipefail
+# Job control: without this, backgrounded pipelines (the `( ... ) | sed ...
+# &` blocks below) share THIS script's own process group, so `kill $PID`
+# in cleanup() only signals the immediate subshell — any descendant that
+# re-execs through a few layers (npx -> sh -c -> the actual next-server
+# binary) survives and keeps the port bound. With `set -m`, each `&` job
+# becomes its own process group (PGID == the job's first PID), so
+# `kill -TERM -PGID` below reliably reaches the whole tree.
+set -m
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
 ROOT="$(pwd)"
@@ -111,10 +119,18 @@ echo "[dev] starting frontend on :3050 (backend=$NEXT_API_BASE_DEV)"
 FRONT_PID=$!
 
 # --- 6. Trap for clean shutdown ----------------------------------------
+# Signal the whole PROCESS GROUP of each job (negative PID), not just the
+# subshell PID, so descendants that re-exec through npx/sh -c/next-server
+# actually die instead of surviving to squat on the port for the next
+# cycle (this is what caused the crash-restart loop under systemd's
+# Restart=always: a leaked next-server from cycle N held :3050, so
+# cycle N+1's frontend failed EADDRINUSE, killed its sibling, and exited).
 cleanup() {
   echo ""
   echo "[dev] shutting down..."
-  kill "$BACK_PID" "$FRONT_PID" 2>/dev/null || true
+  kill -TERM -"$BACK_PID" -"$FRONT_PID" 2>/dev/null || true
+  sleep 1
+  kill -KILL -"$BACK_PID" -"$FRONT_PID" 2>/dev/null || true
   wait "$BACK_PID" "$FRONT_PID" 2>/dev/null || true
 }
 trap cleanup EXIT INT TERM

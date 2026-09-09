@@ -266,7 +266,14 @@ export function DataStatusStrip({
           className="flex flex-wrap items-center gap-2 rounded-md border border-edge bg-canvas px-2 py-1.5"
         >
           <Badge tone={notice.tone}>{notice.badge}</Badge>
-          <span className="min-w-0 flex-1 text-ink">{notice.text}</span>
+          {/* basis-full: on narrow screens the badge + counter (fixed
+              width) leave only a sliver of the flex-wrap row for this
+              span; flex-1/min-w-0 alone lets it shrink into that
+              sliver instead of wrapping to its own line, so long CJK
+              text renders one character per line. Force a full-width
+              line below sm, revert to the original flexible behavior
+              at sm+ where there is room. */}
+          <span className="min-w-0 basis-full text-ink sm:basis-0 sm:flex-1">{notice.text}</span>
           {agg.total > 0 ? (
             <span className="text-xs text-ink-dim">
               {okCount}/{agg.total} 個元件有資料

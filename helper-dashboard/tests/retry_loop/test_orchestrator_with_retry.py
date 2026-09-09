@@ -19,16 +19,45 @@ import pytest
 from app.helper.orchestrator import Orchestrator, _PENDING_SAVE
 from app.helper.retry_loop import AgentValidationRetryLoop
 
+_STORAGE_SUBDIRS = ("dashboards", "tickets", "saved_dashboards", "retry_logs")
 
-def _reset_storage():
+
+@pytest.fixture(autouse=True)
+def _isolated_storage():
+    """Give every test in this module an empty view of the real storage
+    dirs WITHOUT ever deleting real data: back up existing *.json* files
+    in-memory, clear the dirs for the test, then restore the originals
+    and remove anything the test created. Same rationale and pattern as
+    tests/saved_dashboards/test_saved_dashboards.py and
+    test_load_saved.py (DashboardStore/SavedDashboardStore/the ticket
+    store resolve an absolute, non-redirectable storage root by
+    design). `*.json*` (not just `*.json`) also covers retry_logs/
+    entries if HELPER_DASHBOARD_PERSIST_RETRY_LOGS=1 makes any test
+    write `.jsonl`."""
     from pathlib import Path
+
     root = Path("backend/app/storage")
-    for sub in ("dashboards", "tickets", "saved_dashboards", "retry_logs"):
+    backups: dict[Path, bytes] = {}
+    for sub in _STORAGE_SUBDIRS:
         d = root / sub
         if d.exists():
-            for p in d.glob("*.json"):
+            for p in d.glob("*.json*"):
+                backups[p] = p.read_bytes()
                 p.unlink()
     _PENDING_SAVE.clear()
+    try:
+        yield
+    finally:
+        for sub in _STORAGE_SUBDIRS:
+            d = root / sub
+            if d.exists():
+                for p in d.glob("*.json*"):
+                    if p not in backups:
+                        p.unlink()
+        for p, content in backups.items():
+            p.parent.mkdir(parents=True, exist_ok=True)
+            p.write_bytes(content)
+        _PENDING_SAVE.clear()
 
 
 class _ScriptedRuntime:
@@ -125,7 +154,6 @@ def _valid_latency_update() -> dict:
 
 
 def test_generate_accepts_on_first_attempt(monkeypatch):
-    _reset_storage()
     monkeypatch.delenv("HELPER_DASHBOARD_HELPERCODE", raising=False)
     monkeypatch.delenv("HELPER_DASHBOARD_PRE_OUTPUT_REVIEW", raising=False)
     monkeypatch.setenv("HELPER_AGENT_MAX_ATTEMPTS", "3")
@@ -153,7 +181,6 @@ def test_generate_accepts_on_first_attempt(monkeypatch):
 
 
 def test_generate_retry_accepts_on_second_attempt(monkeypatch):
-    _reset_storage()
     monkeypatch.delenv("HELPER_DASHBOARD_HELPERCODE", raising=False)
     monkeypatch.delenv("HELPER_DASHBOARD_PRE_OUTPUT_REVIEW", raising=False)
     monkeypatch.setenv("HELPER_AGENT_MAX_ATTEMPTS", "3")
@@ -186,7 +213,6 @@ def test_generate_retry_accepts_on_second_attempt(monkeypatch):
 
 
 def test_generate_all_attempts_fail_files_ticket(monkeypatch):
-    _reset_storage()
     monkeypatch.delenv("HELPER_DASHBOARD_HELPERCODE", raising=False)
     monkeypatch.delenv("HELPER_DASHBOARD_PRE_OUTPUT_REVIEW", raising=False)
     monkeypatch.setenv("HELPER_AGENT_MAX_ATTEMPTS", "2")
@@ -223,7 +249,6 @@ def test_generate_all_attempts_fail_files_ticket(monkeypatch):
 
 
 def test_patch_all_attempts_fail_files_ticket(monkeypatch):
-    _reset_storage()
     monkeypatch.delenv("HELPER_DASHBOARD_HELPERCODE", raising=False)
     monkeypatch.delenv("HELPER_DASHBOARD_PRE_OUTPUT_REVIEW", raising=False)
     monkeypatch.setenv("HELPER_AGENT_MAX_ATTEMPTS", "2")
@@ -282,7 +307,6 @@ def test_patch_all_attempts_fail_files_ticket(monkeypatch):
 
 
 def test_patch_retry_accepts_on_second_attempt(monkeypatch):
-    _reset_storage()
     monkeypatch.delenv("HELPER_DASHBOARD_HELPERCODE", raising=False)
     monkeypatch.delenv("HELPER_DASHBOARD_PRE_OUTPUT_REVIEW", raising=False)
     monkeypatch.setenv("HELPER_AGENT_MAX_ATTEMPTS", "3")
@@ -364,7 +388,6 @@ def test_review_ticket_outcome_still_delivers_dashboard(monkeypatch):
     humans. The Python-validated draft must still be delivered with
     an honest caveat; the reply must never claim a team was
     notified."""
-    _reset_storage()
     monkeypatch.delenv("HELPER_DASHBOARD_HELPERCODE", raising=False)
     # Force pre-output review ON (off by default in mock mode).
     monkeypatch.setenv("HELPER_DASHBOARD_PRE_OUTPUT_REVIEW", "1")
@@ -429,7 +452,6 @@ def test_review_ticket_outcome_schedules_auto_fix(monkeypatch):
     the auto-fix pipeline and the caveat tells the user a background
     fix has started. (auto_fix itself is stubbed — its internals are
     covered in tests/auto_fix/.)"""
-    _reset_storage()
     monkeypatch.delenv("HELPER_DASHBOARD_HELPERCODE", raising=False)
     monkeypatch.setenv("HELPER_DASHBOARD_PRE_OUTPUT_REVIEW", "1")
     monkeypatch.setenv("HELPER_AGENT_MAX_ATTEMPTS", "2")
