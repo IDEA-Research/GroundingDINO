@@ -1,8 +1,10 @@
 "use client";
 
-import React, { useRef } from "react";
+import React, { useRef, useState } from "react";
 
+import { AbsoluteRangePicker } from "@/components/dashboard/AbsoluteRangePicker";
 import { Button } from "@/components/ui/Button";
+import { IconButton } from "@/components/ui/IconButton";
 import { cx } from "@/components/ui/cx";
 import {
   formatDurationLabel,
@@ -39,14 +41,26 @@ export function TimeRangeControls({
   // Hide the interval readout (tight header rows).
   compact?: boolean;
 }) {
-  const { range, setRange, presets, autoRefresh, refreshNow, inFlightCount } =
-    useTimeRange();
+  const {
+    range,
+    setRange,
+    panRange,
+    zoomOutRange,
+    presets,
+    autoRefresh,
+    refreshNow,
+    inFlightCount,
+  } = useTimeRange();
   const radioRefs = useRef<(HTMLButtonElement | null)[]>([]);
+  const customTriggerRef = useRef<HTMLButtonElement>(null);
+  const [customOpen, setCustomOpen] = useState(false);
 
-  const currentIdx = Math.max(
-    0,
-    presets.findIndex((p) => p.expr === range.expr),
-  );
+  // -1 when "custom" is active: no preset pill should read as checked, and
+  // Math.max(0, -1) would have wrongly re-highlighted 依儀表板設定.
+  const currentIdx = presets.findIndex((p) => p.expr === range.expr);
+  // pan/zoom only make sense against a single active window (a preset or a
+  // custom range) — "依儀表板設定" leaves each widget on its own window.
+  const canPanZoom = range.mode === "override";
 
   const select = (i: number) => {
     const p = presets[i];
@@ -108,7 +122,7 @@ export function TimeRangeControls({
                 type="button"
                 role="radio"
                 aria-checked={checked}
-                tabIndex={checked ? 0 : -1}
+                tabIndex={checked || (currentIdx === -1 && i === 0) ? 0 : -1}
                 onClick={() => select(i)}
                 onKeyDown={(e) => onRadioKeyDown(e, i)}
                 className={cx(
@@ -122,6 +136,61 @@ export function TimeRangeControls({
               </button>
             );
           })}
+        </div>
+
+        <div className="flex items-center gap-0.5">
+          <IconButton
+            label="往前一個範圍寬度"
+            size="sm"
+            variant="ghost"
+            disabled={!canPanZoom}
+            onClick={() => panRange("back")}
+          >
+            <svg viewBox="0 0 16 16" width="14" height="14" fill="none" aria-hidden="true">
+              <path d="M10 3 5 8l5 5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </IconButton>
+          <IconButton
+            label="往後一個範圍寬度"
+            size="sm"
+            variant="ghost"
+            disabled={!canPanZoom}
+            onClick={() => panRange("forward")}
+          >
+            <svg viewBox="0 0 16 16" width="14" height="14" fill="none" aria-hidden="true">
+              <path d="M6 3l5 5-5 5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </IconButton>
+          <IconButton
+            label="縮小（範圍加倍）"
+            size="sm"
+            variant="ghost"
+            disabled={!canPanZoom}
+            onClick={zoomOutRange}
+          >
+            <svg viewBox="0 0 16 16" width="14" height="14" fill="none" aria-hidden="true">
+              <circle cx="7" cy="7" r="4.5" stroke="currentColor" strokeWidth="1.6" />
+              <path d="M5 7h4M11 11l3 3" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+            </svg>
+          </IconButton>
+        </div>
+
+        <div className="relative">
+          <Button
+            ref={customTriggerRef}
+            type="button"
+            variant="secondary"
+            size="sm"
+            onClick={() => setCustomOpen((v) => !v)}
+            aria-expanded={customOpen}
+          >
+            {range.expr === "custom" ? range.label : "自訂範圍…"}
+          </Button>
+          <AbsoluteRangePicker
+            open={customOpen}
+            onClose={() => setCustomOpen(false)}
+            triggerRef={customTriggerRef}
+          />
         </div>
       </div>
 
