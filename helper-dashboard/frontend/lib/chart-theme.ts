@@ -458,7 +458,7 @@ function hueOf(r: number, g: number, b: number): number {
 
 // --- Heatmap color scales ---------------------------------------------------
 
-function mixHex(a: string, b: string, t: number): string {
+export function mixHex(a: string, b: string, t: number): string {
   const ca = parseHexColor(a) ?? [0, 0, 0];
   const cb = parseHexColor(b) ?? [0, 0, 0];
   const c = ca.map((v, i) => Math.round(v + (cb[i] - v) * t));

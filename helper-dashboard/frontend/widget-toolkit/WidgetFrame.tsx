@@ -39,6 +39,10 @@ export interface WidgetFrameProps {
   compact?: boolean;
   className?: string;
   bodyClassName?: string;
+  // Escape hatch for the rare data-driven style Tailwind classes can't
+  // express (e.g. StatCardWidget's optional severity background wash) —
+  // not for general use, prefer className for anything static.
+  style?: React.CSSProperties;
 }
 
 export function WidgetFrame({
@@ -55,6 +59,7 @@ export function WidgetFrame({
   compact = false,
   className,
   bodyClassName,
+  style,
 }: WidgetFrameProps) {
   const stale = status === "stale";
   const staleText = reason && reason.trim() ? reason : "資料過期";
@@ -81,6 +86,7 @@ export function WidgetFrame({
         "hd-card flex h-full min-h-0 flex-col rounded-lg border border-edge bg-surface p-3 text-ink shadow-card",
         className,
       )}
+      style={style}
     >
       <div className="mb-2 flex shrink-0 items-start justify-between gap-2">
         <div className="min-w-0">

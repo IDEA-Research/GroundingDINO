@@ -1,6 +1,6 @@
 "use client";
 
-import React from "react";
+import React, { useState } from "react";
 import {
   CartesianGrid,
   Legend,
@@ -63,6 +63,67 @@ function formatTooltipTime(ms: number, longRange: boolean): string {
   return `${formatTick(ms, longRange)}:${ss}`;
 }
 
+const canCopy =
+  typeof navigator !== "undefined" && !!navigator.clipboard?.writeText;
+
+// Click a point to freeze it (survives the mouse leaving the chart, unlike
+// Recharts' own hover-only Tooltip) — rendered via WidgetFrame's headerExtra
+// slot so it sits with unit/badge instead of overlaying the plot area.
+function PinnedValueBadge({
+  t,
+  v,
+  unit,
+  longRange,
+  onClear,
+}: {
+  t: number;
+  v: number | null;
+  unit: string;
+  longRange: boolean;
+  onClear: () => void;
+}) {
+  const [copied, setCopied] = useState(false);
+  const text = `${formatTooltipTime(t, longRange)}  ${
+    v === null ? "—" : `${v}${unit ? ` ${unit}` : ""}`
+  }`;
+
+  return (
+    <span className="inline-flex items-center gap-1 rounded-md border border-edge-strong bg-surface-2 py-0.5 pl-2 pr-1 font-mono text-xs tabular-nums text-ink">
+      <span className="text-ink-faint">已釘選</span>
+      {text}
+      {canCopy ? (
+        <button
+          type="button"
+          title="複製數值"
+          aria-label="複製釘選數值"
+          onClick={async () => {
+            try {
+              await navigator.clipboard.writeText(text);
+              setCopied(true);
+              setTimeout(() => setCopied(false), 1200);
+            } catch {
+              // Clipboard can be unavailable (permissions, non-secure
+              // context) — the badge still shows the value either way.
+            }
+          }}
+          className="rounded px-1 text-ink-faint hover:bg-surface-3 hover:text-ink"
+        >
+          {copied ? "已複製" : "複製"}
+        </button>
+      ) : null}
+      <button
+        type="button"
+        title="取消釘選"
+        aria-label="取消釘選"
+        onClick={onClear}
+        className="rounded px-1 text-ink-faint hover:bg-surface-3 hover:text-ink"
+      >
+        ×
+      </button>
+    </span>
+  );
+}
+
 export function LineChartWidget({
   widget,
   data,
@@ -113,11 +174,26 @@ export function LineChartWidget({
   const direction = resolveThresholdDirection(thresholds);
   const refLines = sortedForDirection(thresholds, direction);
 
+  const [pinned, setPinned] = useState<{ t: number; v: number | null } | null>(
+    null,
+  );
+
   return (
     <WidgetFrame
       widget={widget}
       unit={unit || null}
       badge={range?.label ?? null}
+      headerExtra={
+        pinned ? (
+          <PinnedValueBadge
+            t={pinned.t}
+            v={pinned.v}
+            unit={unit}
+            longRange={longRange}
+            onClear={() => setPinned(null)}
+          />
+        ) : null
+      }
       {...frameStatusProps(data)}
       footer={thresholds.length > 0 ? <NonDiagnosticFooter /> : null}
     >
@@ -127,6 +203,15 @@ export function LineChartWidget({
           syncId="dash"
           syncMethod="value"
           margin={{ top: 8, right: 12, bottom: 0, left: 0 }}
+          onClick={(e) => {
+            const label = e?.activeLabel;
+            if (label === undefined || label === null) return;
+            const payloadValue = e?.activePayload?.[0]?.value;
+            setPinned({
+              t: Number(label),
+              v: typeof payloadValue === "number" ? payloadValue : null,
+            });
+          }}
         >
           {showGrid ? (
             <CartesianGrid strokeDasharray="3 3" stroke={theme.gridStroke} />

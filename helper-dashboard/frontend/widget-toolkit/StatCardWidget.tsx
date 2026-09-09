@@ -4,6 +4,7 @@ import React from "react";
 
 import {
   colorForSeverity,
+  mixHex,
   useChartTheme,
   vitalColorFor,
 } from "@/lib/chart-theme";
@@ -61,10 +62,27 @@ export function StatCardWidget({
   const sampleTs = sampleTsOf(data);
   const averaged = data.nSeries > 1 && !filters?.patient_id;
 
+  // Optional Grafana BigValue-style "background" color mode (opt-in via
+  // spec, default off): a LOW-saturation wash toward the active severity
+  // color, only while a threshold is actually breached — a normal reading
+  // stays neutral so the wash reads as "something needs attention", not
+  // decoration. Text/icon still carry the same information (color is never
+  // the only cue).
+  const colorMode = (widget.options as { color_mode?: unknown } | undefined)
+    ?.color_mode;
+  const washStyle =
+    active && colorMode === "background"
+      ? {
+          backgroundColor: mixHex(theme.colors.surface, color, 0.12),
+          borderColor: mixHex(theme.colors.edge, color, 0.4),
+        }
+      : undefined;
+
   return (
     <WidgetFrame
       widget={widget}
       badge={range?.label ?? null}
+      style={washStyle}
       {...frameStatusProps(data)}
       footer={thresholds.length > 0 ? <NonDiagnosticFooter /> : null}
     >
