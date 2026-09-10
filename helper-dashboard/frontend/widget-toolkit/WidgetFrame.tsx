@@ -1,6 +1,6 @@
 "use client";
 
-import React from "react";
+import React, { createContext, useContext } from "react";
 
 import { Badge } from "@/components/ui/Badge";
 import { Spinner } from "@/components/ui/Button";
@@ -61,6 +61,43 @@ export interface WidgetFrameProps {
   onRemove?: () => void;
 }
 
+// Alternative wiring for the panel-menu callbacks above, keyed by widget
+// id. Every concrete widget component (StatCardWidget, BarGaugeWidget,
+// ...) instantiates WidgetFrame itself and only ever passes it `widget` +
+// `data` — none of them accept or forward onView/onEdit/onDuplicate/
+// onRemove, and Phase 5 deliberately does not touch those files to wire
+// per-widget callback props through 10 call sites. Instead, whoever owns
+// the dashboard-level "open the edit drawer / fullscreen view for widget
+// X" logic (DashboardPreview.tsx) wraps the tree it renders panels into
+// with <WidgetActionsProvider>; every WidgetFrame instance underneath
+// then falls back to these generic, id-parameterized callbacks when its
+// own onView/onEdit/onDuplicate/onRemove prop is not explicitly set. An
+// explicit prop passed directly to a WidgetFrame instance always wins, so
+// this is purely additive — nothing changes for a WidgetFrame rendered
+// outside any provider (e.g. the headless /dashboard/[id] evaluator).
+export interface WidgetActions {
+  onView?: (widgetId: string) => void;
+  onEdit?: (widgetId: string) => void;
+  onDuplicate?: (widgetId: string) => void;
+  onRemove?: (widgetId: string) => void;
+}
+
+const WidgetActionsContext = createContext<WidgetActions | null>(null);
+
+export function WidgetActionsProvider({
+  actions,
+  children,
+}: {
+  actions: WidgetActions | null;
+  children: React.ReactNode;
+}) {
+  return (
+    <WidgetActionsContext.Provider value={actions}>
+      {children}
+    </WidgetActionsContext.Provider>
+  );
+}
+
 export function WidgetFrame({
   widget,
   children,
@@ -81,9 +118,22 @@ export function WidgetFrame({
   onDuplicate,
   onRemove,
 }: WidgetFrameProps) {
+  const ctxActions = useContext(WidgetActionsContext);
+  const effectiveOnView =
+    onView ?? (ctxActions?.onView ? () => ctxActions.onView!(widget.id) : undefined);
+  const effectiveOnEdit =
+    onEdit ?? (ctxActions?.onEdit ? () => ctxActions.onEdit!(widget.id) : undefined);
+  const effectiveOnDuplicate =
+    onDuplicate ??
+    (ctxActions?.onDuplicate ? () => ctxActions.onDuplicate!(widget.id) : undefined);
+  const effectiveOnRemove =
+    onRemove ?? (ctxActions?.onRemove ? () => ctxActions.onRemove!(widget.id) : undefined);
+
   const stale = status === "stale";
   const staleText = reason && reason.trim() ? reason : "資料過期";
-  const hasMenu = Boolean(onView || onEdit || onDuplicate || onRemove);
+  const hasMenu = Boolean(
+    effectiveOnView || effectiveOnEdit || effectiveOnDuplicate || effectiveOnRemove,
+  );
 
   if (compact) {
     return (
@@ -183,19 +233,19 @@ export function WidgetFrame({
               items={[
                 {
                   label: "全螢幕檢視",
-                  onSelect: onView,
-                  disabled: !onView,
+                  onSelect: effectiveOnView,
+                  disabled: !effectiveOnView,
                 },
-                { label: "編輯", onSelect: onEdit, disabled: !onEdit },
+                { label: "編輯", onSelect: effectiveOnEdit, disabled: !effectiveOnEdit },
                 {
                   label: "複製",
-                  onSelect: onDuplicate,
-                  disabled: !onDuplicate,
+                  onSelect: effectiveOnDuplicate,
+                  disabled: !effectiveOnDuplicate,
                 },
                 {
                   label: "移除",
-                  onSelect: onRemove,
-                  disabled: !onRemove,
+                  onSelect: effectiveOnRemove,
+                  disabled: !effectiveOnRemove,
                   tone: "danger",
                 },
               ]}

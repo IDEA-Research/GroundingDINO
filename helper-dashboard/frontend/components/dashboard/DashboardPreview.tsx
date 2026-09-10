@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useMemo } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import type { Layout } from "react-grid-layout";
 
 import { Badge } from "@/components/ui/Badge";
@@ -19,7 +19,9 @@ import { widgetQuery } from "@/lib/spec-schema";
 import { TimeRangeProvider, useHasTimeRangeProvider } from "@/lib/time-range";
 import { QueryFiltersProvider } from "@/lib/useQueryData";
 import { PairedStatGauge } from "@/widget-toolkit/PairedStatGauge";
+import { WidgetActionsProvider } from "@/widget-toolkit/WidgetFrame";
 import { TimeRangeControls } from "@/components/dashboard/TimeRangeControls";
+import { WidgetEditDrawer } from "@/components/dashboard/WidgetEditDrawer";
 import {
   DashboardGrid,
   GRID_COLUMNS,
@@ -220,6 +222,46 @@ function DashboardPreviewBody({
 }: DashboardPreviewProps) {
   const { unlocked: devUnlocked } = useDevMode();
 
+  // Phase 5: WidgetFrame's hover-menu 編輯/全螢幕檢視 callbacks (see
+  // WidgetActionsProvider in widget-toolkit/WidgetFrame.tsx). Only wired
+  // up in editable mode ("/") — the headless /dashboard/[id] evaluator
+  // route stays frozen, exactly like drag/resize.
+  const [editingWidgetId, setEditingWidgetId] = useState<string | null>(null);
+  const [viewingWidgetId, setViewingWidgetId] = useState<string | null>(null);
+
+  const editingWidget = useMemo(
+    () => (spec ? spec.widgets.find((w) => w.id === editingWidgetId) ?? null : null),
+    [spec, editingWidgetId],
+  );
+  const viewingWidget = useMemo(
+    () => (spec ? spec.widgets.find((w) => w.id === viewingWidgetId) ?? null : null),
+    [spec, viewingWidgetId],
+  );
+
+  const widgetActions = useMemo(
+    () =>
+      editable
+        ? {
+            onEdit: (id: string) => setEditingWidgetId(id),
+            onView: (id: string) => setViewingWidgetId(id),
+          }
+        : null,
+    [editable],
+  );
+
+  // The edit drawer hands back one fully-edited WidgetSpec; folding it
+  // into the full DashboardSpec and persisting it is onLayoutChange's job
+  // already (setSpec + patchSaved position-only PATCH when saved) — same
+  // call site DashboardGrid's drag/resize uses, no new save path.
+  const handleWidgetSaved = (nextWidget: WidgetSpec) => {
+    if (!spec) return;
+    const nextWidgets = spec.widgets.map((w) =>
+      w.id === nextWidget.id ? nextWidget : w,
+    );
+    onLayoutChange?.({ ...spec, widgets: nextWidgets });
+    setEditingWidgetId(null);
+  };
+
   const columns = spec?.layout?.columns || 12;
   const rowHeight = spec?.layout?.row_height || 40;
   const scale = columnScale(columns);
@@ -316,6 +358,7 @@ function DashboardPreviewBody({
 
   return (
     <QueryFiltersProvider filters={filters}>
+      <WidgetActionsProvider actions={widgetActions}>
       <div className={["relative flex h-full min-h-0 flex-col", className].filter(Boolean).join(" ")}>
         {showHeader ? (
           <div className="shrink-0 border-b border-edge px-3 py-2">
@@ -382,6 +425,62 @@ function DashboardPreviewBody({
           </div>
         ) : null}
       </div>
+
+      {editingWidget ? (
+        <WidgetEditDrawer
+          widget={editingWidget}
+          onClose={() => setEditingWidgetId(null)}
+          onSave={handleWidgetSaved}
+        />
+      ) : null}
+
+      {viewingWidget ? (
+        <WidgetViewModal widget={viewingWidget} onClose={() => setViewingWidgetId(null)} />
+      ) : null}
+      </WidgetActionsProvider>
     </QueryFiltersProvider>
+  );
+}
+
+// Fullscreen 「全螢幕檢視」 for WidgetFrame's onView — a plain centered
+// overlay reusing renderWidget's own dispatch (same as the edit drawer's
+// preview), not a second rendering path. Escape or a backdrop click
+// closes it.
+function WidgetViewModal({
+  widget,
+  onClose,
+}: {
+  widget: WidgetSpec;
+  onClose: () => void;
+}) {
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [onClose]);
+
+  // Same id-collision reasoning as WidgetEditDrawer's preview.
+  const previewWidget = useMemo<WidgetSpec>(
+    () => ({ ...widget, id: `${widget.id}__fullscreen` }),
+    [widget],
+  );
+
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-label={`${widget.title} 全螢幕檢視`}
+      className="fixed inset-0 z-50 flex items-center justify-center bg-canvas/70 p-6"
+      onClick={onClose}
+    >
+      <div
+        className="flex h-full max-h-[85vh] w-full max-w-4xl flex-col"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {renderWidget(previewWidget)}
+      </div>
+    </div>
   );
 }
