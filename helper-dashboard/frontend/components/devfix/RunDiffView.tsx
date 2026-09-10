@@ -53,6 +53,52 @@ function statusTone(s: string): "ok" | "danger" | "info" | "neutral" {
   return "neutral";
 }
 
+// % floor so a small diff still shows a visible sliver against the widest
+// file in the run, rather than collapsing to nothing.
+const MIN_BAR_SHARE = 6;
+
+// Compact stacked bar for one file's additions/deletions. Bar *length* is
+// relative to the largest single-file change in this diff (maxChange), so
+// files can be compared to each other at a glance; the fill is then split
+// green/red by each file's own add:delete ratio. additions-only ("added")
+// and deletions-only ("deleted") files degrade to a single solid segment
+// rather than an empty or half-drawn bar.
+function DiffChangeBar({
+  additions,
+  deletions,
+  maxChange,
+}: {
+  additions: number;
+  deletions: number;
+  maxChange: number;
+}) {
+  const add = additions || 0;
+  const del = deletions || 0;
+  const total = add + del;
+  if (total <= 0) return null;
+
+  const widthPct = Math.max(MIN_BAR_SHARE, Math.round((total / maxChange) * 100));
+  const addSharePct = (add / total) * 100;
+  const delSharePct = 100 - addSharePct;
+
+  return (
+    <span
+      className="inline-flex h-1.5 w-20 shrink-0 overflow-hidden rounded-full bg-surface-3"
+      role="img"
+      aria-label={`+${add} −${del}`}
+    >
+      <span className="flex h-full" style={{ width: `${widthPct}%` }}>
+        {add > 0 ? (
+          <span className="h-full bg-ok" style={{ width: `${addSharePct}%` }} />
+        ) : null}
+        {del > 0 ? (
+          <span className="h-full bg-danger" style={{ width: `${delSharePct}%` }} />
+        ) : null}
+      </span>
+    </span>
+  );
+}
+
 export function RunDiffView({ runId, active }: { runId: string; active: boolean }) {
   const [data, setData] = useState<DevRunDiffResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -85,6 +131,13 @@ export function RunDiffView({ runId, active }: { runId: string; active: boolean 
 
   const totalAdd = data?.files.reduce((n, f) => n + (f.additions || 0), 0) ?? 0;
   const totalDel = data?.files.reduce((n, f) => n + (f.deletions || 0), 0) ?? 0;
+  // Widest single-file change in this diff; the per-file bar's length is
+  // relative to this so files can be compared to each other at a glance.
+  const maxChange = useMemo(() => {
+    const max =
+      data?.files.reduce((m, f) => Math.max(m, (f.additions || 0) + (f.deletions || 0)), 0) ?? 0;
+    return max > 0 ? max : 1;
+  }, [data]);
 
   return (
     <div className="space-y-2">
@@ -136,6 +189,11 @@ export function RunDiffView({ runId, active }: { runId: string; active: boolean 
                         <Badge tone={statusTone(info.status)}>{info.status}</Badge>
                         <span className="text-ok">+{info.additions}</span>
                         <span className="text-danger">−{info.deletions}</span>
+                        <DiffChangeBar
+                          additions={info.additions}
+                          deletions={info.deletions}
+                          maxChange={maxChange}
+                        />
                       </>
                     ) : null}
                   </span>
