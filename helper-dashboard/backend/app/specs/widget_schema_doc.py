@@ -39,8 +39,12 @@ _OPTION_KEY_DOC: dict[str, str] = {
     "show_legend": "bool — line/area: show series legend",
     "stacked": "bool — line: stack series instead of overlay",
     "fill": "bool — line: fill area below the curve",
-    "min": "number — gauge/line: y-axis lower bound",
-    "max": "number — gauge/line: y-axis upper bound",
+    "min": "number — gauge/bar_gauge/line: y-axis lower bound",
+    "max": "number — gauge/bar_gauge/line: y-axis upper bound",
+    "display_mode": (
+        "'basic' | 'gradient' | 'retro-lcd' — bar_gauge: fill style "
+        "(default 'basic')"
+    ),
     "columns": "list[str] — table: column ids in display order",
     "severity_filter": "str — alert_list: keep only this severity or higher",
     "row_limit": "int — table/alert_list: cap rendered rows",
@@ -64,6 +68,7 @@ _TYPICAL_OPTIONS: dict[str, list[str]] = {
     "line_chart": ["show_grid", "show_legend", "stacked", "fill", "min", "max", "decimals"],
     "stat_card": ["decimals"],
     "gauge": ["min", "max", "decimals"],
+    "bar_gauge": ["min", "max", "display_mode", "decimals"],
     "table": ["columns", "row_limit", "sort_by", "sort_dir"],
     "alert_list": ["severity_filter", "row_limit"],
     "pie_chart": ["show_labels", "show_legend", "donut", "decimals"],
@@ -77,6 +82,12 @@ _TYPE_PURPOSE: dict[str, str] = {
     "line_chart": "Time-series over a range query. Best for trends, percentiles, throughput.",
     "stat_card": "Single big number from an instant query. Best for current KPIs.",
     "gauge": "Bounded instant value (needs min/max in options). Best for utilization 0..1.",
+    "bar_gauge": (
+        "Bounded instant value as a horizontal bar (needs min/max in "
+        "options). `display_mode` picks 'basic' (single threshold "
+        "colour), 'gradient' (continuous colour blend across "
+        "thresholds) or 'retro-lcd' (segmented LED-style cells)."
+    ),
     "table": (
         "Per-label breakdown from an instant query. For several metrics side "
         "by side (e.g. HR + SpO2 per patient) use `queries` instead of `query`. "

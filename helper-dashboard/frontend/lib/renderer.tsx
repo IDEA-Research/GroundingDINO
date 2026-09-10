@@ -22,6 +22,7 @@ import { hasContent, useQueryData, type WidgetData } from "./useQueryData";
 import { LineChartWidget } from "@/widget-toolkit/LineChartWidget";
 import { StatCardWidget } from "@/widget-toolkit/StatCardWidget";
 import { GaugeWidget } from "@/widget-toolkit/GaugeWidget";
+import { BarGaugeWidget } from "@/widget-toolkit/BarGaugeWidget";
 import { TableWidget } from "@/widget-toolkit/TableWidget";
 import { AlertListWidget } from "@/widget-toolkit/AlertListWidget";
 import { PieChartWidget } from "@/widget-toolkit/PieChartWidget";
@@ -129,6 +130,12 @@ export function renderWidget(
           {(data) => (
             <GaugeWidget widget={widget} data={data} compact={opts.compact} />
           )}
+        </QueryGate>
+      );
+    case "bar_gauge":
+      return (
+        <QueryGate widget={widget}>
+          {(data) => <BarGaugeWidget widget={widget} data={data} />}
         </QueryGate>
       );
     case "table":

@@ -34,6 +34,7 @@ class WidgetType(str, Enum):
     line_chart = "line_chart"
     stat_card = "stat_card"
     gauge = "gauge"
+    bar_gauge = "bar_gauge"
     table = "table"
     alert_list = "alert_list"
     pie_chart = "pie_chart"
@@ -378,6 +379,7 @@ ALLOWED_OPTION_KEYS: set[str] = {
     "fill",
     "min",
     "max",
+    "display_mode",
     "columns",
     "severity_filter",
     "row_limit",
