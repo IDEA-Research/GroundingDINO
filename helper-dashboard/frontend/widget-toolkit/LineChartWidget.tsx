@@ -20,6 +20,7 @@ import {
   useChartTheme,
   vitalColorFor,
 } from "@/lib/chart-theme";
+import { crosshairTooltipContentProps, useCrosshair } from "@/lib/crosshair";
 import { widgetQuery, type WidgetSpec } from "@/lib/spec-schema";
 import {
   resolveThresholdDirection,
@@ -37,8 +38,12 @@ import {
 // X values stay numeric (epoch ms), never pre-formatted strings: every
 // chart pins the IDENTICAL time window from the response's end and
 // range_seconds (contract C5), so two charts with different data
-// coverage still paint the same window at the same pixel width. All
-// line charts share syncId="dash" for a common crosshair/tooltip.
+// coverage still paint the same window at the same pixel width. Every
+// line chart in the same dashboard shares one syncId via
+// lib/crosshair.tsx's CrosshairProvider/useCrosshair() (mounted once in
+// DashboardPreview.tsx) for a common crosshair/tooltip — default mode
+// "shared-tooltip" reproduces the old hardcoded syncId="dash" behavior
+// exactly (synced cursor + each chart's own full Tooltip box).
 //
 // Gaps: the backend emits `v: null` where samples are farther apart than
 // 2 x step; connectNulls stays FALSE so a gap is drawn as a gap.
@@ -135,6 +140,7 @@ export function LineChartWidget({
   const filters = useQueryFilters();
   const query = widgetQuery(widget);
   const range = useEffectiveRange(widget.query ?? null);
+  const { mode: crosshairMode, syncId } = useCrosshair();
   const opts = (widget.options ?? {}) as Record<string, unknown>;
   const showGrid = opts.show_grid !== false;
   const showLegend = opts.show_legend === true;
@@ -200,7 +206,7 @@ export function LineChartWidget({
       <ResponsiveContainer width="100%" height="100%">
         <LineChart
           data={rows}
-          syncId="dash"
+          syncId={syncId}
           syncMethod="value"
           margin={{ top: 8, right: 12, bottom: 0, left: 0 }}
           onClick={(e) => {
@@ -259,6 +265,7 @@ export function LineChartWidget({
             ]}
             contentStyle={theme.tooltipContentStyle}
             labelStyle={theme.tooltipLabelStyle}
+            {...crosshairTooltipContentProps(crosshairMode)}
           />
           {showLegend ? (
             <Legend

@@ -10,7 +10,8 @@ import {
 } from "@/lib/chart-theme";
 import { sampleTsOf } from "@/lib/data-status";
 import { widgetQuery, type WidgetSpec } from "@/lib/spec-schema";
-import { activeThreshold, resolveThresholdDirection } from "@/lib/threshold";
+import { activeThresholdViaEngine } from "@/lib/threshold-adapter";
+import { resolveThresholdDirection } from "@/lib/threshold";
 import { useEffectiveRange } from "@/lib/time-range";
 import {
   REASON_TEXT,
@@ -51,7 +52,7 @@ export function StatCardWidget({
   const value = data.latest;
   const thresholds = widget.thresholds ?? [];
   const direction = resolveThresholdDirection(thresholds);
-  const active = activeThreshold(value, thresholds, direction);
+  const active = activeThresholdViaEngine(value, thresholds, direction);
 
   const color = active
     ? colorForSeverity(active.severity, theme.colors)
@@ -68,13 +69,29 @@ export function StatCardWidget({
   // stays neutral so the wash reads as "something needs attention", not
   // decoration. Text/icon still carry the same information (color is never
   // the only cue).
+  //
+  // Ratios checked against the Grafana-dark tokens (surface #181b1f, edge
+  // #3c3e45) and the status colors they resolve to (ok #6ccf8e, warn
+  // #fbad37, danger #ff5286): background stays at 12% — the numeral/label
+  // TEXT (drawn in the full, unmixed `color`) against this washed
+  // background already contrasts 4.83:1 (danger, the weakest case) to
+  // 7.23:1 (warn), comfortably clearing WCAG AA's 4.5:1 even before
+  // accounting for the large stat-numeral font's lower 3:1 bar — raising
+  // the wash further would only erode that margin, not help it. The
+  // border ratio moved 0.4 -> 0.55: at 0.4, the border-vs-card contrast
+  // (WCAG 1.4.11's >=3:1 guideline for a UI component boundary) was
+  // uneven and, for danger specifically, short of it (ok 3.45:1, warn
+  // 3.44:1, danger only 2.57:1 — the most severe state had the least
+  // visible frame). At 0.55 all three clear 3:1 (ok 4.51:1, warn 4.53:1,
+  // danger 3.13:1) without turning the border neon (danger's border
+  // resolves to a muted #a74969, not a saturated red).
   const colorMode = (widget.options as { color_mode?: unknown } | undefined)
     ?.color_mode;
   const washStyle =
     active && colorMode === "background"
       ? {
           backgroundColor: mixHex(theme.colors.surface, color, 0.12),
-          borderColor: mixHex(theme.colors.edge, color, 0.4),
+          borderColor: mixHex(theme.colors.edge, color, 0.55),
         }
       : undefined;
 

@@ -11,12 +11,12 @@ import {
 import { sampleTsOf } from "@/lib/data-status";
 import { widgetQuery, type WidgetSpec } from "@/lib/spec-schema";
 import {
-  activeThreshold,
   resolveThresholdDirection,
   sortedForDirection,
   thresholdBands,
   thresholdCaption,
 } from "@/lib/threshold";
+import { activeThresholdViaEngine } from "@/lib/threshold-adapter";
 import type { WidgetData } from "@/lib/useQueryData";
 import {
   NonDiagnosticFooter,
@@ -62,7 +62,7 @@ export function GaugeWidget({
   const thresholds = widget.thresholds ?? [];
   const direction = resolveThresholdDirection(thresholds);
   const bands = thresholdBands(thresholds, direction, frac);
-  const active = activeThreshold(raw, thresholds, direction);
+  const active = activeThresholdViaEngine(raw, thresholds, direction);
 
   const normalColor =
     widget.encoding?.color ||

@@ -12,28 +12,33 @@ import React, { createContext, useContext, useMemo, useState } from "react";
 //                          every panel shows its own value tooltip box at
 //                          the synced position.
 //
-// Mechanism note (read before wiring Phase 4): recharts' own
+// Mechanism note: recharts' own
 //   <LineChart syncId="..." syncMethod="value">
 // already synchronizes the hover/cursor state across every chart sharing
-// the same syncId — LineChartWidget.tsx already does exactly this today,
-// with syncId HARDCODED to the literal "dash". That existing behavior
-// (synced cursor + each chart's own full Tooltip box) already IS
+// the same syncId — LineChartWidget.tsx did exactly this before this
+// module existed, with syncId HARDCODED to the literal "dash". That old
+// behavior (synced cursor + each chart's own full Tooltip box) already IS
 // "shared-tooltip" — it is the cheap, already-proven case, not the
-// expensive one. Getting "shared-crosshair" (cursor line only, no value
-// box on panels you are not pointing at) needs one extra, well-known
-// recharts recipe: give <Tooltip> a `content={() => null}` renderer while
-// leaving its `cursor` prop alone — recharts renders the synced cursor
-// line independently of what `content` returns, so this suppresses only
-// the floating value box. `crosshairTooltipContentProps()` below produces
-// that prop. This recipe has NOT been visually verified in a live browser
-// as part of this change (this environment is a headless SSH box with no
-// browser) — it is a standard, documented recharts pattern rather than a
-// fragile hack, but Phase 4 should eyeball it once LineChartWidget/
-// BarChartWidget actually consume this provider.
+// expensive one, which is why CrosshairProvider defaults to it (see
+// defaultMode below) — LineChartWidget.tsx now reads its syncId from
+// useCrosshair() instead of the hardcoded literal, with identical
+// resulting behavior at the default mode. Getting "shared-crosshair"
+// (cursor line only, no value box on panels you are not pointing at)
+// needs one extra, well-known recharts recipe: give <Tooltip> a
+// `content={() => null}` renderer while leaving its `cursor` prop alone —
+// recharts renders the synced cursor line independently of what `content`
+// returns, so this suppresses only the floating value box.
+// `crosshairTooltipContentProps()` below produces that prop and is
+// already spread onto LineChartWidget's <Tooltip>. This recipe has NOT
+// been visually verified in a live browser (this environment is a
+// headless SSH box with no browser) — it is a standard, documented
+// recharts pattern rather than a fragile hack, but it should be eyeballed
+// in a real browser before "shared-crosshair" is exposed as a
+// user-facing choice (no such UI exists yet — see the bottom of this
+// file).
 //
-// This file only builds the Context/Provider + helpers. Wiring
-// LineChartWidget.tsx / BarChartWidget.tsx onto it is Phase 4 — see the
-// integration sketch at the bottom of this file.
+// BarChartWidget.tsx has no syncId today and is left untouched — nothing
+// here changes its behavior.
 
 export type CrosshairMode = "off" | "shared-crosshair" | "shared-tooltip";
 
@@ -114,19 +119,7 @@ export function crosshairTooltipContentProps(
 }
 
 // ---------------------------------------------------------------------------
-// Phase 4 integration sketch for LineChartWidget.tsx (NOT applied in this
-// phase — widget render logic is out of scope here). Today's code has:
-//
-//   <LineChart data={rows} syncId="dash" syncMethod="value" ...>
-//     ...
-//     <Tooltip
-//       labelFormatter={...}
-//       formatter={...}
-//       contentStyle={theme.tooltipContentStyle}
-//       labelStyle={theme.tooltipLabelStyle}
-//     />
-//
-// becomes:
+// Integration status: LineChartWidget.tsx now consumes this provider —
 //
 //   const { mode, syncId } = useCrosshair();
 //   ...
@@ -140,15 +133,20 @@ export function crosshairTooltipContentProps(
 //       {...crosshairTooltipContentProps(mode)}
 //     />
 //
-// and the dashboard shell (wherever DashboardGrid/DashboardPreview is
-// mounted, once per rendered dashboard) wraps its panels with:
+// — and DashboardPreview.tsx (the single shared entry point both "/" and
+// /dashboard/[id] render through) wraps its panels once per rendered
+// dashboard with:
 //
-//   <CrosshairProvider dashboardId={dashboard.id}>
-//     <DashboardGrid ... />
+//   <CrosshairProvider dashboardId={spec?.dashboard_id ?? null}>
+//     <DashboardPreviewBody ... />
 //   </CrosshairProvider>
 //
-// BarChartWidget.tsx (no syncId today) picks up the same two lines to join
-// the same synced group. A widget that should NEVER participate (e.g. a
-// modal preview rendered outside the dashboard's provider) needs no
-// special-casing — useCrosshair() falls back to "off" with no provider
+// No mode-switcher UI exists yet (mode is fixed at the "shared-tooltip"
+// default) — exposing "off"/"shared-crosshair" as a user choice (e.g. a
+// Dashboard Settings control calling setMode) is a later, separate task.
+// BarChartWidget.tsx has no syncId today and was left untouched; wiring it
+// onto the same provider, if it ever needs cross-chart sync, is the same
+// two-line change shown above. A widget that should NEVER participate
+// (e.g. a modal preview rendered outside the dashboard's provider) needs
+// no special-casing — useCrosshair() falls back to "off" with no provider
 // mounted.

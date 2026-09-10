@@ -5,6 +5,7 @@ import type { Layout } from "react-grid-layout";
 
 import { Badge } from "@/components/ui/Badge";
 import { Disclosure } from "@/components/ui/Disclosure";
+import { CrosshairProvider } from "@/lib/crosshair";
 import { useDevMode } from "@/lib/dev-mode";
 import { collectRenderProblems, renderWidget } from "@/lib/renderer";
 import type {
@@ -187,7 +188,16 @@ function toGridGeometry(
 
 export function DashboardPreview(props: DashboardPreviewProps) {
   const hasProvider = useHasTimeRangeProvider();
-  const content = <DashboardPreviewBody {...props} />;
+  // CrosshairProvider scopes every panel rendered for THIS dashboard (line
+  // charts today; any future synced widget for free) under one syncId —
+  // mounted here, the single shared entry point both "/" and
+  // /dashboard/[id] render through, so neither call site has to remember
+  // to wrap it itself.
+  const content = (
+    <CrosshairProvider dashboardId={props.spec?.dashboard_id ?? null}>
+      <DashboardPreviewBody {...props} />
+    </CrosshairProvider>
+  );
   if (hasProvider || !props.spec) return content;
   return (
     <TimeRangeProvider refreshInterval={props.spec.refresh_interval}>
