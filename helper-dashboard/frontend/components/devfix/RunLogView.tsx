@@ -64,7 +64,9 @@ const KIND_LABEL: Record<LogKind, string> = {
   other: "事件",
 };
 
-function kindTone(k: LogKind, status: string | null): "neutral" | "ok" | "warn" | "danger" | "info" | "accent" {
+type Tone = "neutral" | "ok" | "warn" | "danger" | "info" | "accent";
+
+function kindTone(k: LogKind, status: string | null): Tone {
   if (k === "error" || status === "error") return "danger";
   if (k === "edit") return "accent";
   if (k === "bash") return "info";
@@ -73,6 +75,37 @@ function kindTone(k: LogKind, status: string | null): "neutral" | "ok" | "warn" 
   if (k === "thinking") return "neutral";
   return "neutral";
 }
+
+// Row background tone — same danger-for-errors as the Badge, but 備註/結束
+// (note/finish) are deliberately flattened to neutral so only the things
+// that actually need attention (errors, edits, commands) tint the row.
+function rowTone(k: LogKind, status: string | null): Tone {
+  if (k === "error" || status === "error") return "danger";
+  if (k === "note" || k === "finish") return "neutral";
+  return kindTone(k, status);
+}
+
+// Full-row border + low-opacity fill per tone, matching the `bg-x/10`
+// convention already used for Badge chips and the diff view's +/- lines
+// (RunDiffView.tsx) — extended here to the whole log row.
+const ROW_TONE: Record<Tone, string> = {
+  neutral: "border-edge bg-surface",
+  ok: "border-ok/30 bg-ok/10",
+  warn: "border-warn/30 bg-warn/10",
+  danger: "border-danger/30 bg-danger/10",
+  info: "border-info/30 bg-info/10",
+  accent: "border-accent/30 bg-accent/10",
+};
+
+// Solid fill for the log-level distribution bar's segments (same palette).
+const BAR_TONE: Record<Tone, string> = {
+  neutral: "bg-ink-faint",
+  ok: "bg-ok",
+  warn: "bg-warn",
+  danger: "bg-danger",
+  info: "bg-info",
+  accent: "bg-accent",
+};
 
 function obj(v: unknown): Record<string, unknown> | null {
   return v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : null;
@@ -105,10 +138,9 @@ const EDIT_TOOLS = new Set(["edit", "write", "patch", "multiedit", "apply_patch"
 export function normalizeEvent(raw: DevRunEvent, i: number): LogEntry {
   const type = (str(raw.type, raw.kind) ?? "other").toLowerCase();
   const part = obj(raw.part) ?? raw;
-  const ts =
-    num(raw.timestamp) ??
-    num(part.timestamp) ??
-    (typeof raw.ts === "string" ? (Number.isFinite(Date.parse(raw.ts)) ? Date.parse(raw.ts) : null) : null);
+  const isoTs = (v: unknown): number | null =>
+    typeof v === "string" && Number.isFinite(Date.parse(v)) ? Date.parse(v) : null;
+  const ts = num(raw.timestamp) ?? num(part.timestamp) ?? isoTs(raw.ts) ?? isoTs(part.ts);
   const text = str(part.text, part.message, part.content, raw.text, raw.message);
 
   if (type === "text") {
@@ -253,17 +285,17 @@ function fmtTs(ts: number | null): string {
 function EntryRow({ e }: { e: LogEntry }) {
   const long = e.body.length > PREVIEW_CHARS;
   return (
-    <li className="rounded-md border border-edge bg-surface px-2 py-1.5">
+    <li className={`rounded-md border px-2 py-1.5 ${ROW_TONE[rowTone(e.kind, e.status)]}`}>
       <div className="flex flex-wrap items-center gap-1.5 text-xs">
+        <span className="w-16 shrink-0 font-mono tabular-nums text-ink-faint">
+          {e.ts !== null ? fmtTs(e.ts) : ""}
+        </span>
         <Badge tone={kindTone(e.kind, e.status)}>{KIND_LABEL[e.kind]}</Badge>
         <span className="min-w-0 flex-1 truncate font-medium text-ink" title={e.title}>
           {e.title}
         </span>
         {e.status && e.status !== "completed" ? (
           <span className="font-mono text-ink-dim">{e.status}</span>
-        ) : null}
-        {e.ts !== null ? (
-          <span className="font-mono tabular-nums text-ink-faint">{fmtTs(e.ts)}</span>
         ) : null}
       </div>
       {e.body ? (
@@ -285,6 +317,57 @@ function EntryRow({ e }: { e: LogEntry }) {
         )
       ) : null}
     </li>
+  );
+}
+
+// Grafana-style log-level distribution: one horizontal stacked bar showing
+// each event kind's share of the currently loaded batch. Computed from the
+// full loaded stream (not the active filter/search) so it stays a stable
+// at-a-glance overview — "was this run mostly tool calls, or errors?" —
+// rather than shrinking to whatever the user is currently filtering on.
+const KIND_ORDER: LogKind[] = [
+  "error",
+  "edit",
+  "bash",
+  "tool",
+  "read",
+  "thinking",
+  "text",
+  "note",
+  "finish",
+  "step",
+  "other",
+];
+
+function LogLevelBar({ entries }: { entries: LogEntry[] }) {
+  const total = entries.length;
+  if (total === 0) return null;
+  const counts = new Map<LogKind, number>();
+  for (const e of entries) counts.set(e.kind, (counts.get(e.kind) ?? 0) + 1);
+  const segments = KIND_ORDER.filter((k) => (counts.get(k) ?? 0) > 0).map((k) => ({
+    kind: k,
+    count: counts.get(k) as number,
+  }));
+
+  return (
+    <div className="flex min-w-[10rem] flex-1 items-center gap-2">
+      <span className="shrink-0 text-xs text-ink-dim">種類分佈</span>
+      <div
+        role="img"
+        aria-label={`共 ${total} 筆：${segments.map((s) => `${KIND_LABEL[s.kind]} ${s.count}`).join("、")}`}
+        className="flex h-2 flex-1 overflow-hidden rounded-full bg-surface-2"
+      >
+        {segments.map((s) => (
+          <div
+            key={s.kind}
+            title={`${KIND_LABEL[s.kind]} · ${s.count}`}
+            className={BAR_TONE[rowTone(s.kind, null)]}
+            style={{ width: `${(s.count / total) * 100}%` }}
+          />
+        ))}
+      </div>
+      <span className="shrink-0 font-mono tabular-nums text-xs text-ink-faint">{total}</span>
+    </div>
   );
 }
 
@@ -388,6 +471,8 @@ export function RunLogView({
 
   return (
     <div className="flex min-h-0 flex-col gap-2">
+      <LogLevelBar entries={entries} />
+
       <div className="flex flex-wrap items-end gap-2">
         <div role="group" aria-label="紀錄篩選" className="flex flex-wrap gap-1">
           {FILTERS.map((f) => (
