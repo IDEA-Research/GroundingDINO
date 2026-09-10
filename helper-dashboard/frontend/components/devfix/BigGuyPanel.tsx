@@ -25,6 +25,7 @@ import {
   runStatusLabel,
   runStatusTone,
   type DevfixRunsState,
+  type RunStatusOrIdle,
 } from "@/lib/useDevfixRuns";
 
 import { RunDiffView } from "./RunDiffView";
@@ -67,6 +68,87 @@ function fmtWhen(iso: string | null | undefined): string {
   const d = new Date(t);
   const p = (n: number) => String(n).padStart(2, "0");
   return `${p(d.getMonth() + 1)}/${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
+}
+
+function parseTs(iso: string | null | undefined): number | null {
+  if (!iso) return null;
+  const t = Date.parse(iso);
+  return Number.isFinite(t) ? t : null;
+}
+
+function fmtDuration(ms: number): string {
+  const s = Math.max(0, Math.round(ms / 1000));
+  const m = Math.floor(s / 60);
+  const h = Math.floor(m / 60);
+  if (h > 0) return `${h}時${String(m % 60).padStart(2, "0")}分`;
+  if (m > 0) return `${m}分${String(s % 60).padStart(2, "0")}秒`;
+  return `${s}秒`;
+}
+
+// Final-segment color for the state timeline below. Deliberately its own
+// mapping rather than runStatusTone: timeout reads as a "warn" amber chip
+// here (distinct from a hard "failed" red), which runStatusTone does not
+// distinguish (it buckets both as danger for the status Badge).
+const TIMELINE_FINAL_CLASS: Partial<Record<RunStatusOrIdle, string>> = {
+  success: "bg-ok",
+  failed: "bg-danger",
+  timeout: "bg-warn",
+  waiting: "bg-warn",
+  cancelled: "bg-ink-faint",
+};
+
+// State timeline: 排隊(queued_at→started_at) · 執行(started_at→finished_at,
+// or "now" while still running) · 終態 (a small chip once finished_at is
+// set, colored by status). Supplements the status Badge — it does not
+// replace it. Widths are real proportions of the two durations, not fixed
+// ticks; the final chip is a small fixed-width indicator per the design
+// (Grafana state-timeline panels do the same for a terminal marker).
+function RunTimeline({ meta, now }: { meta: DevRunMeta; now: number }) {
+  const st = runStatus(meta);
+  const queuedAt = parseTs(meta.queued_at);
+  const startedAt = parseTs(meta.started_at);
+  const finishedAt = parseTs(meta.finished_at);
+
+  const queueEnd = startedAt ?? (st === "queued" ? now : null);
+  const queueMs =
+    queuedAt !== null && queueEnd !== null ? Math.max(0, queueEnd - queuedAt) : 0;
+
+  const runEnd = finishedAt ?? (startedAt !== null && isActiveStatus(st) ? now : null);
+  const runMs = startedAt !== null && runEnd !== null ? Math.max(0, runEnd - startedAt) : 0;
+
+  const hasFinalSeg = finishedAt !== null;
+  const total = queueMs + runMs;
+  if (total <= 0 && !hasFinalSeg) return null;
+
+  const queuePct = total > 0 ? (queueMs / total) * 100 : 0;
+  const runPct = total > 0 ? (runMs / total) * 100 : 0;
+
+  return (
+    <div className="mt-1.5 flex items-center gap-1" aria-hidden="true">
+      <span className="flex h-1.5 flex-1 overflow-hidden rounded-full bg-surface-3">
+        {queueMs > 0 ? (
+          <span
+            className="h-full bg-edge-strong"
+            style={{ width: `${queuePct}%` }}
+            title={`排隊 ${fmtDuration(queueMs)}`}
+          />
+        ) : null}
+        {runMs > 0 ? (
+          <span
+            className="h-full bg-info"
+            style={{ width: `${runPct}%` }}
+            title={`執行 ${fmtDuration(runMs)}`}
+          />
+        ) : null}
+      </span>
+      {hasFinalSeg ? (
+        <span
+          className={"h-1.5 w-2 shrink-0 rounded-full " + (TIMELINE_FINAL_CLASS[st] ?? "bg-ink-faint")}
+          title={`結果：${runStatusLabel(st)}`}
+        />
+      ) : null}
+    </div>
+  );
 }
 
 function OutcomeChips({ meta }: { meta: DevRunMeta }) {
@@ -157,6 +239,7 @@ function RunCard({
           {elapsedLabel(meta, now)}
         </Badge>
       </div>
+      <RunTimeline meta={meta} now={now} />
       <div className="mt-1.5 break-words text-sm font-medium text-ink">{title}</div>
       <div className="mt-0.5 break-all font-mono text-xs text-ink-faint">
         {meta.run_id} · {fmtWhen(meta.started_at ?? meta.queued_at)}
@@ -217,6 +300,67 @@ function RunCard({
   );
 }
 
+// Grafana Stat-panel style: big number + label, optional sub line/gauge.
+function StatCard({
+  label,
+  value,
+  sub,
+  tone = "neutral",
+}: {
+  label: string;
+  value: React.ReactNode;
+  sub?: React.ReactNode;
+  tone?: "ok" | "warn" | "danger" | "neutral";
+}) {
+  const valueClass =
+    tone === "ok"
+      ? "text-ok"
+      : tone === "warn"
+        ? "text-warn"
+        : tone === "danger"
+          ? "text-danger"
+          : "text-ink";
+  return (
+    <div className="rounded-md border border-edge bg-surface p-2.5">
+      <div className="text-xs text-ink-dim">{label}</div>
+      <div className={"mt-0.5 text-2xl font-bold tabular-nums " + valueClass}>{value}</div>
+      {sub ? <div className="mt-1">{sub}</div> : null}
+    </div>
+  );
+}
+
+// used/limit -> ok below 70%, warn 70-90%, danger at/above 90%. A simple
+// ratio check on purpose: this is quota headroom, not a dashboard
+// threshold breach, so it does not go through resolveThreshold.
+function quotaPct(used: number, limit: number): number {
+  return limit > 0 ? Math.min(1, Math.max(0, used / limit)) : 0;
+}
+
+function quotaLevelTone(pct: number): "ok" | "warn" | "danger" {
+  if (pct >= 0.9) return "danger";
+  if (pct >= 0.7) return "warn";
+  return "ok";
+}
+
+// Simple horizontal gauge for quota usage — same visual family as the
+// timeline bar above (rounded track + colored fill), not the full
+// BarGaugeWidget (that one is wired to the dashboard WidgetSpec/threshold
+// pipeline, which quota headroom has no reason to depend on).
+function QuotaBar({ used, limit }: { used: number; limit: number }) {
+  const pct = quotaPct(used, limit);
+  const tone = quotaLevelTone(pct);
+  const fillClass = tone === "danger" ? "bg-danger" : tone === "warn" ? "bg-warn" : "bg-ok";
+  return (
+    <div
+      className="h-1.5 w-full overflow-hidden rounded-full bg-surface-3"
+      role="img"
+      aria-label={`今日配額使用 ${used}/${limit}`}
+    >
+      <div className={"h-full " + fillClass} style={{ width: `${pct * 100}%` }} />
+    </div>
+  );
+}
+
 export function BigGuyPanel({
   capabilities,
   runs,
@@ -270,6 +414,10 @@ export function BigGuyPanel({
   const tooLong = text.length > INSTRUCTION_MAX;
   const pendingCount = config?.queue?.pending_run_ids.length ?? null;
   const maxPending = config?.queue?.max_pending ?? null;
+  const queueTone: "warn" | "neutral" =
+    pendingCount !== null && maxPending !== null && maxPending > 0 && pendingCount >= maxPending
+      ? "warn"
+      : "neutral";
 
   let blockReason: string | null = null;
   if (!localRuns || (config && !config.local_runs_enabled)) {
@@ -451,6 +599,33 @@ export function BigGuyPanel({
           </div>
         ) : null}
         {config ? (
+          <div className="mb-3 grid grid-cols-2 gap-2 sm:grid-cols-3">
+            <StatCard
+              label="佇列待執行"
+              value={pendingCount ?? "—"}
+              tone={queueTone}
+              sub={
+                pendingCount !== null ? (
+                  <span className="text-xs text-ink-faint">
+                    {config.queue?.active_run_id ? "1 個執行中" : "無執行中任務"}
+                    {maxPending !== null ? ` · 上限 ${maxPending}` : ""}
+                  </span>
+                ) : undefined
+              }
+            />
+            <StatCard
+              label="今日配額"
+              value={`${config.daily_quota.used}/${config.daily_quota.limit}`}
+              tone={
+                config.daily_quota.limit > 0
+                  ? quotaLevelTone(quotaPct(config.daily_quota.used, config.daily_quota.limit))
+                  : "neutral"
+              }
+              sub={<QuotaBar used={config.daily_quota.used} limit={config.daily_quota.limit} />}
+            />
+          </div>
+        ) : null}
+        {config ? (
           <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1.5 text-xs">
             <dt className="text-ink-dim">目標專案</dt>
             <dd className="break-all font-mono text-ink">{config.project_root}</dd>
@@ -479,19 +654,6 @@ export function BigGuyPanel({
                 ? "啟用（聊天工單會自動排程，清單中標示為「自動」）"
                 : "停用"}
             </dd>
-            <dt className="text-ink-dim">今日配額</dt>
-            <dd className={"tabular-nums " + (quotaExhausted ? "text-danger" : "text-ink")}>
-              {config.daily_quota.used}/{config.daily_quota.limit}
-            </dd>
-            {pendingCount !== null ? (
-              <>
-                <dt className="text-ink-dim">佇列</dt>
-                <dd className="tabular-nums text-ink">
-                  {config?.queue?.active_run_id ? "1 個執行中 · " : ""}
-                  {pendingCount} 個待執行{maxPending !== null ? `（上限 ${maxPending}）` : ""}
-                </dd>
-              </>
-            ) : null}
           </dl>
         ) : configLoading ? (
           <div className="space-y-1.5" aria-busy="true">
