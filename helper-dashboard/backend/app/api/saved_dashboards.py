@@ -10,6 +10,8 @@ through the undo toast right after deleting).
 
 from __future__ import annotations
 
+from typing import Any
+
 from fastapi import APIRouter, Header, HTTPException, Query
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -17,7 +19,7 @@ from ..services.dashboard_store import DashboardStore
 from ..services.saved_dashboard_loader import load_saved_dashboard
 from ..services.saved_dashboard_store import SavedDashboardStore
 from ..services.spec_validator import SpecValidationError, SpecValidator
-from ..specs import WidgetPosition
+from ..specs import WidgetPosition, WidgetThreshold
 from ._auth import require_dev
 
 
@@ -34,15 +36,44 @@ class SaveRequest(BaseModel):
     tags: list[str] = Field(default_factory=list, max_length=16)
 
 
-class WidgetPositionUpdate(BaseModel):
-    """One widget's new grid position — Phase 2 (react-grid-layout)
-    drag/resize on the frontend, folded into the SAME PATCH route
-    that already renames/re-tags a saved entry (no new endpoint)."""
+class WidgetContentUpdate(BaseModel):
+    """One widget's editable fields for an already-saved dashboard.
+
+    Phase 2 (react-grid-layout) introduced this as a position-only patch
+    (drag/resize). This widens it to the content the panel-edit drawer
+    (frontend WidgetEditDrawer.tsx) edits — title, description,
+    thresholds, options — folded into the SAME PATCH route rather than a
+    new endpoint. Every field is optional and independent: a drag/resize
+    still sends only `position`; a content edit sends only the fields
+    that changed.
+
+    Deliberately NOT `extra="allow"` — only the named fields can be
+    updated, so a typo'd or unexpected key is rejected outright rather
+    than silently accepted. `type`/`query`/`queries`/`decision_flow`
+    are absent on purpose: what a widget IS and what it queries never
+    change from this rename/re-tag/re-position/re-style route.
+
+    Field values are intentionally NOT re-validated here beyond shape —
+    `thresholds` reuses the canonical `WidgetThreshold` model directly
+    (so its color/label/direction rules are the SAME model Helper's own
+    generation path uses, not a re-implementation), and `title` /
+    `description` / `options` are merged as plain values. The route
+    below re-runs the FULL `SpecValidator.validate_dashboard()` on the
+    merged spec — the exact validation a normal dashboard build goes
+    through (safe-text scan, ALLOWED_OPTION_KEYS, threshold shape,
+    layout overflow, ...) — so there is exactly one source of truth for
+    what makes a widget valid, never a second, looser copy of those
+    rules living here.
+    """
 
     model_config = ConfigDict(extra="forbid")
 
     id: str = Field(..., min_length=1, max_length=64)
-    position: WidgetPosition
+    title: str | None = None
+    description: str | None = None
+    thresholds: list[WidgetThreshold] | None = None
+    options: dict[str, Any] | None = None
+    position: WidgetPosition | None = None
 
 
 class LayoutUpdate(BaseModel):
@@ -65,10 +96,10 @@ class UpdateRequest(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=96)
     description: str | None = Field(default=None, max_length=512)
     tags: list[str] | None = Field(default=None, max_length=16)
-    # Phase 2 layout engine: widget positions (keyed by widget id — ids
+    # Per-widget content/position updates (keyed by widget id — ids
     # absent from the saved spec are ignored) and/or the layout bump
     # above. Both optional and independent of name/description/tags.
-    widgets: list[WidgetPositionUpdate] | None = Field(default=None, max_length=64)
+    widgets: list[WidgetContentUpdate] | None = Field(default=None, max_length=64)
     layout: LayoutUpdate | None = None
 
 
@@ -131,8 +162,9 @@ def get_saved(saved_id: str) -> dict:
 @router.patch("/{saved_id}")
 @router.patch("/{saved_id}/")
 def update_saved(saved_id: str, req: UpdateRequest) -> dict:
-    """Rename / re-describe / re-tag, and/or apply a Phase 2 layout-engine
-    position update (`widgets` / `layout`). `saved_id` never changes."""
+    """Rename / re-describe / re-tag, and/or apply a per-widget content
+    and/or layout-engine update (`widgets` / `layout`). `saved_id` never
+    changes."""
     if (
         req.name is None
         and req.description is None
@@ -151,18 +183,35 @@ def update_saved(saved_id: str, req: UpdateRequest) -> dict:
         if entry is None:
             raise HTTPException(status_code=404, detail="not found")
         # Merge onto the CURRENT stored spec (by_alias so decision_flow
-        # edges round-trip their `from` key) — only the fields the
-        # frontend grid actually owns (position, layout) change here.
+        # edges round-trip their `from` key) — only the fields this
+        # route owns (widget content/position, layout) change here.
         spec_payload = entry.spec.model_dump(mode="json", by_alias=True)
         if req.layout is not None:
             spec_payload["layout"] = req.layout.model_dump(mode="json")
         if req.widgets is not None:
-            positions = {
-                u.id: u.position.model_dump(mode="json") for u in req.widgets
-            }
+            updates_by_id = {u.id: u for u in req.widgets}
             for w in spec_payload["widgets"]:
-                if w["id"] in positions:
-                    w["position"] = positions[w["id"]]
+                u = updates_by_id.get(w["id"])
+                if u is None:
+                    continue
+                if u.title is not None:
+                    w["title"] = u.title
+                if u.description is not None:
+                    w["description"] = u.description
+                if u.thresholds is not None:
+                    w["thresholds"] = [
+                        t.model_dump(mode="json") for t in u.thresholds
+                    ]
+                if u.options is not None:
+                    w["options"] = u.options
+                if u.position is not None:
+                    w["position"] = u.position.model_dump(mode="json")
+        # ONE validation pass over the whole merged dashboard — the same
+        # SpecValidator.validate_dashboard() Helper's own build/edit path
+        # uses — so a bad field (unsafe text, unknown option key, bad
+        # threshold color, layout overflow, ...) 422s with no partial
+        # write: spec_update only exists to hand to _store.update below
+        # once this succeeds.
         try:
             spec_update = _validator.validate_dashboard(spec_payload)
         except SpecValidationError as exc:
