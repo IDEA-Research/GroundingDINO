@@ -1096,8 +1096,10 @@ class VideoScreenDigitExtractor:
             # 如果是 AuthenticationError，特別標註
             if "AuthenticationError" in error_msg or "401" in error_msg:
                 error_msg = "API Key 驗證失敗，請檢查您輸入的 API Key 是否正確且有效。"
-            elif "400" in error_msg and "model" in error_msg.lower():
-                error_msg = f"模型名稱錯誤或不支援: {self.model}"
+            elif "400" in error_msg:
+                # HTTP 400 也可能是圖片格式、模型能力或請求參數問題；
+                # 保留伺服器原始內容，避免一律誤報為模型名稱錯誤。
+                error_msg = f"LLM 伺服器拒絕請求（HTTP 400）：{error_msg}"
             
             return {"success": False, "error": error_msg}
     
