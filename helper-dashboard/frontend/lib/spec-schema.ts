@@ -568,10 +568,22 @@ export interface SavedDashboardEntry {
   updated_at?: string | null;
 }
 
-// One widget's new grid position — Phase 2 (react-grid-layout) drag/resize.
-export interface WidgetPositionUpdate {
+// One widget's content and/or grid-position update for PATCH
+// /api/saved_dashboards/{id}. Mirrors backend `WidgetContentUpdate`
+// (backend/app/api/saved_dashboards.py WidgetContentUpdate) field-for-
+// field: `id` is the only required key, every other field is optional
+// and independent — a drag/resize (DashboardGrid.tsx, Phase 2) sends
+// only `position`, a panel edit (WidgetEditDrawer.tsx, via
+// handleLayoutChange in page.tsx) sends the full widget content.
+// `type`/`query`/`queries`/`decision_flow` are deliberately absent —
+// this route never changes what a widget IS, only its position/style.
+export interface WidgetContentUpdate {
   id: string;
-  position: WidgetPosition;
+  title?: string;
+  description?: string | null;
+  thresholds?: WidgetThreshold[];
+  options?: Record<string, unknown>;
+  position?: WidgetPosition;
 }
 
 // PATCH /api/saved_dashboards/{id}. `widgets`/`layout` are the Phase 2
@@ -581,7 +593,7 @@ export interface SavedDashboardPatch {
   name?: string;
   description?: string;
   tags?: string[];
-  widgets?: WidgetPositionUpdate[];
+  widgets?: WidgetContentUpdate[];
   layout?: DashboardLayout;
 }
 

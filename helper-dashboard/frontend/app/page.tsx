@@ -425,27 +425,43 @@ function HomeShell() {
   }, []);
 
   // Phase 2 layout engine (DashboardPreview -> DashboardGrid /
-  // react-grid-layout): a drag or resize settled. `next` is already a
-  // full, valid DashboardSpec (every widget re-expressed on the
-  // GRID_COLUMNS basis), so putting it on screen is just `setSpec` —
-  // the existing "remember what is on screen" effect above then writes
-  // it to `hd.lastOpened` (localStorage) exactly like every other spec
-  // mutation (chat patches, template instantiation, ...), which is
-  // enough for a NOT-yet-saved dashboard to survive a refresh.
+  // react-grid-layout): a drag or resize settled. Also the save path for
+  // WidgetEditDrawer.tsx panel edits (DashboardPreview's handleWidgetSaved
+  // merges the edited widget into the spec and calls this same callback).
+  // `next` is already a full, valid DashboardSpec (every widget
+  // re-expressed on the GRID_COLUMNS basis), so putting it on screen is
+  // just `setSpec` — the existing "remember what is on screen" effect
+  // above then writes it to `hd.lastOpened` (localStorage) exactly like
+  // every other spec mutation (chat patches, template instantiation,
+  // ...), which is enough for a NOT-yet-saved dashboard to survive a
+  // refresh.
   //
   // A dashboard that HAS been saved to the library is different: a hard
   // refresh calls `api.loadSaved(savedId)` (see restoreLast below),
   // which re-clones the server's stored snapshot — so without also
-  // patching that snapshot, a saved dashboard's drag would silently
-  // revert on next load. `patchSaved` already exists for rename/re-tag;
-  // Phase 2 widens its body (`widgets`/`layout`) instead of adding a
-  // new endpoint.
+  // patching that snapshot, a saved dashboard's drag OR panel edit would
+  // silently revert on next load. `patchSaved` already exists for
+  // rename/re-tag; Phase 2 widened its body (`widgets`/`layout`) instead
+  // of adding a new endpoint, and the panel-edit drawer reuses the same
+  // `widgets` field now that the backend accepts more than position
+  // (WidgetContentUpdate in backend/app/api/saved_dashboards.py) — every
+  // widget's full editable content is sent on every call, not just the
+  // ones that changed, since the backend only overwrites a field when
+  // it's present (`!= None`) and a drag/resize's unchanged title/
+  // thresholds/options round-trip to their existing values either way.
   const handleLayoutChange = useCallback(
     (next: DashboardSpec) => {
       setSpec(next);
       const savedId = originRef.current?.savedId;
       if (!savedId) return;
-      const widgets = next.widgets.map((w) => ({ id: w.id, position: w.position }));
+      const widgets = next.widgets.map((w) => ({
+        id: w.id,
+        position: w.position,
+        title: w.title,
+        description: w.description,
+        thresholds: w.thresholds,
+        options: w.options,
+      }));
       api.patchSaved(savedId, { widgets, layout: next.layout }).catch((e: unknown) => {
         toast.show({
           title: "版面配置未儲存",
