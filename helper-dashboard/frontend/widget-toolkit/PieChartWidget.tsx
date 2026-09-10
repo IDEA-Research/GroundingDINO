@@ -1,6 +1,15 @@
 "use client";
 
-import React from "react";
+import React, { useState } from "react";
+import {
+  Cell,
+  Legend,
+  Pie,
+  PieChart,
+  ResponsiveContainer,
+  Sector,
+  Tooltip,
+} from "recharts";
 
 import { seriesColor, useChartTheme, type ChartColors } from "@/lib/chart-theme";
 import type { WidgetSpec } from "@/lib/spec-schema";
@@ -9,10 +18,13 @@ import { WidgetFrame, frameStatusProps } from "./WidgetFrame";
 
 interface Slice {
   label: string;
+  // Signed raw value — shown in the tooltip exactly as the backend gave it.
   value: number;
+  // abs(value) — this is what actually drives arc size (Recharts' dataKey),
+  // matching the old hand-rolled renderer where angles were built from
+  // Math.abs(r.value), never the signed value.
+  magnitude: number;
   pct: number;
-  startAngle: number;
-  endAngle: number;
   color: string;
 }
 
@@ -25,12 +37,8 @@ function buildSlices(rows: TableRow[], colors: ChartColors): Slice[] {
   const total = present.reduce((s, r) => s + Math.abs(r.value), 0);
   if (total === 0) return [];
 
-  let cursor = 0;
   return present.map((r, i) => {
-    const pct = Math.abs(r.value) / total;
-    const startAngle = cursor;
-    const endAngle = cursor + pct * 360;
-    cursor = endAngle;
+    const magnitude = Math.abs(r.value);
     // Use the first non-"job" metric label as the slice label.
     const label =
       Object.entries(r.metric).find(([k]) => k !== "job")?.[1] ??
@@ -38,65 +46,77 @@ function buildSlices(rows: TableRow[], colors: ChartColors): Slice[] {
     return {
       label,
       value: r.value,
-      pct,
-      startAngle,
-      endAngle,
+      magnitude,
+      pct: magnitude / total,
       color: seriesColor(i, colors),
     };
   });
 }
 
-function polarToCartesian(cx: number, cy: number, r: number, deg: number) {
-  const rad = ((deg - 90) * Math.PI) / 180;
-  return { x: cx + r * Math.cos(rad), y: cy + r * Math.sin(rad) };
-}
-
-function arcPath(
-  cx: number,
-  cy: number,
-  r: number,
-  startDeg: number,
-  endDeg: number,
-): string {
-  // Full circle edge case
-  if (endDeg - startDeg >= 359.999) {
-    const half = (startDeg + endDeg) / 2;
-    return arcPath(cx, cy, r, startDeg, half) + " " + arcPath(cx, cy, r, half, endDeg);
-  }
-  const start = polarToCartesian(cx, cy, r, startDeg);
-  const end = polarToCartesian(cx, cy, r, endDeg);
-  const largeArc = endDeg - startDeg > 180 ? 1 : 0;
-  return `M ${cx} ${cy} L ${start.x.toFixed(2)} ${start.y.toFixed(2)} A ${r} ${r} 0 ${largeArc} 1 ${end.x.toFixed(2)} ${end.y.toFixed(2)} Z`;
-}
-
-function donutArcPath(
-  cx: number,
-  cy: number,
-  outerR: number,
-  innerR: number,
-  startDeg: number,
-  endDeg: number,
-): string {
-  if (endDeg - startDeg >= 359.999) {
-    const half = (startDeg + endDeg) / 2;
+// Percentage label centered inside each slice (donut: mid-ring; pie: 60%
+// of the radius) — same 5% visibility threshold as the previous hand-rolled
+// arc renderer, same "readable on top of a saturated fill" color pick.
+function renderPercentLabel(
+  isDonut: boolean,
+  textColor: string,
+) {
+  return (props: {
+    cx: number;
+    cy: number;
+    midAngle: number;
+    innerRadius: number;
+    outerRadius: number;
+    percent: number;
+  }) => {
+    const { cx, cy, midAngle, innerRadius, outerRadius, percent } = props;
+    if (!percent || percent <= 0.05) return null;
+    const RADIAN = Math.PI / 180;
+    const r = isDonut
+      ? (innerRadius + outerRadius) / 2
+      : outerRadius * 0.6;
+    const x = cx + r * Math.cos(-midAngle * RADIAN);
+    const y = cy + r * Math.sin(-midAngle * RADIAN);
     return (
-      donutArcPath(cx, cy, outerR, innerR, startDeg, half) +
-      " " +
-      donutArcPath(cx, cy, outerR, innerR, half, endDeg)
+      <text
+        x={x}
+        y={y}
+        textAnchor="middle"
+        dominantBaseline="central"
+        fill={textColor}
+        fontSize={12}
+        fontWeight={600}
+      >
+        {`${(percent * 100).toFixed(0)}%`}
+      </text>
     );
-  }
-  const oStart = polarToCartesian(cx, cy, outerR, startDeg);
-  const oEnd = polarToCartesian(cx, cy, outerR, endDeg);
-  const iStart = polarToCartesian(cx, cy, innerR, startDeg);
-  const iEnd = polarToCartesian(cx, cy, innerR, endDeg);
-  const largeArc = endDeg - startDeg > 180 ? 1 : 0;
-  return [
-    `M ${oStart.x.toFixed(2)} ${oStart.y.toFixed(2)}`,
-    `A ${outerR} ${outerR} 0 ${largeArc} 1 ${oEnd.x.toFixed(2)} ${oEnd.y.toFixed(2)}`,
-    `L ${iEnd.x.toFixed(2)} ${iEnd.y.toFixed(2)}`,
-    `A ${innerR} ${innerR} 0 ${largeArc} 0 ${iStart.x.toFixed(2)} ${iStart.y.toFixed(2)}`,
-    "Z",
-  ].join(" ");
+  };
+}
+
+// Recharts' classic "active shape" hover recipe: the hovered slice grows a
+// few px past its resting outerRadius so the highlight reads as an actual
+// shape change, not just a tooltip appearing.
+function renderActiveShape(props: {
+  cx: number;
+  cy: number;
+  innerRadius: number;
+  outerRadius: number;
+  startAngle: number;
+  endAngle: number;
+  fill: string;
+}) {
+  const { cx, cy, innerRadius, outerRadius, startAngle, endAngle, fill } =
+    props;
+  return (
+    <Sector
+      cx={cx}
+      cy={cy}
+      innerRadius={innerRadius}
+      outerRadius={outerRadius + 6}
+      startAngle={startAngle}
+      endAngle={endAngle}
+      fill={fill}
+    />
+  );
 }
 
 export function PieChartWidget({
@@ -113,11 +133,26 @@ export function PieChartWidget({
   const isDonut = opts.donut === true;
 
   const slices = buildSlices(data.table, theme.colors);
+  const [activeIndex, setActiveIndex] = useState<number | null>(null);
 
-  const cx = 100;
-  const cy = 100;
-  const outerR = 80;
-  const innerR = 48;
+  const labelColor =
+    theme.name === "dark" ? theme.colors.canvas : theme.colors.surface;
+
+  const tooltipFormatter = (value: unknown, _name: unknown, entry: unknown) => {
+    const payload = (entry as { payload?: Slice })?.payload;
+    const raw = typeof value === "number" ? value : payload?.value;
+    const pct = payload?.pct ?? 0;
+    return [
+      `${typeof raw === "number" ? raw.toFixed(2) : "—"} (${(pct * 100).toFixed(1)}%)`,
+      payload?.label ?? widget.title,
+    ];
+  };
+
+  const legendFormatter = (value: unknown, entry: unknown) => {
+    const payload = (entry as { payload?: Slice })?.payload;
+    const pct = payload?.pct ?? 0;
+    return `${value} ${(pct * 100).toFixed(0)}%`;
+  };
 
   return (
     <WidgetFrame
@@ -125,85 +160,69 @@ export function PieChartWidget({
       unit={widget.encoding?.unit}
       {...frameStatusProps(data)}
     >
-      <div className="flex h-full items-center justify-center gap-4">
-        <svg
-          viewBox="0 0 200 200"
-          className="h-full max-h-48 w-auto flex-shrink-0"
+      {slices.length === 0 ? (
+        <div className="flex h-full items-center justify-center text-sm text-ink-faint">
+          尚無資料
+        </div>
+      ) : (
+        <div
           role="img"
           aria-label={widget.title}
+          className="h-full w-full"
         >
-          {slices.length === 0 ? (
-            <text
-              x={cx}
-              y={cy}
-              textAnchor="middle"
-              fill={theme.colors.inkFaint}
-              fontSize={14}
-            >
-              尚無資料
-            </text>
-          ) : (
-            slices.map((s, i) => (
-              <path
-                key={i}
-                d={
-                  isDonut
-                    ? donutArcPath(cx, cy, outerR, innerR, s.startAngle, s.endAngle)
-                    : arcPath(cx, cy, outerR, s.startAngle, s.endAngle)
-                }
-                fill={s.color}
-                stroke={theme.colors.surface}
-                strokeWidth={1}
-              >
-                <title>
-                  {s.label}: {s.value.toFixed(2)} ({(s.pct * 100).toFixed(1)}%)
-                </title>
-              </path>
-            ))
-          )}
-          {showLabels &&
-            slices
-              .filter((s) => s.pct > 0.05)
-              .map((s, i) => {
-                const mid = (s.startAngle + s.endAngle) / 2;
-                const labelR = isDonut ? (outerR + innerR) / 2 : outerR * 0.6;
-                const pos = polarToCartesian(cx, cy, labelR, mid);
-                return (
-                  <text
-                    key={`lbl-${i}`}
-                    x={pos.x}
-                    y={pos.y}
-                    textAnchor="middle"
-                    dominantBaseline="central"
-                    fill={theme.name === "dark" ? theme.colors.canvas : theme.colors.surface}
-                    fontSize={12}
-                    fontWeight={600}
-                  >
-                    {(s.pct * 100).toFixed(0)}%
-                  </text>
-                );
-              })}
-        </svg>
-        {showLegend && slices.length > 0 && (
-          <ul className="flex flex-col gap-1 overflow-auto text-sm">
-            {slices.map((s, i) => (
-              <li key={i} className="flex items-center gap-1.5">
-                <span
-                  aria-hidden="true"
-                  className="inline-block h-2.5 w-2.5 flex-shrink-0 rounded-sm"
-                  style={{ backgroundColor: s.color }}
+          <ResponsiveContainer width="100%" height="100%">
+            <PieChart margin={{ top: 8, right: 8, bottom: 8, left: 8 }}>
+              <Tooltip
+                formatter={tooltipFormatter as never}
+                contentStyle={theme.tooltipContentStyle}
+                labelStyle={theme.tooltipLabelStyle}
+              />
+              {showLegend && (
+                <Legend
+                  layout="vertical"
+                  verticalAlign="middle"
+                  align="right"
+                  iconType="circle"
+                  iconSize={8}
+                  formatter={legendFormatter as never}
+                  wrapperStyle={{
+                    ...theme.legendStyle,
+                    maxHeight: "100%",
+                    overflowY: "auto",
+                  }}
                 />
-                <span className="max-w-[140px] truncate text-ink-dim" title={s.label}>
-                  {s.label}
-                </span>
-                <span className="ml-auto font-mono text-xs tabular-nums text-ink-faint">
-                  {(s.pct * 100).toFixed(0)}%
-                </span>
-              </li>
-            ))}
-          </ul>
-        )}
-      </div>
+              )}
+              <Pie
+                data={slices}
+                dataKey="magnitude"
+                nameKey="label"
+                cx="50%"
+                cy="50%"
+                innerRadius={isDonut ? "60%" : 0}
+                outerRadius="80%"
+                startAngle={90}
+                endAngle={-270}
+                isAnimationActive={false}
+                label={showLabels ? renderPercentLabel(isDonut, labelColor) : false}
+                labelLine={false}
+                activeIndex={activeIndex ?? undefined}
+                activeShape={renderActiveShape as never}
+                onMouseEnter={(_, index) => setActiveIndex(index)}
+                onMouseLeave={() => setActiveIndex(null)}
+              >
+                {slices.map((s, i) => (
+                  <Cell
+                    key={`cell-${i}`}
+                    fill={s.color}
+                    stroke={theme.colors.surface}
+                    strokeWidth={1}
+                  />
+                ))}
+              </Pie>
+            </PieChart>
+          </ResponsiveContainer>
+        </div>
+      )}
     </WidgetFrame>
   );
 }
