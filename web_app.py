@@ -105,6 +105,15 @@ os.makedirs(app.config['DATASET_FOLDER'], exist_ok=True)
 os.makedirs('static', exist_ok=True)
 os.makedirs('templates', exist_ok=True)
 
+
+@app.errorhandler(413)
+def handle_request_entity_too_large(error):
+    """讓過大的上傳請求固定回傳 JSON，避免前端收到 HTML 錯誤頁。"""
+    return jsonify({
+        'error': '單一影片超過 2GB 上傳上限，請壓縮或分割影片後重試'
+    }), 413
+
+
 # 全域變數來追蹤處理狀態
 processing_status = {
     'is_processing': False,
@@ -207,8 +216,12 @@ video_results = {}
 active_stream_processors = {}
 stream_status_lock = threading.Lock()
 
-LOCAL_LLM_MODELS = frozenset({'qwen3-vl-235b-a22b-instruct-1m_moe', 'glm-4.6v'})
-LOCAL_LLM_BASE_URL = "http://192.168.1.237:1234/v1"
+LOCAL_LLM_MODELS = frozenset({
+    'qwen3-vl-235b-a22b-instruct-1m_moe',
+    'glm-4.6v',
+    'internvl3-78b',
+})
+LOCAL_LLM_BASE_URL = "http://192.168.1.223:1234/v1"
 
 
 def resolve_llm_credentials(provider, model, api_key):
@@ -440,9 +453,10 @@ def templates_editor():
     return render_template('templates.html')
 
 @app.route('/details')
-def details():
+@app.route('/details/<session_id>')
+def details(session_id=None):
     """醫療數值詳情頁面"""
-    return render_template('details.html')
+    return render_template('details.html', initial_session_id=session_id)
 
 @app.route('/stream_monitor')
 def stream_monitor():
@@ -1172,8 +1186,11 @@ def get_stream_monitor_status(session_id):
     if not mongo_manager:
         return jsonify({'error': 'MongoDB 未啟用'}), 503
     try:
-        # 從 MongoDB 獲取最新的數據
-        medical_values = mongo_manager.get_medical_values_by_session(session_id)
+        # 只取得最新一小頁；總筆數由分頁查詢的 count_documents 提供。
+        page_data = mongo_manager.get_medical_values_page(
+            session_id, page=1, page_size=100
+        )
+        medical_values = page_data["items"]
         
         # 找到最新的醫療數值和對應的圖片 URL (支援多個螢幕)
         latest_analyses = []
@@ -1211,7 +1228,7 @@ def get_stream_monitor_status(session_id):
             'is_running_in_memory': session_id in active_stream_processors, # 檢查是否在記憶體中運行
             'latest_analysis': latest_analyses[0] if latest_analyses else None, # 保持向後相容
             'latest_analyses': latest_analyses, # 新增：回傳所有最新的分析
-            'total_analysis_count': len(medical_values),
+            'total_analysis_count': page_data["total_items"],
             'last_error': active_stream_processors[session_id].last_error if session_id in active_stream_processors else None
         }
 
@@ -1364,13 +1381,26 @@ def mongodb_status():
 
 @app.route('/api/mongodb/medical_values/<session_id>')
 def get_mongodb_medical_values(session_id):
-    """從 MongoDB 取得醫療數值 (含圖片路徑)"""
+    """從 MongoDB 分頁取得醫療數值（含圖片路徑）。"""
     if not mongo_manager:
         return jsonify({'error': 'MongoDB 未啟用'}), 503
     
     try:
         model = request.args.get('model')
-        medical_values = mongo_manager.get_medical_values_by_session(session_id, model)
+        try:
+            page = max(int(request.args.get('page', 1)), 1)
+        except (TypeError, ValueError):
+            page = 1
+        try:
+            page_size = int(request.args.get('page_size', 12))
+        except (TypeError, ValueError):
+            page_size = 12
+        page_size = min(max(page_size, 1), 100)
+
+        page_data = mongo_manager.get_medical_values_page(
+            session_id, model, page, page_size
+        )
+        medical_values = page_data["items"]
         
         # 轉換相對路徑為 Web 可存取的 URL，並處理 ObjectId
         for item in medical_values:
@@ -1387,19 +1417,19 @@ def get_mongodb_medical_values(session_id):
                 path = item['original_image_path']
                 if path.startswith('video_screen_analysis/'):
                     path = path.replace('video_screen_analysis/', '', 1)
-                item['original_image_url'] = f"./analysis/{path}"
+                item['original_image_url'] = f"/analysis/{path}"
             
             if item.get('screen_image_path'):
                 # 移除 video_screen_analysis/ 前綴並使用 /analysis/ 路由
                 path = item['screen_image_path']
                 if path.startswith('video_screen_analysis/'):
                     path = path.replace('video_screen_analysis/', '', 1)
-                item['screen_image_url'] = f"./analysis/{path}"
+                item['screen_image_url'] = f"/analysis/{path}"
             if item.get('screen_image_path_for_vlm'):
                 path_for_vlm = item['screen_image_path_for_vlm']
                 if path_for_vlm.startswith('video_screen_analysis/'):
                     path_for_vlm = path_for_vlm.replace('video_screen_analysis/', '', 1)
-                item['screen_image_url_for_vlm'] = f"./analysis/{path_for_vlm}"
+                item['screen_image_url_for_vlm'] = f"/analysis/{path_for_vlm}"
             
             # 轉換 analyzed_at 時間格式
             if 'analyzed_at' in item and item['analyzed_at']:
@@ -1421,11 +1451,74 @@ def get_mongodb_medical_values(session_id):
 
         return jsonify({
             'success': True,
-            'data': medical_values,
-            'count': len(medical_values),
+            'items': medical_values,
+            'pagination': {
+                'page': page_data["page"],
+                'page_size': page_data["page_size"],
+                'total_items': page_data["total_items"],
+                'total_pages': page_data["total_pages"],
+            },
             'failure_summary': failure_summary,
             'camera_name': camera_name,
             'task_name': task_name
+        })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/mongodb/histogram/<session_id>')
+def get_mongodb_histogram(session_id):
+    """取得整個 Session 的輕量 Histogram 數值資料。"""
+    if not mongo_manager:
+        return jsonify({'error': 'MongoDB 未啟用'}), 503
+
+    try:
+        model = request.args.get('model')
+        items = mongo_manager.get_histogram_values_by_session(session_id, model)
+        for item in items:
+            analyzed_at = item.get('analyzed_at')
+            if isinstance(analyzed_at, datetime):
+                item['analyzed_at'] = analyzed_at.isoformat()
+            elif analyzed_at is not None:
+                item['analyzed_at'] = str(analyzed_at)
+            item['medical_values'] = item.get('medical_values') or {}
+            item['corrected_medical_values'] = (
+                item.get('corrected_medical_values') or {}
+            )
+
+        return jsonify({
+            'success': True,
+            'items': items,
+            'count': len(items),
+        })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/mongodb/session_screen_sources/<session_id>')
+def get_session_screen_sources(session_id):
+    """取得批次重新分析所需的最小螢幕來源資料。"""
+    if not mongo_manager:
+        return jsonify({'error': 'MongoDB 未啟用'}), 503
+    try:
+        try:
+            page = max(int(request.args.get('page', 1)), 1)
+            page_size = min(
+                max(int(request.args.get('page_size', 50)), 1),
+                100
+            )
+        except (TypeError, ValueError):
+            page, page_size = 1, 50
+        page_data = mongo_manager.get_session_screen_sources_page(
+            session_id, page, page_size
+        )
+        return jsonify({
+            'success': True,
+            'items': page_data["items"],
+            'pagination': {
+                'page': page_data["page"],
+                'page_size': page_data["page_size"],
+                'total_items': page_data["total_items"],
+                'total_pages': page_data["total_pages"],
+            },
         })
     except Exception as e:
         return jsonify({'error': str(e)}), 500
@@ -1640,42 +1733,76 @@ def get_mongodb_stats():
         if not session_id:
             return jsonify({'error': '缺少 session_id'}), 400
             
-        # 1. 取得該 session 的所有醫療數值 (支援模型過濾)
-        medical_values = mongo_manager.get_medical_values_by_session(session_id, model)
-        
-        # 2. 統計各設備的錯誤率 (TP/FP 邏輯：以 AI 辨識結果為基準)
+        # 在 MongoDB 端先分組，避免把整個 session 載入 Flask。
+        grouped_stats = mongo_manager.get_session_device_stats(session_id, model)
         device_stats = {}
         
-        for item in medical_values:
-            # AI 原始辨識的設備 (這是我們的 "Prediction")
-            raw_device_name = item.get('model', 'unknown')
-            # 使用者訂正後的設備 (這是我們的 "Ground Truth")
-            corrected_device_name = item.get('corrected_model')
+        for row in grouped_stats:
+            group = row.get('_id') or {}
+            raw_device_name = group.get('model') or 'unknown'
+            corrected_device_name = group.get('corrected_model')
+            count = row.get('count', 0)
             
-            # 以 AI 辨識結果作為統計分組 (TP+FP 的基礎)
+            # 以 AI 辨識結果統計 TP/FP，並把訂正後的設備計入 FN。
             device_name = normalize_device_name(raw_device_name)
+            corrected_name = (
+                normalize_device_name(corrected_device_name)
+                if corrected_device_name is not None and corrected_device_name != ""
+                else device_name
+            )
             
             if device_name not in device_stats:
                 device_stats[device_name] = {
                     'total_count': 0,      # TP + FP (AI 辨識為此設備的總次數)
                     'corrected_count': 0,  # FP (AI 辨識為此設備但被訂正為其他的次數)
-                    'accuracy': 0
+                    'true_positive_count': 0,
+                    'false_positive_count': 0,
+                    'false_negative_count': 0,
+                    'true_count': 0,       # TP + FN (人工訂正後屬於此設備的總次數)
+                    'accuracy': 0,         # Precision，保留既有 API 欄位
+                    'recall': 0
                 }
             
-            device_stats[device_name]['total_count'] += 1
+            device_stats[device_name]['total_count'] += count
             
             # 如果有訂正，且訂正後的名稱與原始辨識不同，則視為 FP (False Positive)
             # 注意：如果 corrected_device_name 為空，代表 AI 辨識正確 (TP)
-            is_fp = corrected_device_name is not None and corrected_device_name != "" and corrected_device_name != raw_device_name
+            is_fp = corrected_name != device_name
             if is_fp:
-                device_stats[device_name]['corrected_count'] += 1
+                device_stats[device_name]['corrected_count'] += count
+                device_stats[device_name]['false_positive_count'] += count
+
+                if corrected_name not in device_stats:
+                    device_stats[corrected_name] = {
+                        'total_count': 0,
+                        'corrected_count': 0,
+                        'true_positive_count': 0,
+                        'false_positive_count': 0,
+                        'false_negative_count': 0,
+                        'true_count': 0,
+                        'accuracy': 0,
+                        'recall': 0
+                    }
+                device_stats[corrected_name]['false_negative_count'] += count
+            else:
+                device_stats[device_name]['true_positive_count'] += count
         
-        # 3. 計算正確率 (Precision = TP / (TP + FP))
+        # 3. 同時計算 Precision 與 Recall。
         for device_name in device_stats:
             stats = device_stats[device_name]
             if stats['total_count'] > 0:
-                # 正確率 = (總辨識數 - 錯誤辨識數) / 總辨識數 = TP / (TP + FP)
-                stats['accuracy'] = round(((stats['total_count'] - stats['corrected_count']) / stats['total_count']) * 100, 1)
+                stats['accuracy'] = round(
+                    (stats['true_positive_count'] / stats['total_count']) * 100,
+                    1
+                )
+            stats['true_count'] = (
+                stats['true_positive_count'] + stats['false_negative_count']
+            )
+            if stats['true_count'] > 0:
+                stats['recall'] = round(
+                    (stats['true_positive_count'] / stats['true_count']) * 100,
+                    1
+                )
         
         return jsonify({
             'success': True,

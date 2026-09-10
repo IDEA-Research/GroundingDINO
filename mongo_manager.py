@@ -249,6 +249,12 @@ security:
             self.db.screen_analysis.create_index("detected_model")
             self.db.screen_analysis.create_index("medical_values.heart_rate")
             self.db.screen_analysis.create_index([("analyzed_at", -1)])
+            self.db.screen_analysis.create_index([
+                ("frame_result_id", 1),
+                ("success", 1),
+                ("llm_model", 1),
+                ("analyzed_at", -1),
+            ])
 
             # StreamSessions 索引
             self.db.stream_sessions.create_index("session_id", unique=True)
@@ -453,6 +459,43 @@ security:
             }
         return {"screens.llm_model": model}
 
+    @staticmethod
+    def _direct_llm_model_filter(model):
+        """建立直接查詢 screen_analysis 時使用的模型條件。"""
+        if model == 'gpt-4o':
+            return {
+                "$or": [
+                    {"llm_model": model},
+                    {"llm_model": {"$exists": False}},
+                    {"llm_model": "openai/gpt-4o"},
+                ]
+            }
+        if model == 'openai/gpt-4o':
+            return {
+                "$or": [
+                    {"llm_model": model},
+                    {"llm_model": "gpt-4o"},
+                    {"llm_model": {"$exists": False}},
+                ]
+            }
+        return {"llm_model": model}
+
+    def _get_session_frame_ids(self, session_id):
+        """取得 session 關聯的 frame ID。"""
+        if self.db is None:
+            return []
+
+        video = self.db.video_analysis.find_one(
+            {"session_id": session_id},
+            {"_id": 1}
+        )
+        if not video:
+            return []
+
+        return self.db.frame_results.distinct(
+            "_id", {"video_analysis_id": video["_id"]}
+        )
+
     def _session_screens_lookup_pipeline(self, session_id):
         """session → frame → screen 的共用聚合前段"""
         return [
@@ -492,17 +535,23 @@ security:
             {"$facet": {
                 "failed": [
                     {"$match": {"screens.success": False}},
-                    {"$sort": {"screens.analyzed_at": -1}},
-                    {"$group": {
-                        "_id": None,
-                        "count": {"$sum": 1},
-                        "errors": {"$push": "$screens.error_message"},
-                        "last_error": {"$first": "$screens.error_message"},
-                    }},
+                    {"$count": "count"},
                 ],
                 "success": [
                     {"$match": {"screens.success": True}},
                     {"$count": "count"},
+                ],
+                "recent_errors": [
+                    {"$match": {
+                        "screens.success": False,
+                        "screens.error_message": {"$nin": [None, ""]},
+                    }},
+                    {"$sort": {"screens.analyzed_at": -1}},
+                    {"$limit": 10},
+                    {"$project": {
+                        "_id": 0,
+                        "message": "$screens.error_message",
+                    }},
                 ],
             }},
         ])
@@ -516,12 +565,16 @@ security:
             success_block = facet.get("success") or []
             failed_count = failed_block.get("count", 0)
             success_count = success_block[0]["count"] if success_block else 0
-            raw_errors = [e for e in (failed_block.get("errors") or []) if e]
+            raw_errors = [
+                row.get("message")
+                for row in (facet.get("recent_errors") or [])
+                if row.get("message")
+            ]
             sample_errors = list(dict.fromkeys(raw_errors))[:3]
             return {
                 "failed_count": failed_count,
                 "success_count": success_count,
-                "last_error": failed_block.get("last_error"),
+                "last_error": raw_errors[0] if raw_errors else None,
                 "sample_errors": sample_errors,
             }
         except Exception as e:
@@ -566,6 +619,193 @@ security:
         )
         
         return list(self.db.video_analysis.aggregate(pipeline))
+
+    def get_medical_values_page(self, session_id, model=None, page=1, page_size=12):
+        """只取得指定 session 當頁的醫療數值。"""
+        if self.db is None:
+            return {
+                "items": [],
+                "page": 1,
+                "page_size": page_size,
+                "total_items": 0,
+                "total_pages": 0,
+            }
+
+        frame_ids = self._get_session_frame_ids(session_id)
+        query = {
+            "frame_result_id": {"$in": frame_ids},
+            "success": True,
+        }
+        if model:
+            query = {"$and": [query, self._direct_llm_model_filter(model)]}
+
+        total_items = self.db.screen_analysis.count_documents(query)
+        total_pages = (
+            (total_items + page_size - 1) // page_size
+            if total_items else 0
+        )
+        page = min(max(page, 1), total_pages or 1)
+
+        screens = list(
+            self.db.screen_analysis.find(query)
+            .sort([("analyzed_at", -1), ("_id", -1)])
+            .skip((page - 1) * page_size)
+            .limit(page_size)
+        )
+
+        page_frame_ids = list({
+            screen.get("frame_result_id")
+            for screen in screens
+            if screen.get("frame_result_id") is not None
+        })
+        page_frames = self.db.frame_results.find(
+            {"_id": {"$in": page_frame_ids}},
+            {"minute": 1, "original_image_path": 1}
+        )
+        frame_map = {frame["_id"]: frame for frame in page_frames}
+
+        items = []
+        for screen in screens:
+            frame = frame_map.get(screen.get("frame_result_id"), {})
+            items.append({
+                "id": str(screen.get("_id", "")),
+                "minute": frame.get("minute", 0),
+                "screen_number": screen.get("screen_number"),
+                "original_screen_number": screen.get("original_screen_number"),
+                "frame_result_id": str(screen.get("frame_result_id", "")),
+                "medical_values": screen.get("medical_values") or {},
+                "corrected_medical_values": screen.get("corrected_medical_values") or {},
+                "model": screen.get("detected_model") or "unknown",
+                "corrected_model": screen.get("corrected_model"),
+                "has_glare": bool(screen.get("has_glare", False)),
+                "has_occlusion": bool(screen.get("has_occlusion", False)),
+                "analyzed_at": screen.get("analyzed_at"),
+                "original_image_path": frame.get("original_image_path", ""),
+                "screen_image_path": screen.get("screen_image_path", ""),
+                "screen_image_path_for_vlm": (
+                    screen.get("screen_image_path_for_vlm")
+                    or screen.get("screen_image_path", "")
+                ),
+                "llm_model": screen.get("llm_model"),
+            })
+
+        return {
+            "items": items,
+            "page": page,
+            "page_size": page_size,
+            "total_items": total_items,
+            "total_pages": total_pages,
+        }
+
+    def get_histogram_values_by_session(self, session_id, model=None):
+        """取得整個 session 繪製 Histogram 所需的輕量資料。"""
+        if self.db is None:
+            return []
+
+        frame_ids = self._get_session_frame_ids(session_id)
+        query = {
+            "frame_result_id": {"$in": frame_ids},
+            "success": True,
+        }
+        if model:
+            query = {"$and": [query, self._direct_llm_model_filter(model)]}
+
+        return list(
+            self.db.screen_analysis.find(
+                query,
+                {
+                    "_id": 0,
+                    "analyzed_at": 1,
+                    "medical_values": 1,
+                    "corrected_medical_values": 1,
+                }
+            ).sort([("analyzed_at", 1), ("_id", 1)])
+        )
+
+    def get_session_device_stats(self, session_id, model=None):
+        """在 MongoDB 端彙總設備訂正統計，避免載入整個 session。"""
+        if self.db is None:
+            return []
+        frame_ids = self._get_session_frame_ids(session_id)
+        match = {
+            "frame_result_id": {"$in": frame_ids},
+            "success": True,
+        }
+        if model:
+            match = {"$and": [match, self._direct_llm_model_filter(model)]}
+
+        return list(self.db.screen_analysis.aggregate([
+            {"$match": match},
+            {"$group": {
+                "_id": {
+                    "model": {"$ifNull": ["$detected_model", "unknown"]},
+                    "corrected_model": "$corrected_model",
+                },
+                "count": {"$sum": 1},
+            }},
+        ]))
+
+    def get_session_screen_sources_page(self, session_id, page=1, page_size=50):
+        """分頁取得批次重新分析需要的最小螢幕來源資料。"""
+        if self.db is None:
+            return {"items": [], "page": 1, "total_items": 0, "total_pages": 0}
+        frame_ids = self._get_session_frame_ids(session_id)
+        pipeline = [
+            {"$match": {
+                "frame_result_id": {"$in": frame_ids},
+                "success": True,
+            }},
+            {"$sort": {"analyzed_at": -1, "_id": -1}},
+            {"$group": {
+                "_id": {
+                    "frame_result_id": "$frame_result_id",
+                    "original_screen_number": "$original_screen_number",
+                },
+                "source": {"$first": {
+                    "frame_result_id": {"$toString": "$frame_result_id"},
+                    "original_screen_number": "$original_screen_number",
+                    "screen_number": "$screen_number",
+                    "screen_image_path": {
+                        "$ifNull": [
+                            "$screen_image_path_for_vlm",
+                            "$screen_image_path",
+                        ]
+                    },
+                }},
+            }},
+            {"$sort": {
+                "_id.frame_result_id": 1,
+                "_id.original_screen_number": 1,
+            }},
+            {"$facet": {
+                "metadata": [{"$count": "total"}],
+                "items": [
+                    {"$skip": (page - 1) * page_size},
+                    {"$limit": page_size},
+                    {"$replaceWith": "$source"},
+                ],
+            }},
+        ]
+        rows = list(self.db.screen_analysis.aggregate(pipeline))
+        facet = rows[0] if rows else {}
+        metadata = facet.get("metadata") or []
+        total_items = metadata[0]["total"] if metadata else 0
+        total_pages = (
+            (total_items + page_size - 1) // page_size
+            if total_items else 0
+        )
+        page = min(max(page, 1), total_pages or 1)
+        if page > 1 and not facet.get("items") and total_pages:
+            return self.get_session_screen_sources_page(
+                session_id, total_pages, page_size
+            )
+        return {
+            "items": facet.get("items") or [],
+            "page": page,
+            "page_size": page_size,
+            "total_items": total_items,
+            "total_pages": total_pages,
+        }
     
     def get_session_models(self, session_id):
         """取得特定 session 中使用過的所有模型"""

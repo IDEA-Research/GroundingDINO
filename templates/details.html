@@ -105,34 +105,15 @@
     }
 
     .medical-values-container {
-        max-height: 600px;
-        overflow-y: auto;
-        padding-right: 10px;
-    }
-
-    /* 捲動軸樣式 */
-    .medical-values-container::-webkit-scrollbar {
-        width: 10px;
-    }
-
-    .medical-values-container::-webkit-scrollbar-track {
-        background: #f1f1f1;
-        border-radius: 5px;
-    }
-
-    .medical-values-container::-webkit-scrollbar-thumb {
-        background: #4facfe;
-        border-radius: 5px;
-    }
-
-    .medical-values-container::-webkit-scrollbar-thumb:hover {
-        background: #00f2fe;
+        width: 100%;
+        min-width: 0;
     }
 
     .medical-values-list {
         display: grid;
-        grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+        grid-template-columns: repeat(3, minmax(0, 1fr));
         gap: 20px;
+        width: 100%;
     }
 
     .medical-value-item {
@@ -143,6 +124,8 @@
         cursor: pointer;
         transition: all 0.3s ease;
         border: 2px solid transparent;
+        min-width: 0;
+        overflow: hidden;
     }
 
     .medical-value-item:hover {
@@ -234,8 +217,11 @@
     }
 
     .medical-value-item img {
+        display: block;
+        width: 100%;
         max-width: 100%;
         height: auto;
+        object-fit: contain;
         border-radius: 4px;
         margin: 10px 0;
     }
@@ -257,8 +243,9 @@
 
     .histogram-grid {
         display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+        grid-template-columns: repeat(auto-fit, minmax(min(100%, 400px), 1fr));
         gap: 25px;
+        align-items: start;
     }
 
     .histogram-card {
@@ -268,6 +255,8 @@
         box-shadow: 0 2px 8px rgba(0,0,0,0.1);
         cursor: zoom-in;
         transition: transform 0.2s, box-shadow 0.2s;
+        min-width: 0;
+        align-self: start;
     }
 
     .histogram-card:hover {
@@ -281,9 +270,61 @@
         font-size: 1.2em;
     }
 
-    .histogram-chart {
+    .histogram-canvas-wrapper {
+        position: relative;
         width: 100%;
-        height: 400px;
+        height: 280px;
+        max-height: 280px;
+        overflow: hidden;
+    }
+
+    .histogram-canvas-wrapper canvas {
+        display: block;
+        width: 100% !important;
+        height: 100% !important;
+    }
+
+    .histogram-empty-state {
+        grid-column: 1 / -1;
+        padding: 32px 20px;
+        border-radius: 8px;
+        background: #f8fafc;
+        color: #64748b;
+        text-align: center;
+    }
+
+    .page-data-note {
+        color: #64748b;
+        font-size: 0.9em;
+        margin: -10px 0 20px;
+    }
+
+    .infinite-scroll-status {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        gap: 8px;
+        margin: 24px 0 10px;
+        text-align: center;
+        color: #475569;
+        font-size: 0.9em;
+        min-height: 42px;
+    }
+
+    .infinite-scroll-status .spinner {
+        width: 22px;
+        height: 22px;
+        border-width: 3px;
+        margin: 0;
+    }
+
+    .load-more-retry {
+        padding: 6px 12px;
+        border: 1px solid #1976d2;
+        border-radius: 6px;
+        background: white;
+        color: #1976d2;
+        cursor: pointer;
     }
 
     .histogram-timeline-controls {
@@ -378,7 +419,20 @@
         margin: 10px 0;
     }
 
+    @media (max-width: 1024px) {
+        .medical-values-list {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+    }
+
     @media (max-width: 768px) {
+        .histogram-canvas-wrapper {
+            height: 240px;
+            max-height: 240px;
+        }
+    }
+
+    @media (max-width: 640px) {
         .details-header {
             flex-direction: column;
             align-items: flex-start;
@@ -408,12 +462,16 @@
         display: flex;
         justify-content: space-between;
         align-items: flex-start; /* 對齊頂部 */
+        flex-wrap: wrap;
+        gap: 10px;
         margin-bottom: 12px;
     }
 
     .card-header h3 {
         margin: 0;
         margin-right: 10px; /* 與按鈕保持距離 */
+        min-width: 0;
+        overflow-wrap: anywhere;
     }
 
     .btn-resend {
@@ -487,9 +545,9 @@
         </div>
     </div>
     
-    <!-- 新增：各設備正確率統計面板 -->
+    <!-- 各設備召回率統計面板 -->
     <div id="deviceErrorRateStats" style="margin-top: 20px; background: #f1f8e9; padding: 15px; border-radius: 8px; border-left: 5px solid #8bc34a; display: none;">
-        <h4 style="margin-top: 0; font-size: 1.1em; color: #33691e;">📊 各設備辨識正確率統計</h4>
+        <h4 style="margin-top: 0; font-size: 1.1em; color: #33691e;">📊 各設備辨識召回率統計</h4>
         <div id="deviceStatsGrid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 15px; margin-top: 10px;">
             <!-- 由 JavaScript 動態生成 -->
         </div>
@@ -499,7 +557,7 @@
     <div style="margin-top: 20px; border-top: 1px solid #dee2e6; padding-top: 20px; display: flex; gap: 20px; flex-wrap: wrap;">
         <!-- 正確率面板 -->
         <div style="flex: 1; min-width: 300px; background: #e8f5e9; padding: 15px; border-radius: 8px; border-left: 5px solid #2e7d32;">
-            <h4 style="margin-top: 0; font-size: 1.1em; color: #2e7d32;">🎯 模型辨識正確率 (Precision)</h4>
+            <h4 style="margin-top: 0; font-size: 1.1em; color: #2e7d32;">🎯 已載入資料模型辨識正確率 (Precision)</h4>
             <div style="display: flex; gap: 40px; margin-top: 10px;">
                 <div>
                     <div style="font-size: 0.85em; color: #666;">型號正確率 (TP / TP+FP)</div>
@@ -516,7 +574,7 @@
 
         <!-- 人工訂正統計面板 -->
         <div style="flex: 1; min-width: 300px; background: #fff3e0; padding: 15px; border-radius: 8px; border-left: 5px solid #ef6c00;">
-            <h4 style="margin-top: 0; font-size: 1.1em; color: #ef6c00;">✍️ 人工訂正統計 (FP)</h4>
+            <h4 style="margin-top: 0; font-size: 1.1em; color: #ef6c00;">✍️ 已載入資料人工訂正統計 (FP)</h4>
             <div style="display: flex; gap: 40px; margin-top: 10px;">
                 <div>
                     <div style="font-size: 0.85em; color: #666;">型號訂正次數 (FP)</div>
@@ -540,7 +598,6 @@
             <option value="openai/gpt-4o">GPT-4o</option>
         </select>
         
-
         <button id="btnAnalyzeMissing" onclick="analyzeMissingFrames()" class="btn-resend" style="display: none; background: #e3f2fd; border-color: #90caf9; color: #1976d2; padding: 8px 15px;">
             ▶️ 使用此模型分析所有未分析的畫面
         </button>
@@ -579,10 +636,12 @@
     <div class="medical-values-list" id="medicalValuesList">
         <!-- 動態生成的醫療數值項目 -->
     </div>
+    <div class="infinite-scroll-status" id="infiniteScrollStatus" aria-live="polite"></div>
 </div>
 
 <div class="histograms-section" id="histogramsSection">
     <h3>📈 數值變化 Histogram</h3>
+    <p class="page-data-note" id="histogramScopeNote">圖表顯示此 Session 的數值資料</p>
     <div class="histogram-grid" id="histogramGrid" wire:ignore>
         <!-- 動態生成的 histogram 圖表 -->
     </div>
@@ -649,11 +708,26 @@
 <script>
     let medicalValuesData = [];
     let sessionId = null;
-    let chartInstances = {}; // 儲存圖表實例以防重複創建
+    let currentPage = 1;
+    let pageSize = 12;
+    let pagination = { page: 1, page_size: 12, total_items: 0, total_pages: 0 };
+    let isLoadingMore = false;
+    let allItemsLoaded = false;
+    let loadMoreError = null;
+    let loadGeneration = 0;
+    let infiniteScrollObserver = null;
+    let histogramData = [];
+    let histogramLoadedModel = null;
+    let histogramRequestPromise = null;
+    const histogramCharts = new Map(); // 管理一般 Histogram 圖表實例
     let hoverChartInstance = null; // 全域放大圖表實例
     let currentCorrectingAnalysisId = null;
 
-    const LOCAL_MODELS = ['qwen3-vl-235b-a22b-instruct-1m_moe', 'glm-4.6v'];
+    const LOCAL_MODELS = [
+        'qwen3-vl-235b-a22b-instruct-1m_moe',
+        'glm-4.6v',
+        'internvl3-78b'
+    ];
     const OPENROUTER_MODELS = [
         'google/gemini-3.1-flash-lite',
         'openai/gpt-5.4',
@@ -745,10 +819,12 @@
             backBtn.href = getDatabaseBackUrl();
         }
 
-
-        // 從 URL 參數獲取 session_id
+        // 從路由或舊版網址參數獲取 session_id；歷史資料一律由第一批開始垂直載入。
         const urlParams = new URLSearchParams(window.location.search);
-        sessionId = urlParams.get('session_id');
+        sessionId = {{ initial_session_id|tojson }} || urlParams.get('session_id');
+        pageSize = Math.min(Math.max(parseInt(urlParams.get('page_size'), 10) || 12, 1), 100);
+        currentPage = 1;
+        setupInfiniteScroll();
         
         if (sessionId) {
             document.getElementById('sessionId').textContent = sessionId;
@@ -762,7 +838,7 @@
     // 載入該 Session 使用過的所有模型
     async function loadSessionModels(sessionId) {
         try {
-            const response = await fetch(`./api/mongodb/session_models/${sessionId}`);
+            const response = await fetch(`/api/mongodb/session_models/${encodeURIComponent(sessionId)}`);
             const data = await response.json();
             if (data.success && data.models && data.models.length > 0) {
                 // 如果資料庫裡有紀錄，就用資料庫的
@@ -786,7 +862,8 @@
     async function loadDeviceErrorRateStats(sessionId) {
         try {
             const model = document.getElementById('globalModelSelect').value;
-            const response = await fetch(`./api/mongodb/stats?session_id=${sessionId}&model=${model}`);
+            const params = new URLSearchParams({ session_id: sessionId, model: model });
+            const response = await fetch(`/api/mongodb/stats?${params}`);
             const data = await response.json();
             
             if (data.success && data.device_stats) {
@@ -807,22 +884,23 @@
                         statCard.style.borderRadius = '6px';
                         statCard.style.boxShadow = '0 1px 3px rgba(0,0,0,0.1)';
                         
-                        // 根據正確率決定顏色
+                        // 根據召回率決定顏色
+                        const recall = device.recall ?? 0;
                         let color = '#d32f2f'; // 紅色 (低正確率)
-                        if (device.accuracy > 50) color = '#ef6c00'; // 橘色
-                        if (device.accuracy > 80) color = '#2e7d32'; // 綠色 (高正確率)
+                        if (recall > 50) color = '#ef6c00'; // 橘色
+                        if (recall > 80) color = '#2e7d32'; // 綠色 (高正確率)
                         
                         statCard.innerHTML = `
                             <div style="font-weight: bold; font-size: 0.9em; color: #333; margin-bottom: 5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${name}">${name}</div>
                             <div style="display: flex; justify-content: space-between; align-items: center;">
-                                <div style="font-size: 1.2em; font-weight: bold; color: ${color};">${device.accuracy}%</div>
+                                <div style="font-size: 1.2em; font-weight: bold; color: ${color};">${recall}%</div>
                                 <div style="font-size: 0.75em; color: #666; text-align: right;">
-                                    TP: ${device.total_count - device.corrected_count}<br>
-                                    TP+FP: ${device.total_count}
+                                    TP: ${device.true_positive_count}<br>
+                                    TP+FN: ${device.true_count}
                                 </div>
                             </div>
                             <div style="width: 100%; height: 4px; background: #eee; border-radius: 2px; margin-top: 8px;">
-                                <div style="width: ${device.accuracy}%; height: 100%; background: ${color}; border-radius: 2px;"></div>
+                                <div style="width: ${recall}%; height: 100%; background: ${color}; border-radius: 2px;"></div>
                             </div>
                         `;
                         statsGrid.appendChild(statCard);
@@ -852,9 +930,14 @@
 
     async function changeViewModel() {
         currentModel = document.getElementById('globalModelSelect').value;
+        currentPage = 1;
+        histogramData = [];
+        histogramLoadedModel = null;
+        histogramRequestPromise = null;
+        clearHistograms();
+        document.getElementById('histogramScopeNote').textContent =
+            '圖表顯示此 Session 的數值資料';
         hideDetailsAlert();
-        document.getElementById('contentArea').style.display = 'block';
-        document.getElementById('medicalValuesContainer').style.display = 'none';
         document.getElementById('btnAnalyzeMissing').style.display = 'none';
         await loadMedicalValues(sessionId, currentModel);
     }
@@ -867,22 +950,206 @@
 
         const model = document.getElementById('globalModelSelect').value || '';
         const mode = document.getElementById('exportModeSelect').value || 'raw';
-        const exportUrl = `./api/mongodb/export/medical_values/${encodeURIComponent(sessionId)}?model=${encodeURIComponent(model)}&mode=${encodeURIComponent(mode)}`;
+        const exportUrl = `/api/mongodb/export/medical_values/${encodeURIComponent(sessionId)}?model=${encodeURIComponent(model)}&mode=${encodeURIComponent(mode)}`;
         window.location.href = exportUrl;
     }
 
     // 載入醫療數值
-    async function loadMedicalValues(sessionId, model) {
+    function setLoadingState() {
+        clearHistograms();
+        document.getElementById('deviceErrorRateStats').style.display = 'none';
+        const contentArea = document.getElementById('contentArea');
+        contentArea.innerHTML = `
+            <div class="loading-state">
+                <div class="spinner"></div>
+                <p>資料載入中</p>
+            </div>
+        `;
+        contentArea.style.display = 'block';
+        document.getElementById('medicalValuesContainer').style.display = 'none';
+    }
+
+    function cleanLegacyPaginationUrl() {
+        const url = new URL(window.location.href);
+        url.searchParams.delete('page');
+        url.searchParams.delete('page_size');
+        window.history.replaceState({}, '', url);
+    }
+
+    function setupInfiniteScroll() {
+        const status = document.getElementById('infiniteScrollStatus');
+        infiniteScrollObserver = new IntersectionObserver(entries => {
+            if (entries.some(entry => entry.isIntersecting)) {
+                loadNextPage();
+            }
+        }, { rootMargin: '600px 0px' });
+        infiniteScrollObserver.observe(status);
+    }
+
+    function renderInfiniteScrollStatus() {
+        const status = document.getElementById('infiniteScrollStatus');
+        if (!pagination.total_items) {
+            status.innerHTML = '';
+            return;
+        }
+        if (isLoadingMore) {
+            status.innerHTML = `
+                <div class="spinner"></div>
+                <span>正在載入更多資料（已載入 ${medicalValuesData.length} / ${pagination.total_items} 筆）</span>
+            `;
+        } else if (loadMoreError) {
+            status.innerHTML = `
+                <span>載入更多資料失敗：${escapeHtml(loadMoreError)}</span>
+                <button type="button" class="load-more-retry" onclick="loadNextPage()">重試</button>
+            `;
+        } else if (allItemsLoaded) {
+            status.textContent = `已載入全部 ${pagination.total_items} 筆資料，以上為整個 Session 的統計結果`;
+        } else {
+            status.textContent = `已載入 ${medicalValuesData.length} / ${pagination.total_items} 筆，向下捲動以載入更多`;
+        }
+    }
+
+    function loadNextPage() {
+        if (
+            isLoadingMore ||
+            allItemsLoaded ||
+            !sessionId ||
+            !pagination.total_pages
+        ) return;
+        loadMoreError = null;
+        loadMedicalValues(sessionId, currentModel, currentPage + 1, true);
+    }
+
+    function continueLoadingIfStatusIsVisible() {
+        if (isLoadingMore || allItemsLoaded || loadMoreError) return;
+        window.requestAnimationFrame(() => {
+            const status = document.getElementById('infiniteScrollStatus');
+            const rect = status.getBoundingClientRect();
+            if (rect.top <= window.innerHeight + 600 && rect.bottom >= -600) {
+                loadNextPage();
+            }
+        });
+    }
+
+    function clearHistograms() {
+        histogramCharts.forEach(chart => chart.destroy());
+        histogramCharts.clear();
+        document.getElementById('histogramGrid').innerHTML = '';
+        if (hoverChartInstance) {
+            hoverChartInstance.destroy();
+            hoverChartInstance = null;
+        }
+    }
+
+    function showHistogramMessage(message) {
+        clearHistograms();
+        const messageElement = document.createElement('div');
+        messageElement.className = 'histogram-empty-state';
+        messageElement.textContent = message;
+        document.getElementById('histogramGrid').appendChild(messageElement);
+    }
+
+    async function loadHistogramData() {
+        if (histogramLoadedModel === currentModel) {
+            return true;
+        }
+        if (histogramRequestPromise) {
+            return histogramRequestPromise;
+        }
+
+        const requestedModel = currentModel;
+        showHistogramMessage('圖表資料載入中');
+        const requestPromise = (async () => {
+            const params = new URLSearchParams();
+            if (requestedModel) params.set('model', requestedModel);
+            const response = await fetch(
+                `/api/mongodb/histogram/${encodeURIComponent(sessionId)}?${params}`
+            );
+            const data = await response.json();
+            if (!response.ok || !data.success) {
+                throw new Error(data.error || '圖表資料載入失敗');
+            }
+            if (requestedModel !== currentModel) {
+                return false;
+            }
+
+            histogramData = (data.items || []).map(item => ({
+                analyzed_at: item.analyzed_at || null,
+                medical_values: item.medical_values || {},
+                corrected_medical_values: item.corrected_medical_values || {}
+            }));
+            histogramLoadedModel = requestedModel;
+            const timePointCount = getSortedTimelineBuckets().length;
+            document.getElementById('histogramScopeNote').textContent =
+                `圖表顯示此 Session 的數值資料（共 ${timePointCount} 個時間點）`;
+            return true;
+        })();
+        histogramRequestPromise = requestPromise;
+
         try {
-            const url = model ? `./api/mongodb/medical_values/${sessionId}?model=${model}` : `./api/mongodb/medical_values/${sessionId}`;
+            return await requestPromise;
+        } finally {
+            if (histogramRequestPromise === requestPromise) {
+                histogramRequestPromise = null;
+            }
+        }
+    }
+
+    function updateSessionInfo(data) {
+        const cameraNameItem = document.getElementById('cameraNameItem');
+        const taskNameItem = document.getElementById('taskNameItem');
+        if (data.camera_name) {
+            document.getElementById('cameraName').textContent = data.camera_name;
+            cameraNameItem.style.display = 'block';
+        } else {
+            cameraNameItem.style.display = 'none';
+        }
+        if (data.task_name) {
+            document.getElementById('taskName').textContent = data.task_name;
+            taskNameItem.style.display = 'block';
+        } else {
+            taskNameItem.style.display = 'none';
+        }
+    }
+
+    async function loadMedicalValues(sessionId, model, page = 1, append = false) {
+        if (append && (isLoadingMore || allItemsLoaded)) return;
+        const generation = append ? loadGeneration : ++loadGeneration;
+        if (!append) {
+            currentPage = 1;
+            medicalValuesData = [];
+            allItemsLoaded = false;
+            loadMoreError = null;
+            setLoadingState();
+        }
+        isLoadingMore = true;
+        renderInfiniteScrollStatus();
+        try {
+            const params = new URLSearchParams({
+                page: String(page),
+                page_size: String(pageSize)
+            });
+            if (model) params.set('model', model);
+            const url = `/api/mongodb/medical_values/${encodeURIComponent(sessionId)}?${params}`;
             const response = await fetch(url);
             const data = await response.json();
             
-            if (!data.success) {
+            if (!response.ok || !data.success) {
                 throw new Error(data.error || '載入失敗');
             }
+            if (generation !== loadGeneration || model !== currentModel) return;
+
+            pagination = data.pagination || {
+                page: 1, page_size: pageSize, total_items: 0, total_pages: 0
+            };
+            currentPage = pagination.page;
+            pageSize = pagination.page_size;
+            cleanLegacyPaginationUrl();
+            clearHistograms();
+            updateSessionInfo(data);
+            document.getElementById('totalRecords').textContent = pagination.total_items;
             
-            if (data.data && data.data.length > 0) {
+            if (data.items && data.items.length > 0) {
                 hideDetailsAlert();
                 const partialFail = data.failure_summary && data.failure_summary.failed_count > 0;
                 if (partialFail) {
@@ -892,7 +1159,7 @@
                     }
                 }
                 // 轉換資料格式
-                medicalValuesData = data.data.map(item => ({
+                const loadedItems = data.items.map(item => ({
                     id: item.id,
                     frame_result_id: item.frame_result_id,
                     time_seconds: item.minute,
@@ -912,28 +1179,22 @@
                     has_glare: !!item.has_glare,
                     has_occlusion: !!item.has_occlusion
                 }));
+                medicalValuesData = append
+                    ? medicalValuesData.concat(loadedItems)
+                    : loadedItems;
+                allItemsLoaded = currentPage >= pagination.total_pages;
                 
-                document.getElementById('totalRecords').textContent = medicalValuesData.length;
-                
-                // 顯示相機與任務名稱（如果存在）
-                if (data.camera_name) {
-                    document.getElementById('cameraName').textContent = data.camera_name;
-                    document.getElementById('cameraNameItem').style.display = 'block';
-                } else {
-                    document.getElementById('cameraNameItem').style.display = 'none';
-                }
-                if (data.task_name) {
-                    document.getElementById('taskName').textContent = data.task_name;
-                    document.getElementById('taskNameItem').style.display = 'block';
-                } else {
-                    document.getElementById('taskNameItem').style.display = 'none';
-                }
-
-                displayMedicalValues(medicalValuesData);
+                refreshMedicalValuesDisplay();
                 updateCorrectionStats(medicalValuesData);
                 loadDeviceErrorRateStats(sessionId); // 新增：載入設備錯誤率統計
                 if (document.getElementById('showHistogram').checked) {
-                    generateHistograms(true);
+                    try {
+                        if (await loadHistogramData()) {
+                            generateHistograms(true);
+                        }
+                    } catch (error) {
+                        showHistogramMessage('圖表資料載入失敗：' + error.message);
+                    }
                 }
                 
                 // 隱藏載入狀態,顯示內容
@@ -941,6 +1202,10 @@
                 document.getElementById('medicalValuesContainer').style.display = 'block';
                 document.getElementById('btnAnalyzeMissing').style.display = 'none';
             } else {
+                if (append) {
+                    allItemsLoaded = true;
+                    return;
+                }
                 medicalValuesData = [];
                 const fs = data.failure_summary;
                 const hadFailures = fs && fs.failed_count > 0;
@@ -962,8 +1227,8 @@
                     document.getElementById('contentArea').innerHTML = `
                     <div class="empty-state" style="text-align: center; padding: 40px;">
                         <div style="font-size: 3em; margin-bottom: 10px;">🔍</div>
-                        <h3>這個模型 (${escapeHtml(model)}) 尚未分析過此影片</h3>
-                        <p>您可以點擊上方按鈕開始分析，或選擇其他模型檢視。</p>
+                        <h3>目前沒有歷史資料</h3>
+                        <p>這個模型 (${escapeHtml(model)}) 尚未有可顯示的分析紀錄。</p>
                     </div>
                 `;
                 }
@@ -974,7 +1239,18 @@
                 updateCorrectionStats([]);
             }
         } catch (error) {
-            showError('載入詳細資料失敗: ' + error.message);
+            if (generation !== loadGeneration) return;
+            if (append) {
+                loadMoreError = error.message;
+            } else {
+                showError('載入詳細資料失敗: ' + error.message);
+            }
+        } finally {
+            if (generation === loadGeneration) {
+                isLoadingMore = false;
+                renderInfiniteScrollStatus();
+                continueLoadingIfStatusIsVisible();
+            }
         }
     }
 
@@ -988,79 +1264,88 @@
         btn.innerHTML = '⏳ 正在準備分析...';
         
         try {
-            // 獲取此 Session 的所有已分析資料 (不分模型)，以知道有哪些畫面需要分析
-            const response = await fetch(`./api/mongodb/medical_values/${sessionId}`);
-            const data = await response.json();
-            
-            if (!data.success || !data.data || data.data.length === 0) {
+            const fetchSourcePage = async (page) => {
+                const params = new URLSearchParams({ page: String(page), page_size: '50' });
+                const response = await fetch(
+                    `/api/mongodb/session_screen_sources/${encodeURIComponent(sessionId)}?${params}`
+                );
+                const data = await response.json();
+                if (!response.ok || !data.success) {
+                    throw new Error(data.error || '讀取批次分析來源失敗');
+                }
+                return data;
+            };
+
+            // 每次只取得一批必要欄位，不把所有歷史卡片資料載入瀏覽器。
+            let sourcePage = 1;
+            let sourceData = await fetchSourcePage(sourcePage);
+            const total = sourceData.pagination?.total_items || 0;
+            if (!sourceData.items || sourceData.items.length === 0) {
                 alert('找不到任何已分析的畫面資料，無法進行批次分析。');
                 btn.disabled = false;
                 btn.innerHTML = '▶️ 使用此模型分析所有未分析的畫面';
                 return;
             }
-            
-            // 根據 frame_result_id 和 original_screen_number 進行去重，確保每個螢幕只分析一次
-            const uniqueFramesMap = new Map();
-            data.data.forEach(item => {
-                const key = `${item.frame_result_id}_${item.original_screen_number}`;
-                if (!uniqueFramesMap.has(key)) {
-                    uniqueFramesMap.set(key, item);
-                }
-            });
-            
-            const framesToAnalyze = Array.from(uniqueFramesMap.values());
+
             let successCount = 0;
+            let processedCount = 0;
             const failureMessages = [];
             
             document.getElementById('contentArea').innerHTML = `
                 <div class="loading-state">
                     <div class="spinner"></div>
-                    <p id="analysisProgress">正在使用 ${currentModel} 分析畫面 (0/${framesToAnalyze.length})...</p>
+                    <p id="analysisProgress">正在使用 ${currentModel} 分析畫面 (0/${total})...</p>
                 </div>
             `;
             
-            for (let i = 0; i < framesToAnalyze.length; i++) {
-                const item = framesToAnalyze[i];
-                document.getElementById('analysisProgress').textContent = `正在使用 ${currentModel} 分析畫面 (${i+1}/${framesToAnalyze.length})...`;
+            while (sourceData.items.length > 0) {
+                for (const item of sourceData.items) {
+                    processedCount++;
+                    document.getElementById('analysisProgress').textContent =
+                        `正在使用 ${currentModel} 分析畫面 (${processedCount}/${total})...`;
                 
-                try {
-                    const reanalyzeResponse = await fetch('/api/reanalyze_image', {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                        },
-                        body: JSON.stringify({
-                            image_path: item.screen_image_path,
-                            model: currentModel,
-                            provider: providerForModel(currentModel),
-                            api_key: apiKey,
-                            frame_result_id: item.frame_result_id,
-                            original_screen_number: item.original_screen_number,
-                            screen_number: item.screen_number,
-                            save_to_db: true // 批次分析時儲存資料
-                        })
-                    });
-                    
-                    const result = await reanalyzeResponse.json();
-                    if (result.success) {
-                        successCount++;
-                    } else {
-                        const errMsg = result.error || '未知錯誤';
-                        console.error(`分析單張圖片失敗 (${item.screen_image_path}):`, errMsg);
+                    try {
+                        const reanalyzeResponse = await fetch('/api/reanalyze_image', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                            },
+                            body: JSON.stringify({
+                                image_path: item.screen_image_path,
+                                model: currentModel,
+                                provider: providerForModel(currentModel),
+                                api_key: apiKey,
+                                frame_result_id: item.frame_result_id,
+                                original_screen_number: item.original_screen_number,
+                                screen_number: item.screen_number,
+                                save_to_db: true
+                            })
+                        });
+
+                        const result = await reanalyzeResponse.json();
+                        if (result.success) {
+                            successCount++;
+                        } else {
+                            const errMsg = result.error || '未知錯誤';
+                            console.error(`分析單張圖片失敗 (${item.screen_image_path}):`, errMsg);
+                            if (!failureMessages.includes(errMsg)) {
+                                failureMessages.push(errMsg);
+                            }
+                        }
+                    } catch (err) {
+                        console.error('分析單張圖片發生例外錯誤:', err);
+                        const errMsg = err.message || String(err);
                         if (!failureMessages.includes(errMsg)) {
                             failureMessages.push(errMsg);
                         }
                     }
-                } catch (err) {
-                    console.error('分析單張圖片發生例外錯誤:', err);
-                    const errMsg = err.message || String(err);
-                    if (!failureMessages.includes(errMsg)) {
-                        failureMessages.push(errMsg);
-                    }
                 }
+
+                if (sourcePage >= (sourceData.pagination?.total_pages || 1)) break;
+                sourcePage++;
+                sourceData = await fetchSourcePage(sourcePage);
             }
 
-            const total = framesToAnalyze.length;
             if (successCount === 0) {
                 const mainErr = failureMessages[0] || '請檢查 API Key 或模型名稱';
                 showDetailsAlert(
@@ -1192,12 +1477,12 @@
             }
             
             const screenImageHtml = item.screen_image_url ?
-                `<img src="${item.screen_image_url}" alt="螢幕圖片">` : '';
+                `<img src="${item.screen_image_url}" alt="螢幕圖片" loading="lazy">` : '';
             const hasDistinctVlmPreview = item.screen_image_url_for_vlm && item.screen_image_url_for_vlm !== item.screen_image_url;
             const vlmScreenImageHtml = hasDistinctVlmPreview
                 ? `<div style="margin-top: 8px;">
                     <div style="font-size: 0.8em; color: #555; margin-bottom: 4px;">🧠 VLM 輸入圖</div>
-                    <img src="${item.screen_image_url_for_vlm}" alt="VLM 輸入螢幕圖片">
+                    <img src="${item.screen_image_url_for_vlm}" alt="VLM 輸入螢幕圖片" loading="lazy">
                 </div>`
                 : '';
             
@@ -1280,6 +1565,24 @@
         });
     }
 
+    function refreshMedicalValuesDisplay() {
+        const showOnlyCorrected = document.getElementById('showCorrectedOnly').checked;
+        if (!showOnlyCorrected) {
+            displayMedicalValues(medicalValuesData);
+            return;
+        }
+        displayMedicalValues(medicalValuesData.filter(item => {
+            const hasValueCorrection = item.corrected_medical_values &&
+                Object.values(item.corrected_medical_values).some(
+                    value => value !== undefined && value !== null && value !== ''
+                );
+            const hasModelCorrection = item.corrected_model !== undefined &&
+                item.corrected_model !== null &&
+                item.corrected_model !== '';
+            return hasValueCorrection || hasModelCorrection;
+        }));
+    }
+
     // 訂正型號
     async function promptModelCorrection(analysisId, originalModel, event) {
         event.stopPropagation();
@@ -1326,7 +1629,7 @@
         const selectedModel = document.getElementById('modelSelect').value;
         
         try {
-            const response = await fetch('./api/mongodb/correct_model/', {
+            const response = await fetch('/api/mongodb/correct_model/', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -1340,7 +1643,7 @@
                 const item = medicalValuesData.find(i => i.id === currentCorrectingAnalysisId);
                 if (item) {
                     item.corrected_model = selectedModel;
-                    displayMedicalValues(medicalValuesData);
+                    refreshMedicalValuesDisplay();
                     updateCorrectionStats(medicalValuesData);
                     loadDeviceErrorRateStats(sessionId); // 新增：型號訂正後重新載入設備統計
                 }
@@ -1359,7 +1662,7 @@
         if (!confirm(`確定要撤銷 ${key} 的訂正，恢復為原始辨識值嗎？`)) return;
         
         try {
-            const response = await fetch('./api/mongodb/undo_value_correction/', {
+            const response = await fetch('/api/mongodb/undo_value_correction/', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ analysis_id: analysisId, key: key })
@@ -1369,7 +1672,7 @@
                 const item = medicalValuesData.find(i => i.id === analysisId);
                 if (item && item.corrected_medical_values) {
                     delete item.corrected_medical_values[key];
-                    displayMedicalValues(medicalValuesData);
+                    refreshMedicalValuesDisplay();
                     updateCorrectionStats(medicalValuesData);
                     loadDeviceErrorRateStats(sessionId);
                 }
@@ -1385,7 +1688,7 @@
         if (!confirm(`確定要撤銷型號訂正，恢復為原始辨識型號嗎？`)) return;
         
         try {
-            const response = await fetch('./api/mongodb/undo_model_correction/', {
+            const response = await fetch('/api/mongodb/undo_model_correction/', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ analysis_id: analysisId })
@@ -1395,7 +1698,7 @@
                 const item = medicalValuesData.find(i => i.id === analysisId);
                 if (item) {
                     delete item.corrected_model;
-                    displayMedicalValues(medicalValuesData);
+                    refreshMedicalValuesDisplay();
                     updateCorrectionStats(medicalValuesData);
                     loadDeviceErrorRateStats(sessionId);
                 }
@@ -1420,7 +1723,7 @@
         }
 
         try {
-            const response = await fetch('./api/mongodb/mark_quality/', {
+            const response = await fetch('/api/mongodb/mark_quality/', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -1434,13 +1737,13 @@
             if (!data.success) {
                 item.has_glare = previousGlare;
                 item.has_occlusion = previousOcclusion;
-                displayMedicalValues(medicalValuesData);
+                refreshMedicalValuesDisplay();
                 alert('更新畫面品質標註失敗: ' + (data.error || '未知錯誤'));
             }
         } catch (error) {
             item.has_glare = previousGlare;
             item.has_occlusion = previousOcclusion;
-            displayMedicalValues(medicalValuesData);
+            refreshMedicalValuesDisplay();
             alert('更新畫面品質標註失敗: ' + error.message);
         }
     }
@@ -1453,7 +1756,7 @@
         
         if (newValue !== null && newValue.trim() !== "") {
             try {
-                const response = await fetch('./api/mongodb/correct_value/', {
+                const response = await fetch('/api/mongodb/correct_value/', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json'
@@ -1471,7 +1774,7 @@
                     const item = medicalValuesData.find(i => i.id === analysisId);
                     if (item) {
                         item.corrected_medical_values[key] = newValue.trim();
-                        displayMedicalValues(medicalValuesData);
+                        refreshMedicalValuesDisplay();
                         updateCorrectionStats(medicalValuesData);
                         loadDeviceErrorRateStats(sessionId); // 新增：訂正後重新載入設備統計
                     }
@@ -1546,7 +1849,7 @@
                     medicalValuesData[itemIndex].is_resent = true; // 標記為已重送分析
                     
                     // 重新渲染畫面
-                    displayMedicalValues(medicalValuesData);
+                    refreshMedicalValuesDisplay();
                     updateCorrectionStats(medicalValuesData);
                 }
                 
@@ -1569,7 +1872,7 @@
 
     function getHistogramValueTypes() {
         const valueTypes = new Set();
-        medicalValuesData.forEach(item => {
+        histogramData.forEach(item => {
             Object.keys(item.medical_values || {}).forEach(key => valueTypes.add(key));
         });
         return [...valueTypes];
@@ -1577,8 +1880,8 @@
 
     function getSortedTimelineBuckets() {
         const timeGroups = new Map();
-        medicalValuesData.forEach(item => {
-            const key = item.time_seconds;
+        histogramData.forEach((item, index) => {
+            const key = item.analyzed_at || `unknown-${index}`;
             if (!timeGroups.has(key)) {
                 timeGroups.set(key, []);
             }
@@ -1655,16 +1958,19 @@
     }
 
     // 切換 histogram 顯示
-    function toggleHistograms() {
+    async function toggleHistograms() {
         const checkbox = document.getElementById('showHistogram');
         const section = document.getElementById('histogramsSection');
         
         if (checkbox.checked) {
-            // 只在第一次或圖表被清除後才生成
-            if (Object.keys(chartInstances).length === 0) {
-                generateHistograms(true);
-            }
             section.classList.add('visible');
+            try {
+                if (await loadHistogramData()) {
+                    generateHistograms(true);
+                }
+            } catch (error) {
+                showHistogramMessage('圖表資料載入失敗：' + error.message);
+            }
         } else {
             section.classList.remove('visible');
         }
@@ -1672,29 +1978,7 @@
 
     // 切換顯示僅有訂正的數據
     function toggleCorrectedOnly() {
-        const checkbox = document.getElementById('showCorrectedOnly');
-        const showOnlyCorrected = checkbox.checked;
-        
-        if (showOnlyCorrected) {
-            // 過濾出有訂正過的數據
-            // 條件1: 有訂正過的數值 (corrected_medical_values 有內容且非空)
-            // 條件2: 有訂正過的型號 (corrected_model 存在且非空)
-            const correctedData = medicalValuesData.filter(item => {
-                // 檢查數值訂正
-                const hasValueCorrection = item.corrected_medical_values && 
-                                         Object.values(item.corrected_medical_values).some(v => v !== undefined && v !== null && v !== "");
-                
-                // 檢查型號訂正
-                const hasModelCorrection = item.corrected_model !== undefined && item.corrected_model !== null && item.corrected_model !== "";
-                
-                return hasValueCorrection || hasModelCorrection;
-            });
-            
-            displayMedicalValues(correctedData);
-        } else {
-            // 顯示全部數據
-            displayMedicalValues(medicalValuesData);
-        }
+        refreshMedicalValuesDisplay();
     }
 
     // 生成 histograms
@@ -1703,19 +1987,20 @@
         updateHistogramTimelineControls(resetTimeline);
         
         // 清除舊的圖表實例
-        Object.values(chartInstances).forEach(chart => {
-            if (chart) {
-                chart.destroy();
-            }
-        });
-        chartInstances = {};
-        
+        histogramCharts.forEach(chart => chart.destroy());
+        histogramCharts.clear();
         grid.innerHTML = '';
         
         const valueTypes = getHistogramValueTypes();
+        let renderedChartCount = 0;
         
         // 為每種數值類型生成 histogram
         valueTypes.forEach((valueType, index) => {
+            const chartData = prepareChartData(valueType);
+            if (chartData.length === 0) {
+                return;
+            }
+
             const card = document.createElement('div');
             card.className = 'histogram-card';
             card.style.cursor = 'zoom-in';
@@ -1726,26 +2011,34 @@
             // 使用更安全的 ID 生成方式：替換所有非字母數字字符為連字符
             const canvasId = `chart-${valueType.replace(/[^a-zA-Z0-9]/g, '-')}-${index}`;
             
-            // 創建 canvas 元素並設置固定尺寸
+            // canvas 尺寸由具有固定高度的父容器控制。
             const canvas = document.createElement('canvas');
             canvas.id = canvasId;
             canvas.className = 'histogram-chart';
-            canvas.width = 600;  // 設置固定寬度
-            canvas.height = 400; // 設置固定高度
+
+            const canvasWrapper = document.createElement('div');
+            canvasWrapper.className = 'histogram-canvas-wrapper';
+            canvasWrapper.appendChild(canvas);
             
             const title = document.createElement('h4');
             title.textContent = valueType;
             
             card.appendChild(title);
-            card.appendChild(canvas);
+            card.appendChild(canvasWrapper);
             grid.appendChild(card);
-            
-            // 準備圖表資料
-            const chartData = prepareChartData(valueType);
-            
+
             // 立即創建圖表
             createHistogramChart(canvasId, valueType, chartData);
+            renderedChartCount++;
         });
+
+        if (renderedChartCount === 0) {
+            const emptyState = document.createElement('div');
+            emptyState.className = 'histogram-empty-state';
+            emptyState.textContent = '目前頁面沒有可繪製的數值資料';
+            grid.appendChild(emptyState);
+            document.getElementById('histogramTimelineControls').style.display = 'none';
+        }
     }
 
     // 顯示放大圖表模態視窗
@@ -1839,7 +2132,7 @@
     }
 
     function usesRealTimeForChart() {
-        return medicalValuesData.some(item => item.analyzed_at);
+        return histogramData.some(item => item.analyzed_at);
     }
 
     function formatChartTimeLabel(item) {
@@ -1852,10 +2145,7 @@
                 second: '2-digit'
             });
         }
-        const t = item?.time_seconds || 0;
-        const minutes = Math.floor(t / 60);
-        const seconds = Math.floor(t % 60);
-        return `${minutes}:${seconds.toString().padStart(2, '0')}`;
+        return '時間未知';
     }
 
     function getChartSortTime(itemsAtTime) {
@@ -1863,7 +2153,7 @@
         if (withRealTime) {
             return new Date(withRealTime.analyzed_at).getTime();
         }
-        return itemsAtTime[0]?.time_seconds || 0;
+        return 0;
     }
 
     // 準備圖表資料
@@ -1875,15 +2165,26 @@
             const refItem = itemsAtTime.find(item => item.analyzed_at) || itemsAtTime[0];
             const timeLabel = formatChartTimeLabel(refItem);
             
-            // 優先找有值的 item
-            let foundItem = itemsAtTime.find(item => 
-                item.medical_values[valueType] !== undefined && 
-                item.medical_values[valueType] !== null &&
-                item.medical_values[valueType] !== ""
-            );
+            // 先排除 null、undefined、空字串，再只保留有限數字。
+            let numericValue = null;
+            const foundItem = itemsAtTime.find(item => {
+                const rawValue = item.medical_values?.[valueType];
+                if (
+                    rawValue === null ||
+                    rawValue === undefined ||
+                    (typeof rawValue === 'string' && rawValue.trim() === '')
+                ) {
+                    return false;
+                }
+                const convertedValue = Number(rawValue);
+                if (!Number.isFinite(convertedValue)) {
+                    return false;
+                }
+                numericValue = convertedValue;
+                return true;
+            });
 
             if (foundItem) {
-                const originalValue = foundItem.medical_values[valueType];
                 const correctedValue = foundItem.corrected_medical_values ? foundItem.corrected_medical_values[valueType] : null;
                 
                 // 判斷是否為訂正項 (代表 AI 原本辨識的是錯的)
@@ -1891,19 +2192,9 @@
                 
                 dataPoints.push({
                     time: timeLabel,
-                    value: parseFloat(originalValue) || 0,
+                    value: numericValue,
                     isCorrected: isCorrected,
                     correctedValue: correctedValue, // 記錄訂正後的正確值供 tooltip 顯示
-                    timeSeconds: t
-                });
-            } else {
-                // 如果該時間點沒有辨識到這個數值，value 設為 null
-                // null 在 Chart.js Bar Chart 中會保留 X 軸位置但不顯示長條
-                dataPoints.push({
-                    time: timeLabel,
-                    value: null,
-                    isCorrected: false,
-                    correctedValue: null,
                     timeSeconds: t
                 });
             }
@@ -1923,9 +2214,9 @@
         const visiblePoints = getVisibleDataPoints(dataPoints);
         
         // 檢查是否已經存在圖表實例，如果存在則先銷毀
-        if (chartInstances[canvasId]) {
-            chartInstances[canvasId].destroy();
-            delete chartInstances[canvasId];
+        if (histogramCharts.has(canvasId)) {
+            histogramCharts.get(canvasId).destroy();
+            histogramCharts.delete(canvasId);
         }
         
         // 設定顏色：AI 辨識錯誤 (有訂正過) 的顯示紅色，正常的顯示藍色
@@ -1933,7 +2224,7 @@
         const borderColors = visiblePoints.map(d => d.isCorrected ? 'rgba(211, 47, 47, 1)' : 'rgba(79, 172, 254, 1)');
         
         // 儲存圖表實例以便後續管理
-        chartInstances[canvasId] = new Chart(ctx, {
+        const chart = new Chart(ctx, {
             type: 'bar',
             data: {
                 labels: visiblePoints.map(d => d.time),
@@ -1948,7 +2239,7 @@
                 }]
             },
             options: {
-                responsive: false,
+                responsive: true,
                 maintainAspectRatio: false,
                 plugins: {
                     legend: {
@@ -2013,6 +2304,7 @@
                 }
             }
         });
+        histogramCharts.set(canvasId, chart);
     }
 
     // 顯示圖片模態視窗
@@ -2050,12 +2342,12 @@
         
         modalContent.innerHTML = `
             <h3>原始畫面：</h3>
-            <img src="${item.frame_image_url}" alt="原始畫面">
+            <img src="${item.frame_image_url}" alt="原始畫面" loading="lazy">
             <h3>檢測到的螢幕：</h3>
-            <img src="${item.screen_image_url}" alt="螢幕畫面">
+            <img src="${item.screen_image_url}" alt="螢幕畫面" loading="lazy">
             ${item.screen_image_url_for_vlm && item.screen_image_url_for_vlm !== item.screen_image_url ? `
                 <h3>VLM 實際輸入圖：</h3>
-                <img src="${item.screen_image_url_for_vlm}" alt="VLM 輸入螢幕畫面">
+                <img src="${item.screen_image_url_for_vlm}" alt="VLM 輸入螢幕畫面" loading="lazy">
             ` : ''}
             <h3>醫療數值：</h3>
             ${valuesHtml}
@@ -2103,5 +2395,6 @@
             hideHoverChart();
         }
     });
+
 </script>
 {% endblock %}
