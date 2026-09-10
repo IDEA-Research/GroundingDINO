@@ -2,17 +2,27 @@
 
 import React from "react";
 
+import { heatmapScale, scaleColorAt, scaleTextColorAt, useChartTheme } from "@/lib/chart-theme";
 import {
-  heatmapScale,
-  scaleColorAt,
-  scaleTextColorAt,
-  useChartTheme,
-} from "@/lib/chart-theme";
+  colorScaleAt,
+  normalize,
+  sampleScale,
+  statusColorScale,
+  textColorForScale,
+} from "@/lib/color-scale";
 import type { WidgetSpec } from "@/lib/spec-schema";
 import type { TableRow, WidgetData } from "@/lib/useQueryData";
 import { WidgetFrame, frameStatusProps } from "./WidgetFrame";
 
-// Color scales come from lib/chart-theme.ts (theme-aware ramps).
+// Color scale: the default (and only undocumented/no-option case) is the
+// project's semantic severity ramp — ok (green) -> warn (amber) -> danger
+// (red) — built from lib/color-scale.ts's continuous HSL interpolation
+// (see that module for why HSL beats a raw RGB blend for this ramp).
+// The legacy named ramps ("viridis" | "warm" | "cool") documented in
+// backend/app/specs/widget_schema_doc.py still resolve through
+// lib/chart-theme.ts's heatmapScale for backward compatibility with any
+// spec that explicitly asks for one of them.
+const LEGACY_SCALE_NAMES = new Set(["viridis", "warm", "cool"]);
 
 // ---------------------------------------------------------------------------
 // Build a 2D grid from the table data.
@@ -67,10 +77,22 @@ export function HeatmapWidget({
   const decimals = typeof opts.decimals === "number" ? opts.decimals : 1;
   const xLabel = typeof opts.x_label === "string" ? opts.x_label : "";
   const yLabel = typeof opts.y_label === "string" ? opts.y_label : "";
-  const scale = heatmapScale(
-    typeof opts.color_scale === "string" ? opts.color_scale : undefined,
-    theme.colors,
-  );
+
+  const colorScaleName =
+    typeof opts.color_scale === "string" ? opts.color_scale : undefined;
+  const legacyScale =
+    colorScaleName && LEGACY_SCALE_NAMES.has(colorScaleName)
+      ? heatmapScale(colorScaleName, theme.colors)
+      : null;
+  const statusScale = statusColorScale(theme.colors);
+
+  const colorAt = (t: number): string =>
+    legacyScale ? scaleColorAt(legacyScale, t) : colorScaleAt(statusScale, t);
+  const textColorAt = (t: number): string =>
+    legacyScale
+      ? scaleTextColorAt(legacyScale, t, theme.colors)
+      : textColorForScale(statusScale, t, theme.colors.ink);
+  const legendStops = legacyScale ?? sampleScale(statusScale, 12);
 
   const { cells, xLabels, yLabels } = buildGrid(data.table);
 
@@ -80,7 +102,6 @@ export function HeatmapWidget({
     .filter((v): v is number => v !== null && Number.isFinite(v));
   const minV = values.length ? Math.min(...values) : 0;
   const maxV = values.length ? Math.max(...values) : 1;
-  const range = maxV - minV || 1;
 
   // Build a lookup map for O(1) cell access.
   const lookup = new Map<string, HeatCell>();
@@ -133,17 +154,17 @@ export function HeatmapWidget({
                         </td>
                       );
                     }
-                    const t = (v - minV) / range;
+                    const t = normalize(v, minV, maxV);
                     return (
                       <td
                         key={x}
-                        className="p-1 text-center"
-                        style={{ backgroundColor: scaleColorAt(scale, t) }}
+                        className="p-1 text-center transition-colors"
+                        style={{ backgroundColor: colorAt(t) }}
                         title={`${y} / ${x}: ${v.toFixed(decimals)}`}
                       >
                         <span
                           className="font-mono text-sm tabular-nums"
-                          style={{ color: scaleTextColorAt(scale, t, theme.colors) }}
+                          style={{ color: textColorAt(t) }}
                         >
                           {v.toFixed(decimals)}
                         </span>
@@ -165,7 +186,7 @@ export function HeatmapWidget({
           <span
             className="h-2 min-w-0 flex-1 rounded-sm"
             style={{
-              background: `linear-gradient(to right, ${scale.join(", ")})`,
+              background: `linear-gradient(to right, ${legendStops.join(", ")})`,
             }}
             aria-hidden="true"
           />
