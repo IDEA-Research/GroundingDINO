@@ -5,8 +5,23 @@ import React, { useId, useMemo, useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { cx } from "@/components/ui/cx";
 import { inputClassName } from "@/components/ui/Field";
+import {
+  colorForSeverity,
+  mixHex,
+  scaleTextColorAt,
+  useChartTheme,
+  type ChartTheme,
+} from "@/lib/chart-theme";
 import { sampleTsOf } from "@/lib/data-status";
-import type { WidgetSpec } from "@/lib/spec-schema";
+import type {
+  CellDisplayMode,
+  QuerySpec,
+  ThresholdDirection,
+  WidgetSpec,
+  WidgetThreshold,
+} from "@/lib/spec-schema";
+import { resolveThresholdDirection, sortedForDirection } from "@/lib/threshold";
+import { activeThresholdViaEngine } from "@/lib/threshold-adapter";
 import type { WidgetData } from "@/lib/useQueryData";
 import {
   WidgetFrame,
@@ -22,6 +37,18 @@ import {
 // timestamps, null renders 「—」 with data-missing (never 0). Click a header
 // to sort; a filter box appears above 8 rows. On phones only the primary
 // columns show and each row has a 「展開」 toggle for the rest.
+//
+// Colored-background cell display (Grafana-style, opt-in per column via
+// QuerySpec.cellDisplayMode — see spec-schema.ts): a value column whose
+// backing query carries `thresholds` + a `cellDisplayMode` other than
+// "none" gets its cell background painted from the SAME threshold
+// decision StatCardWidget uses (lib/threshold-adapter.ts's
+// activeThresholdViaEngine), never a re-walked ladder. "basic" fills the
+// cell with the flat active-severity color; "gradient" interpolates
+// continuously within the breached band so the color deepens with the
+// value's position instead of snapping straight to full color at the
+// boundary. A column with no thresholds (or mode "none"/unset) renders
+// exactly as before this feature existed.
 
 const LABEL_HEADERS: Record<string, string> = {
   patient_id: "病患",
@@ -41,6 +68,42 @@ interface Col {
   header: string;
   unit: string | null;
   kind: "label" | "value" | "time";
+  // Colored-background cell display (value columns only — see the file
+  // banner comment). null cellThresholds or cellDisplayMode "none"/null
+  // means: render this column exactly as before.
+  cellThresholds: WidgetThreshold[] | null;
+  cellDisplayMode: CellDisplayMode | null;
+  cellDirection: ThresholdDirection;
+}
+
+// Label/time columns never carry a cell-color config.
+const NO_CELL_PAINT: Pick<
+  Col,
+  "cellThresholds" | "cellDisplayMode" | "cellDirection"
+> = {
+  cellThresholds: null,
+  cellDisplayMode: null,
+  cellDirection: "above",
+};
+
+// Derives a value column's colored-background config from the QuerySpec
+// that feeds it (widget.query for a legacy single-metric table, or the
+// matching entry of widget.queries for a multi-metric table) — see the
+// CellDisplayMode/QuerySpec comment in spec-schema.ts. `fallbackThresholds`
+// lets the legacy single-value column also pick up the widget-level
+// `thresholds` StatCardWidget/GaugeWidget already use, so real threshold
+// data works today even before a spec ever sets `cellDisplayMode`.
+function columnCellConfig(
+  q: QuerySpec | null | undefined,
+  fallbackThresholds?: WidgetThreshold[] | null,
+): Pick<Col, "cellThresholds" | "cellDisplayMode" | "cellDirection"> {
+  const raw = q?.thresholds ?? fallbackThresholds ?? null;
+  const cellThresholds = raw && raw.length > 0 ? raw : null;
+  return {
+    cellThresholds,
+    cellDisplayMode: q?.cellDisplayMode ?? null,
+    cellDirection: resolveThresholdDirection(cellThresholds),
+  };
 }
 
 interface Cell {
@@ -80,6 +143,71 @@ function timeCell(ts: number | null | undefined): Cell {
   return { text: fmtClock(ts), num: ts, missing: false };
 }
 
+// Colored-background cell paint. The color/severity DECISION is made by
+// lib/threshold-adapter.ts's activeThresholdViaEngine — the exact call
+// StatCardWidget makes (value, thresholds, direction) -> active severity
+// -> colorForSeverity — never a hand-rolled ladder walk here. The only
+// thing computed locally is, for "gradient" mode, how far INTO the
+// already-decided band the value sits, so the color deepens continuously
+// instead of snapping straight to full strength at the boundary;
+// sortedForDirection reproduces the exact ordering the adapter already
+// walked internally, so `active.threshold` can be located inside it by
+// reference (same array of WidgetThreshold objects, same call).
+function cellPaint(
+  value: number | null,
+  col: Col,
+  theme: ChartTheme,
+): { background: string; text: string } | null {
+  if (
+    value === null ||
+    !col.cellThresholds ||
+    col.cellThresholds.length === 0 ||
+    !col.cellDisplayMode ||
+    col.cellDisplayMode === "none"
+  ) {
+    return null;
+  }
+
+  const active = activeThresholdViaEngine(
+    value,
+    col.cellThresholds,
+    col.cellDirection,
+  );
+  if (!active) return null; // nothing breached -> stay plain (StatCardWidget does the same)
+  const full = colorForSeverity(active.severity, theme.colors);
+
+  if (col.cellDisplayMode === "colored-background-basic") {
+    return { background: full, text: scaleTextColorAt([full], 0, theme.colors) };
+  }
+
+  // "colored-background-gradient": interpolate within the breached band.
+  const sorted = sortedForDirection(col.cellThresholds, col.cellDirection);
+  const idx = sorted.indexOf(active.threshold);
+  const sign = col.cellDirection === "below" ? -1 : 1;
+  const bandStart = sign * active.threshold.value;
+  const next = idx + 1 < sorted.length ? sign * sorted[idx + 1].value : null;
+  const prevGap = idx > 0 ? bandStart - sign * sorted[idx - 1].value : null;
+  // Beyond the last threshold there is no next step to fade toward, so
+  // reuse the previous band's width (or a small fraction of bandStart
+  // when this is the only threshold) as the "reach full color" distance.
+  const bandWidth =
+    next !== null
+      ? next - bandStart
+      : prevGap && prevGap > 0
+        ? prevGap
+        : Math.abs(bandStart) * 0.25 || 1;
+  const t =
+    bandWidth > 0
+      ? Math.max(0, Math.min(1, (sign * value - bandStart) / bandWidth))
+      : 1;
+  // Ramps start at the card's raised surface (same idiom as
+  // chart-theme.ts's heatmapScale) so a value just past the boundary
+  // reads as a light wash, not an immediate solid block.
+  const washed = mixHex(theme.colors.surface2, full, 0.2);
+  const background = mixHex(washed, full, t);
+  return { background, text: scaleTextColorAt([background], 0, theme.colors) };
+}
+
 function buildModel(
   widget: WidgetSpec,
   data: WidgetData,
@@ -97,14 +225,25 @@ function buildModel(
         header: LABEL_HEADERS[k] ?? k,
         unit: null,
         kind: "label",
+        ...NO_CELL_PAINT,
       })),
-      ...data.columns.map<Col>((c) => ({
-        key: `v:${c.key}`,
-        header: c.label || c.key,
-        unit: c.unit ?? null,
-        kind: "value",
-      })),
-      { key: "t", header: "量測時間", unit: null, kind: "time" },
+      ...data.columns.map<Col>((c, i) => {
+        // Match the wire TableColumn back to the QuerySpec that defines
+        // its cell display: by resolved key first (the backend fills a
+        // missing key with q1/q2/... before this ever reaches the
+        // frontend), falling back to positional order since both lists
+        // are built from the same `queries` array in the same sequence.
+        const q =
+          widget.queries?.find((qq) => qq.key === c.key) ?? widget.queries?.[i];
+        return {
+          key: `v:${c.key}`,
+          header: c.label || c.key,
+          unit: c.unit ?? null,
+          kind: "value",
+          ...columnCellConfig(q),
+        };
+      }),
+      { key: "t", header: "量測時間", unit: null, kind: "time", ...NO_CELL_PAINT },
     ];
     const rows: Row[] = data.joined.map((r, i) => {
       const cells: Record<string, Cell> = {};
@@ -135,10 +274,30 @@ function buildModel(
       header: LABEL_HEADERS[k] ?? k,
       unit: null,
       kind: "label",
+      ...NO_CELL_PAINT,
     })),
-    { key: "v", header: "數值", unit, kind: "value" },
+    {
+      key: "v",
+      header: "數值",
+      unit,
+      kind: "value",
+      // Legacy single-query table: the one value column's cell display
+      // comes from `widget.query`, falling back to the widget-level
+      // `thresholds` StatCardWidget/GaugeWidget already read for the
+      // threshold ladder itself (so real threshold data already works
+      // even before a spec sets `cellDisplayMode`).
+      ...columnCellConfig(widget.query, widget.thresholds),
+    },
     ...(anyTs
-      ? [{ key: "t", header: "量測時間", unit: null, kind: "time" } as Col]
+      ? [
+          {
+            key: "t",
+            header: "量測時間",
+            unit: null,
+            kind: "time",
+            ...NO_CELL_PAINT,
+          } as Col,
+        ]
       : []),
   ];
   const rows: Row[] = data.table.map((r, i) => {
@@ -160,6 +319,7 @@ export function TableWidget({
   widget: WidgetSpec;
   data: WidgetData;
 }) {
+  const theme = useChartTheme();
   const opts = (widget.options ?? {}) as Record<string, unknown>;
   const rowLimit = Math.max(1, Number(opts.row_limit ?? 20) || 20);
   const decimals = typeof opts.decimals === "number" ? (opts.decimals as number) : null;
@@ -313,6 +473,10 @@ export function TableWidget({
                     <tr className="border-b border-edge/70 hover:bg-surface-2/60">
                       {cols.map((c) => {
                         const cell = r.cells[c.key];
+                        const paint =
+                          c.kind === "value"
+                            ? cellPaint(cell?.num ?? null, c, theme)
+                            : null;
                         return (
                           <td
                             key={c.key}
@@ -323,6 +487,11 @@ export function TableWidget({
                               cell?.missing && "text-ink-faint",
                               !primary.has(c.key) && "hidden sm:table-cell",
                             )}
+                            style={
+                              paint
+                                ? { backgroundColor: paint.background, color: paint.text }
+                                : undefined
+                            }
                           >
                             {cell?.text ?? "—"}
                           </td>
@@ -351,6 +520,10 @@ export function TableWidget({
                               .filter((c) => !primary.has(c.key))
                               .map((c) => {
                                 const cell = r.cells[c.key];
+                                const paint =
+                                  c.kind === "value"
+                                    ? cellPaint(cell?.num ?? null, c, theme)
+                                    : null;
                                 return (
                                   <React.Fragment key={c.key}>
                                     <dt className="text-ink-dim">
@@ -363,6 +536,16 @@ export function TableWidget({
                                         "font-mono tabular-nums",
                                         cell?.missing ? "text-ink-faint" : "text-ink",
                                       )}
+                                      style={
+                                        paint
+                                          ? {
+                                              backgroundColor: paint.background,
+                                              color: paint.text,
+                                              borderRadius: 4,
+                                              padding: "1px 6px",
+                                            }
+                                          : undefined
+                                      }
                                     >
                                       {cell?.text ?? "—"}
                                     </dd>

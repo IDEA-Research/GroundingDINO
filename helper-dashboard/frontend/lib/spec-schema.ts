@@ -12,6 +12,7 @@ export type WidgetType =
   | "line_chart"
   | "stat_card"
   | "gauge"
+  | "bar_gauge"
   | "table"
   | "alert_list"
   | "pie_chart"
@@ -23,6 +24,7 @@ export const WIDGET_TYPES: WidgetType[] = [
   "line_chart",
   "stat_card",
   "gauge",
+  "bar_gauge",
   "table",
   "alert_list",
   "pie_chart",
@@ -86,7 +88,31 @@ export interface QuerySpec {
   key?: string | null;
   label?: string | null;
   unit?: string | null;
+  // TableWidget cell display: a per-column threshold ladder + Grafana-style
+  // colored-background mode (see CellDisplayMode below). Unlike key/label/
+  // unit these are read on BOTH a plain `query` (the value column of a
+  // legacy single-metric table) and each entry of `queries` (a multi-metric
+  // table's columns) — TableWidget.tsx is the only reader, other widgets
+  // ignore them. Frontend-only for now: the backend QuerySpec model is
+  // `extra="forbid"` and does not carry these fields yet (the same
+  // situation as StatCardWidget's `options.color_mode`, also absent from
+  // backend's ALLOWED_OPTION_KEYS) — a spec produced by the chat/patch
+  // pipeline will not set them until the backend is extended; hand-
+  // authored/template/saved specs can already opt a column in. A column
+  // with no `thresholds` (or `cellDisplayMode` "none"/absent) renders
+  // exactly as before.
+  thresholds?: WidgetThreshold[] | null;
+  cellDisplayMode?: CellDisplayMode | null;
 }
+
+// TableWidget colored-background cell modes. "basic" fills the cell with
+// the flat active-threshold color; "gradient" interpolates continuously
+// within the breached band instead of snapping straight to full color.
+// Gauge-cell and sparkline-cell modes are out of scope for now.
+export type CellDisplayMode =
+  | "none"
+  | "colored-background-basic"
+  | "colored-background-gradient";
 
 export interface WidgetPosition {
   x: number;
