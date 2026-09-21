@@ -10,10 +10,21 @@ document.addEventListener('DOMContentLoaded', () => {
     let streamCache = {}; // session_id -> 完整串流對象（避免 HTML 屬性 JSON 解析錯誤）
     let lastFetchId = 0; // 用於避免並行/非同步呼叫導致的卡片重複渲染問題
     let streamStartTimes = {}; // 用於記錄每個串流在本次瀏覽器會話中的最新啟動時間戳記，避免重啟時顯示舊的分析結果
+    const expandedRtspSessions = new Set();
     const MIN_CAPTURE_INTERVAL_MINUTES = 1;
     const MAX_CAPTURE_INTERVAL_MINUTES = 60;
     const DEFAULT_CAPTURE_INTERVAL_MINUTES = 1;
     const captureIntervalInput = document.getElementById('capture-interval-minutes');
+    const patientIdInput = document.getElementById('patient-id');
+    const patientIdCombobox = document.getElementById('patient-id-combobox');
+    const patientIdToggle = document.getElementById('patient-id-toggle');
+    const patientIdDropdown = document.getElementById('patient-id-dropdown');
+    const patientIdOptions = document.getElementById('patient-id-options');
+    const patientIdEmpty = document.getElementById('patient-id-empty');
+    const patientIdCount = document.getElementById('patient-id-count');
+    const patientIdStatus = document.getElementById('patient-id-status');
+    let existingPatientIds = new Set();
+    let activePatientOptionIndex = -1;
     const intervalHint = document.getElementById('interval-hint');
     const globalIntervalSettingsBtn = document.getElementById('global-interval-settings-btn');
     const globalIntervalModal = document.getElementById('global-interval-modal');
@@ -26,6 +37,26 @@ document.addEventListener('DOMContentLoaded', () => {
     const settingsPanels = Array.from(document.querySelectorAll('[data-settings-panel]'));
     let globalCaptureIntervalMinutes = DEFAULT_CAPTURE_INTERVAL_MINUTES;
     let activeSettingsTab = 'interval';
+
+    activeStreamsContainer?.addEventListener('click', (event) => {
+        const toggle = event.target.closest('.rtsp-reveal');
+        if (!toggle) return;
+
+        const row = toggle.closest('.rtsp-row');
+        const sessionId = toggle.closest('.stream-card-wrapper')?.dataset.sessionId;
+        const isExpanded = toggle.getAttribute('aria-expanded') === 'true';
+        if (sessionId) {
+            if (isExpanded) {
+                expandedRtspSessions.delete(sessionId);
+            } else {
+                expandedRtspSessions.add(sessionId);
+            }
+        }
+        toggle.setAttribute('aria-expanded', String(!isExpanded));
+        toggle.textContent = isExpanded ? '查看位址' : (toggle.dataset.rtsp || '未提供');
+        toggle.title = isExpanded ? '點擊顯示完整 RTSP 位址' : '點擊收合 RTSP 位址';
+        row?.classList.toggle('is-expanded', !isExpanded);
+    });
 
     // 定義各廠商的模型清單 (與 upload.html 保持一致)
     const modelsByProvider = {
@@ -77,6 +108,190 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         return DEFAULT_CAPTURE_INTERVAL_MINUTES;
+    }
+
+    function updatePatientIdStatus() {
+        if (!patientIdInput || !patientIdStatus) return;
+        const patientId = patientIdInput.value.trim();
+
+        if (!patientId) {
+            patientIdStatus.dataset.state = 'empty';
+            patientIdStatus.textContent = '尚未設定病患 ID，啟動監測前請先選擇或輸入。';
+        } else if (existingPatientIds.has(patientId)) {
+            patientIdInput.classList.remove('is-invalid');
+            patientIdStatus.dataset.state = 'existing';
+            patientIdStatus.textContent = '已選擇既有病患，將接續此病患的歷史視覺化資料。';
+        } else {
+            patientIdInput.classList.remove('is-invalid');
+            patientIdStatus.dataset.state = 'new';
+            patientIdStatus.textContent = '這是新的病患 ID，啟動監測後將自動建立。';
+        }
+    }
+
+    function getVisiblePatientOptions() {
+        return patientIdOptions
+            ? Array.from(patientIdOptions.querySelectorAll('.patient-id-option'))
+            : [];
+    }
+
+    function setActivePatientOption(index) {
+        const options = getVisiblePatientOptions();
+        if (!options.length) {
+            activePatientOptionIndex = -1;
+            return;
+        }
+
+        activePatientOptionIndex = Math.max(0, Math.min(index, options.length - 1));
+        options.forEach((option, optionIndex) => {
+            const isActive = optionIndex === activePatientOptionIndex;
+            option.classList.toggle('is-active', isActive);
+            option.setAttribute('aria-selected', String(isActive));
+        });
+        options[activePatientOptionIndex].scrollIntoView({ block: 'nearest' });
+    }
+
+    function selectPatientId(patientId) {
+        if (!patientIdInput) return;
+        patientIdInput.value = patientId;
+        patientIdInput.classList.remove('is-invalid');
+        updatePatientIdStatus();
+        closePatientIdDropdown();
+        patientIdInput.focus();
+    }
+
+    function renderPatientIdOptions() {
+        if (!patientIdInput || !patientIdOptions || !patientIdEmpty || !patientIdCount) return;
+        const query = patientIdInput.value.trim().toLocaleLowerCase();
+        const matches = Array.from(existingPatientIds).filter(
+            (patientId) => !query || patientId.toLocaleLowerCase().includes(query)
+        );
+
+        const fragment = document.createDocumentFragment();
+        matches.forEach((patientId) => {
+            const option = document.createElement('button');
+            option.type = 'button';
+            option.className = 'patient-id-option';
+            option.setAttribute('role', 'option');
+            option.setAttribute('aria-selected', 'false');
+
+            const value = document.createElement('span');
+            value.className = 'patient-id-option-value';
+            value.textContent = patientId;
+
+            const hint = document.createElement('span');
+            hint.className = 'patient-id-option-hint';
+            hint.textContent = '接續資料';
+
+            option.append(value, hint);
+            option.addEventListener('click', () => selectPatientId(patientId));
+            fragment.appendChild(option);
+        });
+
+        patientIdOptions.replaceChildren(fragment);
+        patientIdCount.textContent = matches.length ? `${matches.length} 筆` : '';
+        patientIdEmpty.hidden = matches.length > 0;
+        if (!matches.length) {
+            patientIdEmpty.textContent = query
+                ? `找不到相符的病患 ID；保留「${patientIdInput.value.trim()}」即可建立新病患。`
+                : '目前沒有既有病患 ID，可直接輸入新 ID 建立。';
+        }
+        activePatientOptionIndex = -1;
+    }
+
+    function openPatientIdDropdown() {
+        if (!patientIdCombobox || !patientIdDropdown || !patientIdInput) return;
+        renderPatientIdOptions();
+        patientIdDropdown.hidden = false;
+        patientIdCombobox.classList.add('is-open');
+        patientIdInput.setAttribute('aria-expanded', 'true');
+    }
+
+    function closePatientIdDropdown() {
+        if (!patientIdCombobox || !patientIdDropdown || !patientIdInput) return;
+        patientIdDropdown.hidden = true;
+        patientIdCombobox.classList.remove('is-open');
+        patientIdInput.setAttribute('aria-expanded', 'false');
+        activePatientOptionIndex = -1;
+    }
+
+    async function fetchPatientIds() {
+        if (!patientIdOptions) return;
+        try {
+            const response = await fetch('/api/patient-ids');
+            const result = await response.json();
+            if (!response.ok || !result.success) {
+                throw new Error(result.error || '無法載入病患 ID');
+            }
+
+            const ids = Array.isArray(result.patient_ids) ? result.patient_ids : [];
+            existingPatientIds = new Set(ids);
+            renderPatientIdOptions();
+            updatePatientIdStatus();
+        } catch (error) {
+            existingPatientIds = new Set();
+            patientIdOptions.replaceChildren();
+            closePatientIdDropdown();
+            if (patientIdStatus) {
+                patientIdStatus.dataset.state = 'error';
+                patientIdStatus.textContent = '暫時無法載入既有清單，仍可直接輸入病患 ID';
+            }
+            console.error('載入病患 ID 清單失敗:', error);
+        }
+    }
+
+    if (patientIdInput) {
+        patientIdInput.addEventListener('input', () => {
+            updatePatientIdStatus();
+            openPatientIdDropdown();
+        });
+        patientIdInput.addEventListener('focus', openPatientIdDropdown);
+        patientIdInput.addEventListener('change', updatePatientIdStatus);
+        patientIdInput.addEventListener('keydown', (event) => {
+            const options = getVisiblePatientOptions();
+            if (event.key === 'ArrowDown') {
+                event.preventDefault();
+                if (patientIdDropdown?.hidden) openPatientIdDropdown();
+                setActivePatientOption(activePatientOptionIndex + 1);
+            } else if (event.key === 'ArrowUp') {
+                event.preventDefault();
+                if (patientIdDropdown?.hidden) openPatientIdDropdown();
+                setActivePatientOption(
+                    activePatientOptionIndex <= 0 ? options.length - 1 : activePatientOptionIndex - 1
+                );
+            } else if (event.key === 'Enter' && activePatientOptionIndex >= 0) {
+                event.preventDefault();
+                options[activePatientOptionIndex]?.click();
+            } else if (event.key === 'Escape') {
+                closePatientIdDropdown();
+            } else if (event.key === 'Tab') {
+                closePatientIdDropdown();
+            }
+        });
+    }
+
+    if (patientIdToggle) {
+        patientIdToggle.addEventListener('click', () => {
+            if (patientIdDropdown?.hidden) {
+                openPatientIdDropdown();
+                patientIdInput?.focus();
+            } else {
+                closePatientIdDropdown();
+            }
+        });
+    }
+
+    document.addEventListener('click', (event) => {
+        if (patientIdCombobox && !patientIdCombobox.contains(event.target)) {
+            closePatientIdDropdown();
+        }
+    });
+
+    if (patientIdOptions) {
+        patientIdOptions.addEventListener('mousemove', (event) => {
+            const option = event.target.closest('.patient-id-option');
+            if (!option) return;
+            setActivePatientOption(getVisiblePatientOptions().indexOf(option));
+        });
     }
 
     function updateIntervalGuidance() {
@@ -545,6 +760,10 @@ document.addEventListener('DOMContentLoaded', () => {
         const statusBadgeClass = isRunning ? 'bg-success' : 'bg-danger';
         const statusText = isRunning ? '運行中' : '已停止';
         const cardClass = isRunning ? 'active' : 'inactive';
+        const patientId = stream.patient_id || stream.task_name || '';
+        const patientIdText = patientId ? escapeHtml(patientId) : '未設定';
+        const cameraNameText = escapeHtml(stream.camera_name || '未命名攝影機');
+        const isRtspExpanded = expandedRtspSessions.has(stream.session_id);
         const captureIntervalMinutes = getIntervalMinutesFromStream(stream);
         const captureIntervalSeconds = captureIntervalMinutes * 60;
 
@@ -557,14 +776,21 @@ document.addEventListener('DOMContentLoaded', () => {
                  data-llm-model="${escapeAttr(stream.llm_model || stream.model || '')}"
                  data-capture-interval-minutes="${captureIntervalMinutes}"
                  data-capture-interval-seconds="${captureIntervalSeconds}"
-                 data-task-name="${escapeAttr(stream.task_name || '')}">
-                <div class="stream-card ${cardClass}" style="margin-bottom: 0; padding: 15px; box-shadow: 0 2px 8px rgba(0,0,0,0.05);">
-                    <div class="d-flex justify-content-between align-items-center mb-2">
-                        <h5 class="card-title mb-0" style="font-weight: 700; font-size: 1rem; display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
-                            ${stream.camera_name}
-                            ${stream.task_name ? `<span class="badge bg-secondary" style="font-size: 0.7rem; font-weight: 500; padding: 3px 6px;">📋 ${stream.task_name}</span>` : ''}
-                            <a href="/details?session_id=${stream.session_id}&tab=stream" class="btn btn-xs btn-outline-primary" title="查看此鏡頭的歷史資料" style="padding: 1px 6px; font-size: 0.7rem; border-radius: 4px; text-decoration: none; display: inline-flex; align-items: center; gap: 3px; line-height: 1.2;">
-                                📊 歷史資料
+                 data-patient-id="${escapeAttr(patientId)}"
+                 data-task-name="${escapeAttr(patientId)}">
+                <div class="stream-card monitor-card ${cardClass}">
+                    <div class="stream-card-heading">
+                        <div style="min-width: 0;">
+                            <div class="stream-patient-title">
+                                <span class="stream-patient-label">病患 ID</span>
+                                <span class="stream-patient-value ${patientId ? '' : 'missing'}">${patientIdText}</span>
+                            </div>
+                            <div class="stream-camera-name">攝影機：${cameraNameText}</div>
+                        </div>
+                        <div class="stream-card-heading-actions">
+                            <span class="monitor-status ${cardClass}">${statusText}</span>
+                            <a href="/details/${encodeURIComponent(stream.session_id)}?tab=stream&page=1&page_size=12" class="stream-history-link" title="查看此病患的歷史資料">
+                                歷史資料
                             </a>
                         </h5>
                         <span class="badge ${statusBadgeClass} badge-custom" style="font-size: 0.7rem; padding: 4px 8px;">${statusText}</span>
@@ -578,12 +804,23 @@ document.addEventListener('DOMContentLoaded', () => {
                         <span class="stream-info-label" style="width: 60px; font-size: 0.8rem;">間隔:</span>
                         <span class="stream-info-value" style="font-size: 0.7rem;">${captureIntervalMinutes} 分鐘</span>
                     </div>
-                    <div class="stream-info-item" style="margin-bottom: 5px;">
-                        <span class="stream-info-label" style="width: 60px; font-size: 0.8rem;">模式:</span>
-                        <span class="stream-info-value" style="font-size: 0.7rem;">整分鐘起始</span>
+
+                    <div class="monitor-card-body">
+                        <div class="stream-info-item rtsp-row ${isRtspExpanded ? 'is-expanded' : ''}">
+                            <span class="stream-info-label">RTSP</span>
+                            <button type="button" class="rtsp-reveal" data-rtsp="${escapeAttr(stream.rtsp_url || '')}" aria-expanded="${isRtspExpanded}" title="${isRtspExpanded ? '點擊收合 RTSP 位址' : '點擊顯示完整 RTSP 位址'}">${isRtspExpanded ? escapeHtml(stream.rtsp_url || '未提供') : '查看位址'}</button>
+                        </div>
+                        <div class="stream-info-item">
+                            <span class="stream-info-label">間隔</span>
+                            <span class="stream-info-value">${captureIntervalMinutes} 分鐘</span>
+                        </div>
+                        <div class="stream-info-item">
+                            <span class="stream-info-label">模式</span>
+                            <span class="stream-info-value">整分鐘起始</span>
+                        </div>
                     </div>
 
-                    <div class="mt-3 d-flex justify-content-end gap-2">
+                    <div class="monitor-card-footer">
                         ${isRunning ? `
                             <button class="btn btn-outline-danger btn-sm stop-stream-btn" 
                                     style="border-radius: 6px; font-weight: 600; padding: 3px 10px; font-size: 0.75rem;"
@@ -629,7 +866,8 @@ document.addEventListener('DOMContentLoaded', () => {
             session_id: stream.session_id,
             camera_name: stream.camera_name,
             rtsp_url: stream.rtsp_url,
-            task_name: stream.task_name,
+            patient_id: stream.patient_id || stream.task_name,
+            task_name: stream.patient_id || stream.task_name,
             current_status: stream.current_status,
             capture_interval_seconds: stream.capture_interval_seconds,
             capture_interval_minutes: stream.capture_interval_minutes,
@@ -655,6 +893,12 @@ document.addEventListener('DOMContentLoaded', () => {
             .replace(/&/g, '&amp;')
             .replace(/"/g, '&quot;')
             .replace(/'/g, '&#39;');
+    }
+
+    function escapeHtml(str) {
+        return escapeAttr(str)
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;');
     }
 
     function renderAnalysisThumb(analysis) {
@@ -823,7 +1067,8 @@ document.addEventListener('DOMContentLoaded', () => {
                             session_id: stream.session_id,
                             camera_name: stream.camera_name,
                             rtsp_url: stream.rtsp_url,
-                            task_name: stream.task_name,
+                            patient_id: stream.patient_id || stream.task_name,
+                            task_name: stream.patient_id || stream.task_name,
                             current_status: stream.current_status,
                             capture_interval_seconds: stream.capture_interval_seconds,
                             capture_interval_minutes: stream.capture_interval_minutes,
@@ -893,7 +1138,8 @@ document.addEventListener('DOMContentLoaded', () => {
                             llm_model: streamCardWrapper.dataset.llmModel || (streamCache[sessionId] || {}).llm_model,
                             capture_interval_minutes: Number(streamCardWrapper.dataset.captureIntervalMinutes || (streamCache[sessionId] || {}).capture_interval_minutes),
                             capture_interval_seconds: Number(streamCardWrapper.dataset.captureIntervalSeconds || (streamCache[sessionId] || {}).capture_interval_seconds),
-                            task_name: streamCardWrapper.dataset.taskName || (streamCache[sessionId] || {}).task_name,
+                            patient_id: streamCardWrapper.dataset.patientId || streamCardWrapper.dataset.taskName || (streamCache[sessionId] || {}).patient_id || (streamCache[sessionId] || {}).task_name,
+                            task_name: streamCardWrapper.dataset.patientId || streamCardWrapper.dataset.taskName || (streamCache[sessionId] || {}).patient_id || (streamCache[sessionId] || {}).task_name,
                             current_status: result.status.is_running_in_memory,
                             latest_analysis: result.status.latest_analysis,
                             latest_analyses: result.status.latest_analyses,
@@ -996,7 +1242,8 @@ document.addEventListener('DOMContentLoaded', () => {
                     llm_model: streamCardWrapper.dataset.llmModel || (streamCache[sessionId] || {}).llm_model,
                     capture_interval_minutes: Number(streamCardWrapper.dataset.captureIntervalMinutes || (streamCache[sessionId] || {}).capture_interval_minutes),
                     capture_interval_seconds: Number(streamCardWrapper.dataset.captureIntervalSeconds || (streamCache[sessionId] || {}).capture_interval_seconds),
-                    task_name: streamCardWrapper.dataset.taskName || (streamCache[sessionId] || {}).task_name
+                    patient_id: streamCardWrapper.dataset.patientId || streamCardWrapper.dataset.taskName || (streamCache[sessionId] || {}).patient_id || (streamCache[sessionId] || {}).task_name,
+                    task_name: streamCardWrapper.dataset.patientId || streamCardWrapper.dataset.taskName || (streamCache[sessionId] || {}).patient_id || (streamCache[sessionId] || {}).task_name
                 };
                 const captureIntervalMinutes = parseCaptureIntervalMinutes(captureIntervalInput?.value) ?? globalCaptureIntervalMinutes;
                 const captureIntervalSeconds = captureIntervalMinutes * 60;
@@ -1032,6 +1279,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         },
                         body: JSON.stringify({
                             session_id: sessionId, // 傳遞現有的 session_id，重複使用
+                            patient_id: stream.patient_id || stream.task_name,
                             camera_name: stream.camera_name,
                             rtsp_url: stream.rtsp_url,
                             api_key: apiKey,
@@ -1112,7 +1360,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const providerSelect = document.getElementById('provider-select');
         const modelSelect = document.getElementById('model-select');
 
-        const taskName = taskNameInput.value.trim();
+        const patientId = patientIdInput.value.trim();
         const cameraName = cameraNameInput.value.trim();
         const rtspUrl = rtspUrlInput.value.trim();
         const captureIntervalMinutes = parseCaptureIntervalMinutes(captureIntervalInput.value);
@@ -1121,13 +1369,17 @@ document.addEventListener('DOMContentLoaded', () => {
         const modelName = modelSelect.value;
 
         // 重置驗證狀態
-        [taskNameInput, cameraNameInput, rtspUrlInput, captureIntervalInput, apiKeyInput].forEach(el => el.classList.remove('is-invalid'));
+        [patientIdInput, cameraNameInput, rtspUrlInput, captureIntervalInput, apiKeyInput].forEach(el => el.classList.remove('is-invalid'));
 
         let hasError = false;
 
-        // 0. 驗證任務名稱
-        if (!taskName) {
-            taskNameInput.classList.add('is-invalid');
+        // 0. 驗證病患 ID
+        if (!patientId) {
+            patientIdInput.classList.add('is-invalid');
+            patientIdStatus.dataset.state = 'error';
+            patientIdStatus.textContent = '病患 ID 為必填。請選擇既有病患，或輸入新的病患 ID。';
+            patientIdInput.focus();
+            openPatientIdDropdown();
             hasError = true;
         }
 
@@ -1156,6 +1408,10 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         if (hasError) {
+            // 病患 ID 是資料接續的必要識別，優先引導使用者完成此欄位。
+            if (!patientId) {
+                return;
+            }
             if (provider === 'openrouter' && !apiKey) {
                 openGlobalIntervalModal('api-key');
                 apiKeyInput.classList.add('is-invalid');
@@ -1177,7 +1433,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     'Content-Type': 'application/json',
                 },
                 body: JSON.stringify({
-                    task_name: taskName,
+                    patient_id: patientId,
                     camera_name: cameraName,
                     rtsp_url: rtspUrl,
                     capture_interval_minutes: captureIntervalMinutes,

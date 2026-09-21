@@ -143,9 +143,9 @@ class MedicalCustomCollector:
                         "device_model": "$latest_data.detected_model",
                         "medical_values": "$latest_data.medical_values",
                         "analyzed_at": "$latest_data.analyzed_at",
+                        "patient_id": {"$arrayElemAt": ["$session_info.patient_id", 0]},
+                        "task_name": {"$arrayElemAt": ["$session_info.task_name", 0]},
                         "video_name": {"$arrayElemAt": ["$session_info.video_name", 0]},
-                        # 若無 video_name，使用 session_id
-                        "fallback_video_name": {"$ifNull": [{"$arrayElemAt": ["$session_info.video_name", 0]}, "$latest_data.session_id"]}
                     }
                 }
             ]
@@ -257,10 +257,15 @@ class MedicalCustomCollector:
                 session_id = item.get('session_id', 'unknown')
                 device_model = item.get('device_model', 'unknown')
                 medical_values = item.get('medical_values', {})
-                video_name = item.get('video_name')
-                
-                # patient_id 優先使用 video_name，否則用 session_id
-                patient_id = video_name if video_name else session_id
+
+                # patient_id 是跨監測會話的穩定識別。task_name/video_name
+                # 僅供舊資料相容，最後才回退到 session_id。
+                patient_id = (
+                    item.get('patient_id')
+                    or item.get('task_name')
+                    or item.get('video_name')
+                    or session_id
+                )
                 
                 labels = [session_id, device_model, patient_id]
                 

@@ -239,6 +239,7 @@ security:
             self.db.video_analysis.create_index("session_id")
             self.db.video_analysis.create_index([("timestamp", -1)])
             self.db.video_analysis.create_index("video_name")
+            self.db.video_analysis.create_index("patient_id")
             
             # FrameResult 索引
             self.db.frame_results.create_index([("video_analysis_id", 1), ("minute", 1)])
@@ -307,15 +308,15 @@ security:
             raise Exception("MongoDB 連接未建立")
         
         try:
-            # 自動獲取串流會話的任務名稱
-            task_name = None
+            # 串流的 patient_id 是跨會話的病患識別；task_name 僅保留給舊資料相容。
+            patient_id = None
             if source == "stream":
                 try:
                     stream_sess = self.db.stream_sessions.find_one({"session_id": session_id})
                     if stream_sess:
-                        task_name = stream_sess.get("task_name")
+                        patient_id = stream_sess.get("patient_id") or stream_sess.get("task_name")
                 except Exception as e:
-                    print(f"⚠️ 獲取串流會話任務名稱失敗: {e}")
+                    print(f"⚠️ 獲取串流會話病患 ID 失敗: {e}")
 
             # 1. 更新或建立 VideoAnalysis 記錄 (使用 upsert 避免重複)
             video_analysis_doc = {
@@ -331,7 +332,8 @@ security:
                 "source": source,  # manual, stream 等
                 "llm_model": llm_model,  # 記錄使用的 LLM 模型
                 "camera_name": camera_name, # 記錄攝影機名稱 (用於串流)
-                "task_name": task_name, # 記錄任務名稱 (用於串流)
+                "patient_id": patient_id,
+                "task_name": patient_id, # 舊版欄位相容，後續讀取應優先使用 patient_id
                 "dataset_id": dataset_id,
                 "dataset_video_id": dataset_video_id,
                 "dataset_run_id": dataset_run_id,
@@ -480,26 +482,74 @@ security:
             }
         return {"llm_model": model}
 
-    def _get_session_frame_ids(self, session_id):
-        """取得 session 關聯的 frame ID。"""
+    @staticmethod
+    def _is_stream_video(video):
+        return (
+            video.get("source") == "stream"
+            or str(video.get("video_path", "")).startswith(("RTSP:", "Camera:"))
+        )
+
+    def _get_related_video_analysis_ids(self, session_id):
+        """取得同一病患所有串流 session 的分析記錄 ID。"""
         if self.db is None:
             return []
 
         video = self.db.video_analysis.find_one(
             {"session_id": session_id},
-            {"_id": 1}
+            {
+                "_id": 1,
+                "source": 1,
+                "video_path": 1,
+                "patient_id": 1,
+                "task_name": 1,
+            }
         )
         if not video:
             return []
 
+        patient_id = str(
+            video.get("patient_id") or video.get("task_name") or ""
+        ).strip()
+        if not patient_id or not self._is_stream_video(video):
+            return [video["_id"]]
+
+        related = self.db.video_analysis.find(
+            {
+                "$and": [
+                    {
+                        "$or": [
+                            {"source": "stream"},
+                            {"video_path": {"$regex": "^(RTSP|Camera):"}},
+                        ]
+                    },
+                    {
+                        "$or": [
+                            {"patient_id": patient_id},
+                            {"task_name": patient_id},
+                        ]
+                    },
+                ]
+            },
+            {"_id": 1},
+        )
+        ids = [item["_id"] for item in related]
+        return ids or [video["_id"]]
+
+    def _get_session_frame_ids(self, session_id):
+        """取得 session 所屬病患的所有串流 frame ID。"""
+        video_ids = self._get_related_video_analysis_ids(session_id)
+        if not video_ids:
+            return []
+
         return self.db.frame_results.distinct(
-            "_id", {"video_analysis_id": video["_id"]}
+            "_id", {"video_analysis_id": {"$in": video_ids}}
         )
 
     def _session_screens_lookup_pipeline(self, session_id):
-        """session → frame → screen 的共用聚合前段"""
+        """病患相關 sessions → frame → screen 的共用聚合前段"""
+        video_ids = self._get_related_video_analysis_ids(session_id)
         return [
-            {"$match": {"session_id": session_id}},
+            {"$match": {"_id": {"$in": video_ids}}},
             {"$lookup": {
                 "from": "frame_results",
                 "localField": "_id",
@@ -600,6 +650,7 @@ security:
         pipeline.append(
             {"$project": {
                 "id": {"$toString": "$screens._id"},
+                "session_id": "$session_id",
                 "minute": "$frames.minute",
                 "screen_number": "$screens.screen_number",
                 "original_screen_number": "$screens.original_screen_number",
@@ -811,9 +862,10 @@ security:
         """取得特定 session 中使用過的所有模型"""
         if self.db is None:
             return []
-        
+
+        video_ids = self._get_related_video_analysis_ids(session_id)
         pipeline = [
-            {"$match": {"session_id": session_id}},
+            {"$match": {"_id": {"$in": video_ids}}},
             {"$lookup": {
                 "from": "frame_results",
                 "localField": "_id",
@@ -840,7 +892,7 @@ security:
         if not models:
             # 檢查是否有任何 screen_analysis
             count_pipeline = [
-                {"$match": {"session_id": session_id}},
+                {"$match": {"_id": {"$in": video_ids}}},
                 {"$lookup": {
                     "from": "frame_results",
                     "localField": "_id",
@@ -863,18 +915,20 @@ security:
                 
         return models
 
-    def save_stream_session(self, session_id, camera_name, rtsp_url, llm_model="unknown", task_name=None, capture_interval_seconds=60, capture_interval_minutes=1):
+    def save_stream_session(self, session_id, camera_name, rtsp_url, llm_model="unknown", patient_id=None, task_name=None, capture_interval_seconds=60, capture_interval_minutes=1):
         """儲存一個新的串流監測會話"""
         if self.db is None:
             raise Exception("MongoDB 連接未建立")
 
         try:
+            patient_id = str(patient_id or task_name or "").strip() or None
             session_doc = {
                 "session_id": session_id,
                 "camera_name": camera_name,
                 "rtsp_url": rtsp_url,
                 "llm_model": llm_model,
-                "task_name": task_name,
+                "patient_id": patient_id,
+                "task_name": patient_id, # 舊版欄位相容
                 "capture_interval_seconds": capture_interval_seconds,
                 "capture_interval_minutes": capture_interval_minutes,
                 "status": "inactive", # inactive, active, recording
@@ -918,6 +972,25 @@ security:
             return sessions
         except Exception as e:
             print(f"❌ 獲取串流會話失敗: {e}")
+            return []
+
+    def get_patient_ids(self):
+        """取得歷史分析與串流卡面中曾使用過的病患 ID。"""
+        if self.db is None:
+            return []
+
+        patient_ids = set()
+        try:
+            for collection_name in ("video_analysis", "stream_sessions"):
+                collection = self.db[collection_name]
+                for field_name in ("patient_id", "task_name"):
+                    for value in collection.distinct(field_name):
+                        normalized = str(value or "").strip()
+                        if normalized:
+                            patient_ids.add(normalized)
+            return sorted(patient_ids, key=str.casefold)
+        except Exception as e:
+            print(f"❌ 獲取病患 ID 清單失敗: {e}")
             return []
 
     def save_camera_template(self, template_id, camera_name, rtsp_url, provider, model, api_key=None, capture_interval_minutes=1):
@@ -1312,7 +1385,9 @@ security:
                     {"video_name": {"$regex": search_query, "$options": "i"}},
                     {"video_path": {"$regex": search_query, "$options": "i"}},
                     {"session_id": {"$regex": search_query, "$options": "i"}},
-                    {"camera_name": {"$regex": search_query, "$options": "i"}}
+                    {"camera_name": {"$regex": search_query, "$options": "i"}},
+                    {"patient_id": {"$regex": search_query, "$options": "i"}},
+                    {"task_name": {"$regex": search_query, "$options": "i"}}
                 ]
             }
             if query:
@@ -1320,7 +1395,35 @@ security:
             else:
                 query = search_condition
         
-        return list(self.db.video_analysis.find(query).sort('timestamp', -1))
+        videos = list(self.db.video_analysis.find(query).sort('timestamp', -1))
+        if source_filter != "stream":
+            return videos
+
+        # 資料庫卡片以病患為單位顯示；各次 session 仍保留供追溯，
+        # 詳情查詢會透過代表 session 聚合該病患的全部歷史資料。
+        grouped = {}
+        for video in videos:
+            patient_id = str(
+                video.get("patient_id") or video.get("task_name") or ""
+            ).strip()
+            group_key = f"patient:{patient_id}" if patient_id else f"session:{video.get('session_id')}"
+
+            if group_key not in grouped:
+                grouped[group_key] = video
+                grouped[group_key]["patient_id"] = patient_id or None
+                grouped[group_key]["session_ids"] = [video.get("session_id")]
+                grouped[group_key]["session_count"] = 1
+                continue
+
+            group = grouped[group_key]
+            group["session_ids"].append(video.get("session_id"))
+            group["session_count"] += 1
+            group["total_frames"] = (
+                int(group.get("total_frames") or 0)
+                + int(video.get("total_frames") or 0)
+            )
+
+        return list(grouped.values())
 
     def update_video_name(self, session_id, new_name):
         """更新影片/資料名稱"""

@@ -528,7 +528,7 @@
     <h3>影片資訊</h3>
     <div class="info-grid">
         <div class="info-item">
-            <span class="info-label">Session ID</span>
+            <span class="info-label">查詢 Session</span>
             <span class="info-value" id="sessionId">-</span>
         </div>
         <div class="info-item" id="cameraNameItem" style="display: none;">
@@ -536,7 +536,7 @@
             <span class="info-value" id="cameraName">-</span>
         </div>
         <div class="info-item" id="taskNameItem" style="display: none;">
-            <span class="info-label">任務名稱</span>
+            <span class="info-label">病患 ID</span>
             <span class="info-value" id="taskName">-</span>
         </div>
         <div class="info-item">
@@ -641,7 +641,7 @@
 
 <div class="histograms-section" id="histogramsSection">
     <h3>📈 數值變化 Histogram</h3>
-    <p class="page-data-note" id="histogramScopeNote">圖表顯示此 Session 的數值資料</p>
+    <p class="page-data-note" id="histogramScopeNote">圖表顯示此病患的歷史數值資料</p>
     <div class="histogram-grid" id="histogramGrid" wire:ignore>
         <!-- 動態生成的 histogram 圖表 -->
     </div>
@@ -936,7 +936,7 @@
         histogramRequestPromise = null;
         clearHistograms();
         document.getElementById('histogramScopeNote').textContent =
-            '圖表顯示此 Session 的數值資料';
+            '圖表顯示此病患的歷史數值資料';
         hideDetailsAlert();
         document.getElementById('btnAnalyzeMissing').style.display = 'none';
         await loadMedicalValues(sessionId, currentModel);
@@ -1003,7 +1003,7 @@
                 <button type="button" class="load-more-retry" onclick="loadNextPage()">重試</button>
             `;
         } else if (allItemsLoaded) {
-            status.textContent = `已載入全部 ${pagination.total_items} 筆資料，以上為整個 Session 的統計結果`;
+            status.textContent = `已載入全部 ${pagination.total_items} 筆資料，以上為此病患的歷史統計結果`;
         } else {
             status.textContent = `已載入 ${medicalValuesData.length} / ${pagination.total_items} 筆，向下捲動以載入更多`;
         }
@@ -1081,7 +1081,7 @@
             histogramLoadedModel = requestedModel;
             const timePointCount = getSortedTimelineBuckets().length;
             document.getElementById('histogramScopeNote').textContent =
-                `圖表顯示此 Session 的數值資料（共 ${timePointCount} 個時間點）`;
+                `圖表顯示此病患的歷史數值資料（共 ${timePointCount} 個時間點）`;
             return true;
         })();
         histogramRequestPromise = requestPromise;
@@ -1104,8 +1104,9 @@
         } else {
             cameraNameItem.style.display = 'none';
         }
-        if (data.task_name) {
-            document.getElementById('taskName').textContent = data.task_name;
+        const patientId = data.patient_id || data.task_name;
+        if (patientId) {
+            document.getElementById('taskName').textContent = patientId;
             taskNameItem.style.display = 'block';
         } else {
             taskNameItem.style.display = 'none';

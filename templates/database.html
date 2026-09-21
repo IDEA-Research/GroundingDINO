@@ -453,6 +453,8 @@
         let html = '<div class="video-grid">';
         
         videos.forEach(video => {
+            const patientId = video.patient_id || video.task_name || '';
+            const sessionCount = Number(video.session_count || 1);
             const timestamp = video.timestamp ? new Date(video.timestamp).toLocaleString('zh-TW', {
                 year: 'numeric',
                 month: '2-digit',
@@ -474,20 +476,26 @@
                         <div class="video-card-title">
                             <h3 style="display: flex; align-items: center; gap: 10px;">
                                 <span>${currentTab === 'stream' ? '📡 ' : '📹 '}${displayTitle}</span>
-                                <button onclick="renameData('${video.session_id}', '${displayTitle}')" style="background: none; border: none; cursor: pointer; font-size: 0.8em; padding: 5px; border-radius: 50%; transition: background-color 0.2s;" title="編輯名稱" onmouseover="this.style.backgroundColor='#f0f0f0'" onmouseout="this.style.backgroundColor='transparent'">
+                                ${currentTab === 'manual' ? `<button onclick="renameData('${video.session_id}', '${displayTitle}')" style="background: none; border: none; cursor: pointer; font-size: 0.8em; padding: 5px; border-radius: 50%; transition: background-color 0.2s;" title="編輯名稱" onmouseover="this.style.backgroundColor='#f0f0f0'" onmouseout="this.style.backgroundColor='transparent'">
                                     ✏️
-                                </button>
+                                </button>` : ''}
                             </h3>
-                            <span class="session-id">ID: ${video.session_id}</span>
+                            <span class="session-id">${currentTab === 'stream' ? `${sessionCount} 次監測 · 最新 Session: ` : 'ID: '}${video.session_id}</span>
                         </div>
                         <div class="status-pill ${statusClass}">${statusText}</div>
                     </div>
                     
                     <div class="video-card-details">
-                        ${video.task_name ? `
+                        ${patientId ? `
                         <div class="detail-item">
-                            <div class="detail-label">📋 任務名稱</div>
-                            <div class="detail-value" style="color: #28a745; font-weight: bold;">${video.task_name}</div>
+                            <div class="detail-label">🆔 病患 ID</div>
+                            <div class="detail-value" style="color: #28a745; font-weight: bold;">${patientId}</div>
+                        </div>
+                        ` : ''}
+                        ${currentTab === 'stream' ? `
+                        <div class="detail-item">
+                            <div class="detail-label">監測次數</div>
+                            <div class="detail-value" style="font-weight: bold;">${sessionCount}</div>
                         </div>
                         ` : ''}
                         <div class="detail-item">
@@ -509,11 +517,11 @@
                     </div>
                     
                     <div class="video-card-actions">
-                        <button onclick="window.location.href='./details?session_id=${video.session_id}&tab=${currentTab}'" class="btn-view-details">
+                        <button onclick="window.location.href='/details/${encodeURIComponent(video.session_id)}?tab=${encodeURIComponent(currentTab)}&page=1&page_size=12'" class="btn-view-details">
                             📊 查看醫療數值詳情
                         </button>
-                        <button onclick="deleteData('${video.session_id}')" style="background: #dc3545; color: white; border: none; padding: 10px 15px; border-radius: 6px; cursor: pointer; font-size: 0.95em; font-weight: 600; transition: all 0.3s ease;">
-                            🗑️ 刪除
+                        <button onclick="deleteData('${video.session_id}', ${sessionCount})" style="background: #dc3545; color: white; border: none; padding: 10px 15px; border-radius: 6px; cursor: pointer; font-size: 0.95em; font-weight: 600; transition: all 0.3s ease;">
+                            🗑️ ${currentTab === 'stream' && sessionCount > 1 ? '刪除最新一次' : '刪除'}
                         </button>
                     </div>
                 </div>
@@ -559,8 +567,11 @@
     }
 
     // 刪除資料
-    async function deleteData(sessionId) {
-        if (!confirm('⚠️ 確定要刪除這筆資料嗎？\n\n此操作無法復原，且會一併刪除相關分析結果與圖像檔案。')) {
+    async function deleteData(sessionId, sessionCount = 1) {
+        const scopeNote = currentTab === 'stream' && sessionCount > 1
+            ? `此病患共有 ${sessionCount} 次監測；本次只會刪除最新一次，其餘歷史會保留。`
+            : '此操作會刪除這筆資料。';
+        if (!confirm(`⚠️ 確定要刪除嗎？\n\n${scopeNote}\n相關分析結果與圖像檔案將一併刪除，且無法復原。`)) {
             return;
         }
         

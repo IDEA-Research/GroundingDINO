@@ -1036,6 +1036,18 @@ def set_stream_global_interval():
         return jsonify({'error': '更新全域分析間隔失敗'}), 500
     return jsonify({'success': True, 'capture_interval_minutes': minutes}), 200
 
+@app.route('/api/patient-ids')
+def list_patient_ids():
+    if not mongo_manager:
+        return jsonify({'error': 'MongoDB 未啟用'}), 503
+    try:
+        return jsonify({
+            'success': True,
+            'patient_ids': mongo_manager.get_patient_ids()
+        }), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
 @app.route('/api/stream/start', methods=['POST'])
 def start_stream_monitor():
     global active_stream_processors
@@ -1048,7 +1060,8 @@ def start_stream_monitor():
     api_key = data.get('api_key')
     provider = data.get('provider')
     model = data.get('model')
-    task_name = data.get('task_name')
+    # patient_id 可跨多個 session 延續；task_name 是舊版前端的相容欄位。
+    patient_id = str(data.get('patient_id') or data.get('task_name') or '').strip()
     
     try:
         capture_interval_minutes = _resolve_capture_interval_minutes_from_payload(data)
@@ -1064,8 +1077,8 @@ def start_stream_monitor():
     if cred_error:
         return jsonify({'error': cred_error}), 400
 
-    if not rtsp_url or not camera_name:
-        return jsonify({'error': '缺少 RTSP URL 或攝影機名稱'}), 400
+    if not rtsp_url or not camera_name or not patient_id:
+        return jsonify({'error': '缺少病患 ID、RTSP URL 或攝影機名稱'}), 400
 
     # 驗證 RTSP URL 格式
     if not (rtsp_url.startswith('rtsp://') or rtsp_url.startswith('rtsps://')):
@@ -1098,7 +1111,7 @@ def start_stream_monitor():
                 camera_name,
                 rtsp_url,
                 llm_model=model,
-                task_name=task_name,
+                patient_id=patient_id,
                 capture_interval_seconds=capture_interval,
                 capture_interval_minutes=capture_interval_minutes
             )
@@ -1437,7 +1450,7 @@ def get_mongodb_medical_values(session_id):
         
         failure_summary = None
         camera_name = None
-        task_name = None
+        patient_id = None
         if mongo_manager:
             failure_summary = mongo_manager.get_analysis_failure_summary(session_id, model)
             if mongo_manager.db is not None:
@@ -1445,7 +1458,7 @@ def get_mongodb_medical_values(session_id):
                     video_analysis = mongo_manager.db.video_analysis.find_one({"session_id": session_id})
                     if video_analysis:
                         camera_name = video_analysis.get("camera_name")
-                        task_name = video_analysis.get("task_name")
+                        patient_id = video_analysis.get("patient_id") or video_analysis.get("task_name")
                 except Exception as e:
                     print(f"⚠️ 獲取 video_analysis 資訊失敗: {e}")
 
@@ -1460,7 +1473,8 @@ def get_mongodb_medical_values(session_id):
             },
             'failure_summary': failure_summary,
             'camera_name': camera_name,
-            'task_name': task_name
+            'patient_id': patient_id,
+            'task_name': patient_id
         })
     except Exception as e:
         return jsonify({'error': str(e)}), 500
@@ -1588,7 +1602,7 @@ def export_mongodb_medical_values(session_id):
         for item in medical_values:
             analyzed_at = item.get('analyzed_at')
             row = [
-                session_id,
+                item.get('session_id', session_id),
                 item.get('minute', ''),
                 analyzed_at.isoformat() if analyzed_at else '',
                 item.get('screen_number', ''),
@@ -1617,23 +1631,23 @@ def export_mongodb_medical_values(session_id):
                 row.extend([item_corrected_values.get(key, '') for key in corrected_keys])
             writer.writerow(row)
 
-        # 檔名優先使用任務名稱；若無任務名稱，回退使用 session_id
-        task_name = None
+        # 檔名優先使用病患 ID；舊資料回退 task_name，再回退 session_id。
+        patient_id = None
         if mongo_manager and mongo_manager.db is not None:
             try:
                 video_analysis = mongo_manager.db.video_analysis.find_one(
                     {"session_id": session_id},
-                    {"task_name": 1, "_id": 0}
+                    {"patient_id": 1, "task_name": 1, "_id": 0}
                 )
                 if video_analysis:
-                    task_name = video_analysis.get('task_name')
+                    patient_id = video_analysis.get('patient_id') or video_analysis.get('task_name')
             except Exception as e:
-                print(f"⚠️ 取得匯出檔名 task_name 失敗，改用 session_id: {e}")
+                print(f"⚠️ 取得匯出檔名 patient_id 失敗，改用 session_id: {e}")
 
         session_label = sanitize_export_filename_component(session_id, fallback='session')
-        if task_name and str(task_name).strip():
-            task_label = sanitize_export_filename_component(task_name, fallback=session_label)
-            base_name = f'{task_label}_{session_label}'
+        if patient_id and str(patient_id).strip():
+            patient_label = sanitize_export_filename_component(patient_id, fallback=session_label)
+            base_name = f'{patient_label}_{session_label}'
         else:
             base_name = session_label
         model_label = sanitize_export_filename_component(
