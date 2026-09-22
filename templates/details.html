@@ -593,6 +593,7 @@
     <div style="display: flex; gap: 20px; align-items: center; margin-bottom: 15px; padding-bottom: 15px; border-bottom: 1px solid #eee; flex-wrap: wrap;">
         <div style="font-weight: 600; color: #333;">🤖 選擇檢視模型：</div>
         <select id="globalModelSelect" onchange="changeViewModel()" style="padding: 8px 12px; border-radius: 6px; border: 1px solid #ccc; font-size: 1em; min-width: 200px;">
+            <option value="google/gemini-3.8-flash">Gemini 3.8 Flash</option>
             <option value="google/gemini-3.1-flash-lite">Gemini 3.1 Flash Lite</option>
             <option value="openai/gpt-5.4">GPT-5.4</option>
             <option value="openai/gpt-4o">GPT-4o</option>
@@ -729,6 +730,7 @@
         'internvl3-78b'
     ];
     const OPENROUTER_MODELS = [
+        'google/gemini-3.8-flash',
         'google/gemini-3.1-flash-lite',
         'openai/gpt-5.4',
         'openai/gpt-4o',
