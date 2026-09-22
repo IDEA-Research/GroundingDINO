@@ -112,6 +112,7 @@ celerybeat.pid
 # Environments
 .env
 .venv
+.venv-mcp-stream/
 env/
 venv/
 ENV/

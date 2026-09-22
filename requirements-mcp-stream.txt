@@ -1,0 +1,3 @@
+# Isolated deps for mcp_stream_monitor.py. Do not install into webapp_mongo_gpu.
+mcp>=1.21.0,<2
+httpx>=0.27

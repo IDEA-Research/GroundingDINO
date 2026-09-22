@@ -1,0 +1,25 @@
+[Unit]
+Description=NICU Stream Monitor MCP Server
+After=network-online.target medical-webapp.service
+Wants=network-online.target medical-webapp.service
+
+[Service]
+Type=simple
+User=cluster
+WorkingDirectory=/etc/GroundDino/GroundingDINO/GroundingDINO
+EnvironmentFile=-/etc/GroundDino/GroundingDINO/GroundingDINO/.env.systemd
+Environment=HOME=/home/cluster
+Environment=PYTHONUNBUFFERED=1
+Environment=WEB_APP_BASE_URL=http://127.0.0.1:3001
+Environment=MCP_STREAM_HOST=127.0.0.1
+Environment=MCP_STREAM_PORT=8765
+ExecStart=/etc/GroundDino/GroundingDINO/GroundingDINO/.venv-mcp-stream/bin/python /etc/GroundDino/GroundingDINO/GroundingDINO/mcp_stream_monitor.py --host 127.0.0.1 --port 8765
+Restart=on-failure
+RestartSec=5s
+KillMode=control-group
+TimeoutStopSec=15s
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
