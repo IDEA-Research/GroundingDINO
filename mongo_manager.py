@@ -99,7 +99,10 @@ security:
         if self.is_mongodb_running():
             print("📄 MongoDB 已經在運行中")
             self._we_started_mongodb = False
-            self.connect_to_mongodb()
+            # 外部啟動的 MongoDB（例如 docker medical-mongodb）也要確保索引存在；
+            # create_index 為冪等操作，已存在的索引不會重建
+            if self.connect_to_mongodb():
+                self.setup_database()
             return True
         
         # 創建配置檔案（如果不存在）
@@ -233,50 +236,63 @@ security:
             print(f"⚠️  設置數據庫時發生錯誤: {e}")
     
     def create_indexes(self):
-        """創建必要的索引"""
-        try:
+        """創建必要的索引（逐一建立，單一索引失敗不影響其他索引）"""
+        index_specs = [
             # VideoAnalysis 索引
-            self.db.video_analysis.create_index("session_id")
-            self.db.video_analysis.create_index([("timestamp", -1)])
-            self.db.video_analysis.create_index("video_name")
-            self.db.video_analysis.create_index("patient_id")
-            
+            ("video_analysis", "session_id", {}),
+            ("video_analysis", [("timestamp", -1)], {}),
+            ("video_analysis", "video_name", {}),
+            ("video_analysis", "patient_id", {}),
+            # camera 查詢第 1 步：source + camera_name 找出 session
+            ("video_analysis", [("source", 1), ("camera_name", 1)], {}),
+
             # FrameResult 索引
-            self.db.frame_results.create_index([("video_analysis_id", 1), ("minute", 1)])
-            self.db.frame_results.create_index([("processed_at", -1)])
-            
+            ("frame_results", [("video_analysis_id", 1), ("minute", 1)], {}),
+            ("frame_results", [("processed_at", -1)], {}),
+            # camera 查詢第 2 步：session + 時間範圍找出 frame
+            ("frame_results", [("video_analysis_id", 1), ("processed_at", 1)], {}),
+
             # ScreenAnalysis 索引
-            self.db.screen_analysis.create_index("frame_result_id")
-            self.db.screen_analysis.create_index("detected_model")
-            self.db.screen_analysis.create_index("medical_values.heart_rate")
-            self.db.screen_analysis.create_index([("analyzed_at", -1)])
-            self.db.screen_analysis.create_index([
+            ("screen_analysis", "frame_result_id", {}),
+            ("screen_analysis", "detected_model", {}),
+            ("screen_analysis", "medical_values.heart_rate", {}),
+            ("screen_analysis", [("analyzed_at", -1)], {}),
+            ("screen_analysis", [
                 ("frame_result_id", 1),
                 ("success", 1),
                 ("llm_model", 1),
                 ("analyzed_at", -1),
-            ])
+            ], {}),
+            # camera 查詢第 3 步：frame + 時間範圍取讀值
+            ("screen_analysis", [("frame_result_id", 1), ("analyzed_at", 1)], {}),
 
             # StreamSessions 索引
-            self.db.stream_sessions.create_index("session_id", unique=True)
-            self.db.stream_sessions.create_index("camera_name")
-            self.db.stream_sessions.create_index("rtsp_url")
+            ("stream_sessions", "session_id", {"unique": True}),
+            ("stream_sessions", "camera_name", {}),
+            ("stream_sessions", "rtsp_url", {}),
 
             # Dataset / batch run indexes
-            self.db.datasets.create_index("dataset_id", unique=True)
-            self.db.datasets.create_index([("created_at", -1)])
-            self.db.dataset_videos.create_index("video_id", unique=True)
-            self.db.dataset_videos.create_index([("dataset_id", 1), ("created_at", 1)])
-            self.db.dataset_runs.create_index("run_id", unique=True)
-            self.db.dataset_runs.create_index([("dataset_id", 1), ("created_at", -1)])
-            self.db.dataset_run_items.create_index(
-                [("run_id", 1), ("position", 1)], unique=True
-            )
-            
+            ("datasets", "dataset_id", {"unique": True}),
+            ("datasets", [("created_at", -1)], {}),
+            ("dataset_videos", "video_id", {"unique": True}),
+            ("dataset_videos", [("dataset_id", 1), ("created_at", 1)], {}),
+            ("dataset_runs", "run_id", {"unique": True}),
+            ("dataset_runs", [("dataset_id", 1), ("created_at", -1)], {}),
+            ("dataset_run_items", [("run_id", 1), ("position", 1)], {"unique": True}),
+        ]
+
+        failed = 0
+        for collection_name, keys, options in index_specs:
+            try:
+                self.db[collection_name].create_index(keys, **options)
+            except Exception as e:
+                failed += 1
+                print(f"⚠️  創建索引失敗 {collection_name} {keys}: {e}")
+
+        if failed:
+            print(f"⚠️  索引創建完成，{failed} 個失敗")
+        else:
             print("📊 索引創建完成")
-            
-        except Exception as e:
-            print(f"⚠️  創建索引時發生錯誤: {e}")
     
     def stop_mongodb(self):
         """停止 MongoDB（策略 2：本機在跑則對 mongodb_data/db 執行 --shutdown）"""
