@@ -1,0 +1,46 @@
+# medical-query-engine.service — nicu_qe (MongoDB long-term metric query engine)
+# Installed by deploy/install.sh to /etc/systemd/system/. Do not edit the copy in
+# /etc directly; edit this file and re-run install.sh.
+#
+# Design notes (DESIGN.md §12.5, REVIEW M9 / L7):
+# - StartLimitIntervalSec / StartLimitBurst MUST live in [Unit]; systemd 249
+#   (orin11) ignores them in [Service]. At most 5 starts per 600 s, then the unit
+#   stays "failed" until `systemctl reset-failed medical-query-engine`.
+#   This prevents a repeat of the 2026-09-10 port-collision crash loop.
+# - No ExecStartPre port pre-check: a failed bind already exits the process, and a
+#   pre-check failure would also count against StartLimit. install.sh checks the
+#   port once, interactively, before enabling.
+# - The program must not exit when Mongo is unavailable; it retries in the
+#   background and /health returns 503. So a late docker start does not burn
+#   StartLimit.
+# - ProtectSystem=strict is compatible with this layout: the venv and code live in
+#   /home/cluster/services/query_engine (ReadWritePaths), the base interpreter in
+#   /home/cluster/miniforge3 only needs read access (ProtectHome is not set).
+
+[Unit]
+Description=NICU Query Engine (nicu_qe, MongoDB long-term metrics API on 127.0.0.1:8020)
+After=network-online.target docker.service
+Wants=network-online.target docker.service
+StartLimitIntervalSec=600
+StartLimitBurst=5
+
+[Service]
+Type=simple
+User=cluster
+Group=cluster
+WorkingDirectory=/home/cluster/services/query_engine
+EnvironmentFile=/home/cluster/services/query_engine/.env.qe
+Environment=HOME=/home/cluster
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/home/cluster/services/query_engine/.venv-qe/bin/python -m nicu_qe serve
+Restart=on-failure
+RestartSec=5
+KillMode=control-group
+TimeoutStopSec=20
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ReadWritePaths=/home/cluster/services/query_engine
+
+[Install]
+WantedBy=multi-user.target

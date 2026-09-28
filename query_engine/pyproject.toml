@@ -1,0 +1,30 @@
+[build-system]
+requires = ["setuptools>=61", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "nicu_qe"
+version = "0.1.0"
+description = "Long-term metric query engine over the NICU medical_monitor_db MongoDB (normalization + time axis + query API)."
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "pymongo>=4.6",
+    "fastapi>=0.110",
+    "uvicorn",
+    "pydantic>=2.6",
+    # Windows has no system IANA tz database; Linux (orin11) uses the system one.
+    "tzdata; sys_platform == 'win32'",
+]
+
+[project.optional-dependencies]
+dev = ["pytest", "httpx"]
+
+[tool.setuptools]
+packages = ["nicu_qe"]
+
+[tool.setuptools.package-data]
+nicu_qe = ["data/*.json"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

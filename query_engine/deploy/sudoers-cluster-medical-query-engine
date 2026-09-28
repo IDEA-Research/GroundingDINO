@@ -1,0 +1,7 @@
+# /etc/sudoers.d/cluster-medical-query-engine  (installed by deploy/install.sh, mode 0440)
+# Lets user `cluster` manage ONLY the medical-query-engine unit without a password.
+# Path verified on orin11 2026-09-28: `which systemctl` ->
+#   /usr/bin/systemctl
+# Arguments are fixed; no wildcards. No journalctl rule: cluster is in group adm
+# and reads logs without sudo: journalctl -u medical-query-engine -f
+cluster ALL=(root) NOPASSWD: /usr/bin/systemctl start medical-query-engine, /usr/bin/systemctl stop medical-query-engine, /usr/bin/systemctl restart medical-query-engine, /usr/bin/systemctl status medical-query-engine, /usr/bin/systemctl reset-failed medical-query-engine

@@ -1,0 +1,5 @@
+pymongo>=4.6
+fastapi>=0.110
+uvicorn
+pydantic>=2.6
+tzdata; sys_platform == "win32"
