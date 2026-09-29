@@ -54,6 +54,7 @@ from flask import Flask, render_template, request, jsonify, send_file, Response,
 from werkzeug.utils import secure_filename
 import uuid
 import cv2
+from bson.objectid import ObjectId
 from fuzzywuzzy import process
 from dotenv import load_dotenv
 
@@ -552,6 +553,22 @@ def serialize_dataset_document(document):
                 for item in value
             ]
     return serialized
+
+
+def serialize_mongodb_value(value):
+    """遞迴將 MongoDB BSON 值轉成 Flask 可 JSON 化的資料。"""
+    if isinstance(value, ObjectId):
+        return str(value)
+    if isinstance(value, datetime):
+        return value.isoformat()
+    if isinstance(value, dict):
+        return {
+            key: serialize_mongodb_value(item)
+            for key, item in value.items()
+        }
+    if isinstance(value, (list, tuple)):
+        return [serialize_mongodb_value(item) for item in value]
+    return value
 
 
 def normalize_dataset_video_path(stored_path):
@@ -1838,10 +1855,8 @@ def get_all_videos():
         # 將搜尋關鍵字傳遞給 mongo_manager
         videos = mongo_manager.get_all_videos(source_filter=source_type, search_query=search_query)
         
-        # 轉換 ObjectId 為字串並格式化時間
-        for video in videos:
-            video['_id'] = str(video['_id'])
-            video['timestamp'] = video['timestamp'].isoformat() if video.get('timestamp') else None
+        # 完整轉換巢狀 BSON 欄位，例如重跑記錄的 rerun_of_video_analysis_id。
+        videos = serialize_mongodb_value(videos)
         
         return jsonify({
             'success': True,
