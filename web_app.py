@@ -219,7 +219,8 @@ stream_status_lock = threading.Lock()
 
 LOCAL_LLM_MODELS = frozenset({
     'qwen3-vl-235b-a22b-instruct-1m_moe',
-    'glm-4.6v',
+    'mlx-community/glm-4.6v',
+    'unsloth/glm-4.6v',
     'internvl3-78b',
 })
 LOCAL_LLM_BASE_URL = "http://192.168.1.223:1234/v1"
