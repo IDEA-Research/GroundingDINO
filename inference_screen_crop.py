@@ -15,7 +15,7 @@ from groundingdino.util.vl_utils import create_positive_map_from_span
 
 
 def calculate_iou(box1, box2):
-    """Calculate Intersection over Union (IoU) of two bounding boxes."""
+    """Calculate Intersection over Union (IoU) of two xyxy bounding boxes."""
     x1 = max(box1[0], box2[0])
     y1 = max(box1[1], box2[1])
     x2 = min(box1[2], box2[2])
@@ -32,43 +32,71 @@ def calculate_iou(box1, box2):
     return intersection / union if union > 0 else 0.0
 
 
-def merge_overlapping_boxes(boxes, labels, iou_threshold=0.3):
-    """Merge overlapping bounding boxes."""
+def calculate_containment(box1, box2):
+    """Return the intersection ratio relative to the smaller xyxy box."""
+    x1 = max(box1[0], box2[0])
+    y1 = max(box1[1], box2[1])
+    x2 = min(box1[2], box2[2])
+    y2 = min(box1[3], box2[3])
+
+    if x2 <= x1 or y2 <= y1:
+        return 0.0
+
+    intersection = (x2 - x1) * (y2 - y1)
+    area1 = max(0.0, (box1[2] - box1[0]) * (box1[3] - box1[1]))
+    area2 = max(0.0, (box2[2] - box2[0]) * (box2[3] - box2[1]))
+    smaller_area = min(area1, area2)
+
+    return intersection / smaller_area if smaller_area > 0 else 0.0
+
+
+def merge_overlapping_boxes(
+    boxes, labels, iou_threshold=0.3, containment_threshold=0.8
+):
+    """Merge duplicate GroundingDINO boxes supplied in normalized cxcywh format."""
     if len(boxes) <= 1:
         return boxes, labels
-    
-    # Convert to numpy for easier manipulation
-    boxes_np = boxes.numpy() if isinstance(boxes, torch.Tensor) else np.array(boxes)
+
+    # GroundingDINO returns cxcywh, while overlap calculations require xyxy.
+    boxes_tensor = (
+        boxes.detach().cpu()
+        if isinstance(boxes, torch.Tensor)
+        else torch.as_tensor(boxes, dtype=torch.float32)
+    )
+    boxes_xyxy = box_ops.box_cxcywh_to_xyxy(boxes_tensor).numpy()
     merged_boxes = []
     merged_labels = []
-    used = [False] * len(boxes_np)
-    
-    for i in range(len(boxes_np)):
+    used = [False] * len(boxes_xyxy)
+
+    for i in range(len(boxes_xyxy)):
         if used[i]:
             continue
-            
-        current_box = boxes_np[i].copy()
+
+        current_box = boxes_xyxy[i].copy()
         current_label = labels[i]
         used[i] = True
-        
-        # Find all boxes that overlap with current box
-        for j in range(i + 1, len(boxes_np)):
+
+        # Merge both similarly sized duplicates and a screen nested in its bezel.
+        for j in range(i + 1, len(boxes_xyxy)):
             if used[j]:
                 continue
-                
-            iou = calculate_iou(current_box, boxes_np[j])
-            if iou > iou_threshold:
-                # Merge boxes by taking the union
-                current_box[0] = min(current_box[0], boxes_np[j][0])  # x_min
-                current_box[1] = min(current_box[1], boxes_np[j][1])  # y_min
-                current_box[2] = max(current_box[2], boxes_np[j][2])  # x_max
-                current_box[3] = max(current_box[3], boxes_np[j][3])  # y_max
+
+            candidate_box = boxes_xyxy[j]
+            iou = calculate_iou(current_box, candidate_box)
+            containment = calculate_containment(current_box, candidate_box)
+            if iou > iou_threshold or containment > containment_threshold:
+                current_box[0] = min(current_box[0], candidate_box[0])
+                current_box[1] = min(current_box[1], candidate_box[1])
+                current_box[2] = max(current_box[2], candidate_box[2])
+                current_box[3] = max(current_box[3], candidate_box[3])
                 used[j] = True
-        
+
         merged_boxes.append(current_box)
         merged_labels.append(current_label)
-    
-    return torch.tensor(np.array(merged_boxes)), merged_labels
+
+    merged_xyxy = torch.as_tensor(np.array(merged_boxes), dtype=boxes_tensor.dtype)
+    merged_cxcywh = box_ops.box_xyxy_to_cxcywh(merged_xyxy)
+    return merged_cxcywh, merged_labels
 
 
 def expand_box_to_bezel(box, image_size, expansion_factor=0.05):

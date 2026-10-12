@@ -569,6 +569,35 @@ class VideoScreenDigitExtractor:
         
         return results
     
+    @staticmethod
+    def normalize_device_model(device_model):
+        """將同一設備的常見名稱變體轉為穩定名稱。"""
+        if not isinstance(device_model, str) or not device_model.strip():
+            return 'unknown'
+
+        normalized = ' '.join(
+            device_model.replace('_', ' ').replace('-', ' ').lower().split()
+        )
+
+        if 'aesculon' in normalized:
+            return 'Osypka Aesculon Hemodynamic Monitor'
+        if 'servo u' in normalized:
+            return 'SERVO-U Ventilator'
+        if 'v600' in normalized:
+            return 'Dräger Evita V600'
+        if ('dräger' in normalized or 'drager' in normalized) and 'c500' in normalized:
+            return 'Dräger Infinity C500'
+        if 'philips' in normalized and 'mp30' in normalized:
+            return 'Philips IntelliVue MP30 Patient Monitor'
+        if 'philips' in normalized and 'mp20' in normalized:
+            return 'Philips MP20'
+        if 'somanetics' in normalized and 'invos' in normalized:
+            return 'SOMANETICS INVOS'
+        if 'medtronic' in normalized and 'invos' in normalized and '5100c' in normalized:
+            return 'Medtronic INVOS 5100C'
+
+        return device_model.strip()
+
     def merge_duplicate_devices(self, screen_analyses):
         """合併同一 frame 中的重複設備，保留最完整的數據"""
         if len(screen_analyses) <= 1:
@@ -579,7 +608,10 @@ class VideoScreenDigitExtractor:
         for analysis in screen_analyses:
             if analysis['analysis']['success']:
                 result_data = analysis['analysis']['result']
-                device_model = result_data.get('model', 'unknown')
+                device_model = self.normalize_device_model(
+                    result_data.get('model', 'unknown')
+                )
+                result_data['model'] = device_model
                 
                 if device_model not in device_groups:
                     device_groups[device_model] = []
@@ -669,16 +701,18 @@ class VideoScreenDigitExtractor:
             'black ASUS computer': ['heart_rate', 'blood_pressure', 'spo2', 'respiration_rate'],
             'Philips MP20': ['heart_rate', 'blood_pressure', 'spo2', 'respiration_rate'],
             'Philips intellivue mp20 patient monitor': ['heart_rate', 'blood_pressure', 'spo2', 'respiration_rate'],
+            'Philips IntelliVue MP30 Patient Monitor': ['heart_rate', 'blood_pressure', 'spo2', 'respiration_rate'],
             'Dräger C500': ['PIP', 'PEEP', 'MAP', 'FiO2', 'VT', 'RR', 'MV'],
             'Dräger Infinity C500': ['PIP', 'PEEP', 'MAP', 'FiO2', 'VT', 'RR', 'MV'],
             'Dräger Evita V600': ['PIP', 'PEEP', 'MAP', 'FiO2'],
             'Dräger PRT-V600 neo': ['PIP', 'PEEP', 'MAP', 'FiO2'],
+            'SERVO-U Ventilator': ['PIP', 'PEEP', 'MAP', 'FiO2', 'VT', 'RR', 'MV'],
             'SOMANETICS INVOS': ['rSO2_right', 'rSO2_left'],
             'SOMANETICS INVOS cerebral/somatic oximeter monitor': ['rSO2_right', 'rSO2_left'],
-            'Medtronic_INVOS_5100C': ['rso2_left', 'rso2_left_avg', 'rso2_right', 'rso2_right_avg'],
+            'Medtronic INVOS 5100C': ['rso2_left', 'rso2_left_avg', 'rso2_right', 'rso2_right_avg'],
             #----測試新增設備----
             'Osypka Medical': ['CO', 'CI', 'HR', 'ICON', 'TFC', 'SVRI', 'SVV'],
-            'Osypka Aesculon': ['CO', 'CI', 'HR', 'ICON', 'TFC', 'SVRI', 'SVV'],
+            'Osypka Aesculon Hemodynamic Monitor': ['CO', 'CI', 'HR', 'ICON', 'TFC', 'SVRI', 'SVV'],
             'Osypka Icon': ['CO', 'CI', 'HR', 'ICON', 'TFC', 'SVRI', 'SVV']
         }
         
