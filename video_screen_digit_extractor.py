@@ -263,6 +263,13 @@ class VideoScreenDigitExtractor:
                 base_url=self.base_url or "http://192.168.1.237:1234/v1",
                 api_key=self.api_key or "sk-no-key-required",
             )
+        elif self.provider == "ondevice":
+            # 本機微調 OCR 服務（on_device_models/ocr_server.py），GPU 會排隊，timeout 放寬
+            self.client = OpenAI(
+                base_url=self.base_url or "http://127.0.0.1:18765/v1",
+                api_key=self.api_key or "ondevice",
+                timeout=900,
+            )
         else:
             raise ValueError(f"不支援的廠商: {self.provider}")
         
@@ -1088,18 +1095,38 @@ class VideoScreenDigitExtractor:
         # 如果都失敗了，返回 None
         return None
     
+    @staticmethod
+    def normalize_ondevice_result(result):
+        """把微調模型的 {"device", "values"} 轉成既有的 {"model", "medical_values", ...} 格式。"""
+        values = result.get("values")
+        if not isinstance(values, dict):
+            values = {}
+        return {
+            "model": result.get("device") or "unknown",
+            "numbers": [v for v in values.values() if v is not None],
+            "medical_values": values,
+            "description": "",
+            "per_adapter": result.get("per_adapter", []),
+        }
+
     def extract_digits_from_screen(self, screen_path):
         """使用 LLM 從螢幕圖片中識別數字"""
         
         try:
-            base64_image = self.encode_image_to_base64(screen_path)
-            device_prompts = self.get_templates()
-            # 根據目標資料類型調整提示詞
-            prompt = self.get_analysis_prompt(device_prompts)
+            if self.provider == "ondevice":
+                # 微調模型的提示詞與前處理固定在伺服器端（須與訓練一致），這裡只送原始裁切圖
+                with open(screen_path, "rb") as f:
+                    base64_image = base64.b64encode(f.read()).decode('utf-8')
+                prompt = "ondevice"
+            else:
+                base64_image = self.encode_image_to_base64(screen_path)
+                device_prompts = self.get_templates()
+                # 根據目標資料類型調整提示詞
+                prompt = self.get_analysis_prompt(device_prompts)
             
             content = ""
             
-            if self.provider in ["openrouter", "local"]:
+            if self.provider in ["openrouter", "local", "ondevice"]:
                 response = self.client.chat.completions.create(
                     model=self.model,
                     messages=[
@@ -1145,6 +1172,8 @@ class VideoScreenDigitExtractor:
                 }
             else:
                 print("✅ 成功提取並解析 JSON")
+                if self.provider == "ondevice":
+                    result = self.normalize_ondevice_result(result)
             
             return {"success": True, "result": result}
             
@@ -1355,7 +1384,7 @@ def main():
     mode_group.add_argument("--camera", "-cam", action="store_true", help="使用攝影機即時模式")
     
     # 共用參數
-    parser.add_argument("--provider", default="openrouter", choices=["openrouter", "local"], help="API 提供者 (openrouter, local)")
+    parser.add_argument("--provider", default="openrouter", choices=["openrouter", "local", "ondevice"], help="API 提供者 (openrouter, local, ondevice)")
     parser.add_argument("--base_url", default=None, help="自訂 API Base URL (用於地端模型)")
     parser.add_argument("--api_key", "-k", default=None, help="OpenRouter API 金鑰（openrouter 必填）")
     parser.add_argument("--config_file", "-c",
@@ -1402,6 +1431,9 @@ def main():
     if args.provider == "local":
         api_key = api_key or "lm-studio"
         base_url = base_url or "http://192.168.1.237:1234/v1"
+    elif args.provider == "ondevice":
+        api_key = api_key or "ondevice"
+        base_url = base_url or "http://127.0.0.1:18765/v1"
     elif not api_key or not str(api_key).strip():
         print("錯誤: openrouter 須使用 --api_key 提供 API 金鑰")
         return

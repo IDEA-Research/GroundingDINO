@@ -77,6 +77,11 @@ document.addEventListener('DOMContentLoaded', () => {
             { value: 'mlx-community/glm-4.6v', label: 'GLM-4.6V (MLX Community)' },
             { value: 'unsloth/glm-4.6v', label: 'GLM-4.6V (Unsloth)' },
             { value: 'internvl3-78b', label: 'InternVL3 78B' }
+        ],
+        'ondevice': [
+            { value: 'ondevice-glm46v-fix4-vote', label: 'GLM-4.6V-Flash fix4（3 模型投票，最準）' },
+            { value: 'ondevice-glm46v-r9', label: 'GLM-4.6V-Flash r9' },
+            { value: 'ondevice-paddleocr-vl', label: 'PaddleOCR-VL（最快）' }
         ]
     };
 
@@ -84,7 +89,7 @@ document.addEventListener('DOMContentLoaded', () => {
     function updateApiKeyField() {
         const provider = document.getElementById('provider-select').value;
         const apiKeyInput = document.getElementById('api-key');
-        if (provider === 'local') {
+        if (provider === 'local' || provider === 'ondevice') {
             apiKeyInput.removeAttribute('required');
             apiKeyInput.placeholder = '地端模型不需 API Key';
         } else {
@@ -1261,7 +1266,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
                 
                 // 判斷是否需要 API Key
-                const provider = stream.provider || (stream.llm_model && stream.llm_model.includes('/') ? 'openrouter' : 'local');
+                const provider = stream.provider || (
+                    stream.llm_model && stream.llm_model.startsWith('ondevice-') ? 'ondevice'
+                        : stream.llm_model && stream.llm_model.includes('/') ? 'openrouter' : 'local');
                 if (provider === 'openrouter' && !apiKey) {
                     showAlert('請先在「設定」中輸入 OpenRouter API Key，再點擊啟動！', 'danger');
                     openGlobalIntervalModal('api-key');

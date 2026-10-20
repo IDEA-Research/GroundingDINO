@@ -895,6 +895,7 @@
                         <select id="providerSelect" name="provider" style="width: 100%; padding: 12px; border: 2px solid #e9ecef; border-radius: 8px; font-size: 16px;" onchange="updateModelOptions()">
                             <option value="openrouter" selected>OpenRouter</option>
                             <option value="local">地端模型 (Local)</option>
+                            <option value="ondevice">本機微調 OCR (On-device)</option>
                         </select>
                     </div>
 
@@ -941,6 +942,7 @@
                     <select id="datasetProviderSelect" style="width: 100%; padding: 12px; border: 2px solid #e9ecef; border-radius: 8px; font-size: 16px;" onchange="updateDatasetModelOptions()">
                         <option value="openrouter" selected>OpenRouter</option>
                         <option value="local">地端模型 (Local)</option>
+                            <option value="ondevice">本機微調 OCR (On-device)</option>
                     </select>
                 </div>
                 <div class="form-group">
@@ -1302,6 +1304,11 @@
             { value: 'mlx-community/glm-4.6v', label: 'GLM-4.6V (MLX Community)' },
             { value: 'unsloth/glm-4.6v', label: 'GLM-4.6V (Unsloth)' },
             { value: 'internvl3-78b', label: 'InternVL3 78B' }
+        ],
+        'ondevice': [
+            { value: 'ondevice-glm46v-fix4-vote', label: 'GLM-4.6V-Flash fix4（3 模型投票，最準）' },
+            { value: 'ondevice-glm46v-r9', label: 'GLM-4.6V-Flash r9' },
+            { value: 'ondevice-paddleocr-vl', label: 'PaddleOCR-VL（最快）' }
         ]
     };
 

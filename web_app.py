@@ -226,6 +226,14 @@ LOCAL_LLM_MODELS = frozenset({
 })
 LOCAL_LLM_BASE_URL = "http://192.168.1.223:1234/v1"
 
+# 本機微調螢幕 OCR 模型（on_device_models/ocr_server.py）
+ONDEVICE_OCR_MODELS = frozenset({
+    'ondevice-glm46v-fix4-vote',
+    'ondevice-glm46v-r9',
+    'ondevice-paddleocr-vl',
+})
+ONDEVICE_OCR_BASE_URL = os.environ.get('ONDEVICE_OCR_BASE_URL', 'http://127.0.0.1:18765/v1')
+
 
 def resolve_llm_credentials(provider, model, api_key):
     """
@@ -245,8 +253,13 @@ def resolve_llm_credentials(provider, model, api_key):
             return None, None, None, f'不支援的地端模型: {model}'
         return provider, 'lm-studio', LOCAL_LLM_BASE_URL, None
 
+    if provider == 'ondevice':
+        if model not in ONDEVICE_OCR_MODELS:
+            return None, None, None, f'不支援的本機微調模型: {model}'
+        return provider, 'ondevice', ONDEVICE_OCR_BASE_URL, None
+
     if provider != 'openrouter':
-        return None, None, None, f'不支援的 provider: {provider}（僅支援 openrouter、local）'
+        return None, None, None, f'不支援的 provider: {provider}（僅支援 openrouter、local、ondevice）'
 
     key = (api_key or '').strip()
     if not key:

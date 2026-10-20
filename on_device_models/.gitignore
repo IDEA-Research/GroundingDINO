@@ -1,0 +1,6 @@
+# 模型權重與壓縮檔不進 git
+*.zip
+base_models/
+glm46v-flash-screen-ocr-r9/
+screen-ocr-models-2026-10-12/
+*.log

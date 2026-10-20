@@ -967,6 +967,11 @@
         'unsloth/glm-4.6v',
         'internvl3-78b'
     ];
+    const ONDEVICE_MODELS = [
+        'ondevice-glm46v-fix4-vote',
+        'ondevice-glm46v-r9',
+        'ondevice-paddleocr-vl'
+    ];
     const OPENROUTER_MODELS = [
         'google/gemini-3.8-flash',
         'google/gemini-3.1-flash-lite',
@@ -978,13 +983,14 @@
         'anthropic/claude-3.5-sonnet',
         'meta-llama/llama-3.2-90b-vision-instruct'
     ];
-    let availableModels = [...OPENROUTER_MODELS, ...LOCAL_MODELS];
+    let availableModels = [...OPENROUTER_MODELS, ...LOCAL_MODELS, ...ONDEVICE_MODELS];
     let currentModel = 'google/gemini-3.1-flash-lite';
     let histogramWindowSize = 60;
     let histogramWindowStart = 0;
     let currentHoverValueType = null;
 
     function providerForModel(model) {
+        if (ONDEVICE_MODELS.includes(model)) return 'ondevice';
         return LOCAL_MODELS.includes(model) ? 'local' : 'openrouter';
     }
 

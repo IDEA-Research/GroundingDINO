@@ -1,0 +1,24 @@
+[Unit]
+Description=On-device fine-tuned screen OCR server (GLM-4.6V-Flash / PaddleOCR-VL LoRA)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=cluster
+WorkingDirectory=/etc/GroundDino/GroundingDINO/GroundingDINO/on_device_models
+Environment=HOME=/home/cluster
+Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONNOUSERSITE=1
+Environment=ONDEVICE_OCR_HOST=127.0.0.1
+Environment=ONDEVICE_OCR_PORT=18765
+ExecStart=/home/cluster/miniforge3/envs/ondevice_ocr/bin/python /etc/GroundDino/GroundingDINO/GroundingDINO/on_device_models/ocr_server.py --preload paddle
+Restart=on-failure
+RestartSec=10s
+KillMode=control-group
+TimeoutStopSec=30s
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
