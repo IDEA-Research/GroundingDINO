@@ -420,6 +420,7 @@ security:
                             or screen_analysis['screen_path']
                         ),
                         "detected_model": detected_model,
+                        "bbox": screen_analysis.get('bbox'),
                         "medical_values": medical_values,
                         "raw_analysis": raw_analysis,
                         "success": analysis['success'],
@@ -1271,6 +1272,7 @@ security:
         if not dataset:
             return False
         self.db.dataset_videos.delete_many({"dataset_id": dataset_id})
+        self.db.dataset_ground_truths.delete_many({"dataset_id": dataset_id})
         result = self.db.datasets.delete_one({"dataset_id": dataset_id})
         return result.deleted_count > 0
 
@@ -1370,6 +1372,237 @@ security:
         )
         return run
 
+    def get_latest_dataset_run(self, dataset_id):
+        """取得資料集最近一次的批次工作。"""
+        if self.db is None:
+            return None
+        latest = self.db.dataset_runs.find_one(
+            {"dataset_id": dataset_id}, {"run_id": 1}, sort=[("created_at", -1)]
+        )
+        return self.get_dataset_run(latest["run_id"]) if latest else None
+
+    def _get_session_screens(self, session_id, llm_model=None):
+        """取得 session 的所有成功螢幕分析，並附上擷取秒數。"""
+        video = self.db.video_analysis.find_one({"session_id": session_id}, {"_id": 1})
+        if not video:
+            return []
+        frames = list(self.db.frame_results.find(
+            {"video_analysis_id": video["_id"]}, {"minute": 1}
+        ))
+        minute_by_frame = {frame["_id"]: frame.get("minute") for frame in frames}
+        query = {
+            "frame_result_id": {"$in": list(minute_by_frame)},
+            "success": True,
+        }
+        if llm_model:
+            query["llm_model"] = llm_model
+        screens = list(self.db.screen_analysis.find(query, {
+            "frame_result_id": 1,
+            "detected_model": 1,
+            "corrected_model": 1,
+            "is_model_corrected": 1,
+            "bbox": 1,
+            "medical_values": 1,
+            "corrected_medical_values": 1,
+            "is_corrected": 1,
+            "analyzed_at": 1,
+            "llm_model": 1,
+            "success": 1,
+        }))
+        for screen in screens:
+            screen["minute"] = minute_by_frame.get(screen.get("frame_result_id"))
+        return screens
+
+    def set_dataset_ground_truth(self, session_id):
+        """將資料集批次產生的 session 設為其來源影片的標準答案。"""
+        from dataset_evaluation import build_entries, count_entries, serialize_entries
+
+        if self.db is None:
+            return None, "MongoDB 未連接"
+        video_analysis = self.db.video_analysis.find_one({"session_id": session_id})
+        if not video_analysis:
+            return None, "找不到該 Session"
+        video_id = video_analysis.get("dataset_video_id")
+        if not video_id:
+            return None, "只有資料集批次分析產生的 Session 可以設為標準答案"
+        dataset_video = self.db.dataset_videos.find_one({"video_id": video_id})
+        if not dataset_video:
+            return None, "來源資料集影片已不存在"
+
+        entries, duplicates = build_entries(
+            self._get_session_screens(session_id), use_corrections=True
+        )
+        if not entries:
+            return None, "這個 Session 沒有可辨識設備的分析結果，無法作為標準答案"
+
+        now = datetime.now()
+        self.db.dataset_ground_truths.update_one(
+            {"video_id": video_id},
+            {"$set": {
+                "video_id": video_id,
+                "dataset_id": dataset_video.get("dataset_id"),
+                "session_id": session_id,
+                "entries": serialize_entries(entries),
+                "duplicate_count": duplicates,
+                "updated_at": now,
+            }, "$setOnInsert": {"created_at": now}},
+            upsert=True,
+        )
+        self.db.dataset_videos.update_one(
+            {"video_id": video_id},
+            {"$set": {
+                "ground_truth_session_id": session_id,
+                "ground_truth_set_at": now,
+            }}
+        )
+        return {
+            "video_id": video_id,
+            "dataset_id": dataset_video.get("dataset_id"),
+            "video_name": dataset_video.get("original_name"),
+            "entry_count": count_entries(entries),
+            "duplicate_count": duplicates,
+        }, None
+
+    def get_ground_truth_video_for_session(self, session_id):
+        """取得以此 session 作為標準答案的資料集影片。"""
+        if self.db is None:
+            return None
+        return self.db.dataset_videos.find_one({"ground_truth_session_id": session_id})
+
+    def clear_dataset_ground_truth(self, video_id):
+        """移除資料集影片的標準答案。"""
+        if self.db is None:
+            return False
+        self.db.dataset_ground_truths.delete_one({"video_id": video_id})
+        result = self.db.dataset_videos.update_one(
+            {"video_id": video_id},
+            {"$unset": {"ground_truth_session_id": "", "ground_truth_set_at": ""}}
+        )
+        return result.matched_count > 0
+
+    def get_dataset_ground_truth_entries(self, video_id):
+        """取得影片標準答案；標準答案 Session 仍存在時重新讀取以納入最新訂正。"""
+        from dataset_evaluation import build_entries, deserialize_entries, serialize_entries
+
+        record = self.db.dataset_ground_truths.find_one({"video_id": video_id})
+        if not record:
+            return None, None
+        session_id = record.get("session_id")
+        if self.db.video_analysis.count_documents({"session_id": session_id}, limit=1):
+            entries, duplicates = build_entries(
+                self._get_session_screens(session_id), use_corrections=True
+            )
+            if entries:
+                self.db.dataset_ground_truths.update_one(
+                    {"video_id": video_id},
+                    {"$set": {
+                        "entries": serialize_entries(entries),
+                        "duplicate_count": duplicates,
+                        "updated_at": datetime.now(),
+                    }}
+                )
+                return entries, {"session_id": session_id, "snapshot_only": False}
+        return (
+            deserialize_entries(record.get("entries")),
+            {"session_id": session_id, "snapshot_only": True},
+        )
+
+    def evaluate_session(self, session_id, llm_model=None, include_screen_annotations=False):
+        """以來源影片的標準答案比對 session 的模型原始輸出。"""
+        from dataset_evaluation import (
+            annotate_screens,
+            build_entries,
+            compare_entries,
+            pair_entries,
+        )
+
+        if self.db is None:
+            return None, "MongoDB 未連接"
+        video_analysis = self.db.video_analysis.find_one({"session_id": session_id})
+        if not video_analysis:
+            return None, "找不到該 Session"
+        video_id = video_analysis.get("dataset_video_id")
+        if not video_id:
+            return None, "只有資料集批次分析產生的 Session 可以驗證正確率"
+        dataset_video = self.db.dataset_videos.find_one(
+            {"video_id": video_id}, {"original_name": 1}
+        )
+
+        reference, gt_info = self.get_dataset_ground_truth_entries(video_id)
+        if reference is None:
+            return None, "這部資料集影片尚未設定標準答案"
+
+        available_models = sorted(
+            model for model in self.db.screen_analysis.distinct(
+                "llm_model",
+                {"frame_result_id": {"$in": self.db.frame_results.distinct(
+                    "_id", {"video_analysis_id": video_analysis["_id"]}
+                )}}
+            ) if model
+        )
+        if llm_model not in available_models:
+            session_model = video_analysis.get("llm_model")
+            llm_model = session_model if session_model in available_models else None
+
+        screens = self._get_session_screens(session_id, llm_model)
+        candidate_groups, _ = build_entries(screens, use_corrections=False)
+        reference, candidate = pair_entries(reference, candidate_groups)
+        result = compare_entries(reference, candidate)
+        if include_screen_annotations:
+            result["screen_annotations"] = annotate_screens(screens, reference, candidate)
+        result.update({
+            "session_id": session_id,
+            "video_id": video_id,
+            "video_name": (dataset_video or {}).get("original_name")
+            or video_analysis.get("original_video_name")
+            or video_analysis.get("video_name"),
+            "llm_model": llm_model,
+            "available_llm_models": available_models,
+            "ground_truth_session_id": gt_info["session_id"],
+            "ground_truth_snapshot_only": gt_info["snapshot_only"],
+            "is_ground_truth_session": gt_info["session_id"] == session_id,
+            "evaluated_at": datetime.now(),
+        })
+        return result, None
+
+    def evaluate_dataset_run(self, run_id):
+        """重新計算批次工作中每部已完成影片的正確率與整體正確率。"""
+        from dataset_evaluation import aggregate_evaluations
+
+        if self.db is None:
+            return None
+        run = self.db.dataset_runs.find_one({"run_id": run_id})
+        if not run:
+            return None
+        evaluations = []
+        items = self.db.dataset_run_items.find({"run_id": run_id, "status": "completed"})
+        for item in items:
+            session_id = item.get("session_id")
+            evaluation, error = (
+                self.evaluate_session(session_id, run.get("model"))
+                if session_id else (None, "缺少 session")
+            )
+            if evaluation:
+                summary = {
+                    key: value for key, value in evaluation.items()
+                    if key not in ("mismatches", "extra_devices", "available_llm_models")
+                }
+                self.update_dataset_run_item(
+                    run_id, item["video_id"], evaluation=summary, evaluation_error=None
+                )
+                evaluations.append(summary)
+            else:
+                self.db.dataset_run_items.update_one(
+                    {"run_id": run_id, "video_id": item["video_id"]},
+                    {"$set": {"evaluation_error": error, "updated_at": datetime.now()},
+                     "$unset": {"evaluation": ""}}
+                )
+        aggregate = aggregate_evaluations(evaluations) if evaluations else None
+        if aggregate:
+            aggregate["evaluated_at"] = datetime.now()
+        self.update_dataset_run(run_id, evaluation=aggregate)
+        return aggregate
+
     def get_all_videos(self, source_filter=None, search_query=None):
         """取得所有影片分析記錄 (支援搜尋)"""
         if self.db is None:
@@ -1413,6 +1646,48 @@ security:
         
         videos = list(self.db.video_analysis.find(query).sort('timestamp', -1))
         if source_filter != "stream":
+            dataset_video_ids = list({
+                video["dataset_video_id"] for video in videos
+                if video.get("dataset_video_id")
+            })
+            session_ids = [video.get("session_id") for video in videos]
+            projection = {
+                "video_id": 1, "dataset_id": 1, "original_name": 1,
+                "ground_truth_session_id": 1,
+            }
+            dataset_videos = {
+                item["video_id"]: item
+                for item in self.db.dataset_videos.find(
+                    {"$or": [
+                        {"video_id": {"$in": dataset_video_ids}},
+                        {"ground_truth_session_id": {"$in": session_ids}},
+                    ]},
+                    projection,
+                )
+            }
+            ground_truth_video_by_session = {
+                item["ground_truth_session_id"]: item
+                for item in dataset_videos.values()
+                if item.get("ground_truth_session_id")
+            }
+            dataset_names = {
+                item["dataset_id"]: item.get("name")
+                for item in self.db.datasets.find(
+                    {"dataset_id": {"$in": list({
+                        item.get("dataset_id") for item in dataset_videos.values()
+                    })}},
+                    {"dataset_id": 1, "name": 1},
+                )
+            }
+            for video in videos:
+                source_video = dataset_videos.get(video.get("dataset_video_id"))
+                video["dataset_video_exists"] = source_video is not None
+                video["dataset_video_name"] = (source_video or {}).get("original_name")
+                video["dataset_name"] = dataset_names.get((source_video or {}).get("dataset_id"))
+                video["is_ground_truth"] = video.get("session_id") in ground_truth_video_by_session
+                video["can_evaluate"] = bool(
+                    source_video and source_video.get("ground_truth_session_id")
+                )
             return videos
 
         # 資料庫卡片以病患為單位顯示；各次 session 仍保留供追溯，

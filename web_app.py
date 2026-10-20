@@ -219,6 +219,7 @@ stream_status_lock = threading.Lock()
 
 LOCAL_LLM_MODELS = frozenset({
     'qwen3-vl-235b-a22b-instruct-1m_moe',
+    'qwen3.8-flash-next-reap-288-mlx',
     'mlx-community/glm-4.6v',
     'unsloth/glm-4.6v',
     'internvl3-78b',
@@ -691,6 +692,11 @@ def run_dataset_batch(run_id, dataset, videos, processor_options):
             dataset_batch_status['error'] = str(e)
         print(f"❌ 資料集批次分析失敗: {e}")
     finally:
+        if completed:
+            try:
+                mongo_manager.evaluate_dataset_run(run_id)
+            except Exception as e:
+                print(f"⚠️ 計算資料集正確率失敗: {e}")
         try:
             mongo_manager.update_dataset_run(
                 run_id,
@@ -953,7 +959,22 @@ def dataset_run_status(run_id):
     run = mongo_manager.get_dataset_run(run_id)
     if not run:
         return jsonify({'error': '找不到批次工作'}), 404
-    return jsonify({'success': True, 'data': serialize_dataset_document(run)})
+    return jsonify({
+        'success': True,
+        'data': serialize_mongodb_value(serialize_dataset_document(run)),
+    })
+
+
+@app.route('/api/datasets/<dataset_id>/latest-run')
+def dataset_latest_run(dataset_id):
+    """取得資料集最近一次的批次工作；沒有時 data 為 null。"""
+    if not mongo_manager:
+        return jsonify({'error': 'MongoDB 未啟用'}), 503
+    run = mongo_manager.get_latest_dataset_run(dataset_id)
+    return jsonify({
+        'success': True,
+        'data': serialize_mongodb_value(serialize_dataset_document(run)) if run else None,
+    })
 
 
 @app.route('/api/dataset-runs/<run_id>/stop', methods=['POST'])
@@ -965,6 +986,71 @@ def stop_dataset_run(run_id):
         dataset_batch_status['stop_requested'] = True
         processing_status['is_processing'] = False
     return jsonify({'success': True, 'message': '正在停止批次工作'})
+
+
+@app.route('/api/dataset-runs/<run_id>/evaluate', methods=['POST'])
+def evaluate_dataset_run_api(run_id):
+    """以目前的標準答案重新計算批次工作的正確率。"""
+    if not mongo_manager:
+        return jsonify({'error': 'MongoDB 未啟用'}), 503
+    if not mongo_manager.get_dataset_run(run_id):
+        return jsonify({'error': '找不到批次工作'}), 404
+    with dataset_batch_lock:
+        if dataset_batch_status['is_running'] and dataset_batch_status['run_id'] == run_id:
+            return jsonify({'error': '批次工作仍在執行，完成後會自動計算正確率'}), 409
+    try:
+        aggregate = mongo_manager.evaluate_dataset_run(run_id)
+    except Exception as e:
+        return jsonify({'error': f'計算正確率失敗: {e}'}), 500
+    run = mongo_manager.get_dataset_run(run_id)
+    return jsonify({
+        'success': True,
+        'evaluation': serialize_mongodb_value(aggregate),
+        'data': serialize_mongodb_value(serialize_dataset_document(run)),
+    })
+
+
+@app.route('/api/mongodb/videos/<session_id>/ground_truth', methods=['POST', 'DELETE'])
+def dataset_ground_truth_api(session_id):
+    """將資料集 Session 設為（或取消）來源影片的標準答案。"""
+    if not mongo_manager:
+        return jsonify({'error': 'MongoDB 未啟用'}), 503
+    try:
+        if request.method == 'POST':
+            info, error = mongo_manager.set_dataset_ground_truth(session_id)
+            if error:
+                return jsonify({'error': error}), 400
+            return jsonify({
+                'success': True,
+                'data': info,
+                'message': f"已設為「{info['video_name']}」的標準答案",
+            })
+
+        dataset_video = mongo_manager.get_ground_truth_video_for_session(session_id)
+        if not dataset_video:
+            return jsonify({'error': '這個 Session 目前不是標準答案'}), 409
+        mongo_manager.clear_dataset_ground_truth(dataset_video['video_id'])
+        return jsonify({'success': True, 'message': '已取消標準答案'})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/mongodb/videos/<session_id>/evaluation')
+def session_evaluation_api(session_id):
+    """以標準答案驗證單一資料集 Session 的正確率。"""
+    if not mongo_manager:
+        return jsonify({'error': 'MongoDB 未啟用'}), 503
+    try:
+        result, error = mongo_manager.evaluate_session(
+            session_id,
+            request.args.get('llm_model') or None,
+            include_screen_annotations=request.args.get('annotations') == '1',
+        )
+        if error:
+            return jsonify({'error': error}), 400
+        return jsonify({'success': True, 'data': serialize_mongodb_value(result)})
+    except Exception as e:
+        return jsonify({'error': f'計算正確率失敗: {e}'}), 500
 
 
 def normalize_device_name(llm_returned_name):

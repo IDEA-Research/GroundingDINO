@@ -292,6 +292,177 @@
         border: 2px solid #4facfe;
         color: white;
     }
+
+    .video-card-badges {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        flex-wrap: wrap;
+        justify-content: flex-end;
+    }
+
+    .ground-truth-badge {
+        display: inline-block;
+        background: #fff3cd;
+        color: #856404;
+        border: 1px solid #ffc107;
+        border-radius: 16px;
+        padding: 5px 12px;
+        font-size: 0.85em;
+        font-weight: 600;
+        max-width: 360px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .video-card-actions.dataset-actions {
+        margin-top: 8px;
+    }
+
+    .btn-ground-truth,
+    .btn-evaluate {
+        flex: 1;
+        border: none;
+        padding: 9px 12px;
+        border-radius: 6px;
+        cursor: pointer;
+        font-size: 0.9em;
+        font-weight: 600;
+    }
+
+    .btn-ground-truth {
+        background: #ffc107;
+        color: #333;
+    }
+
+    .btn-ground-truth.is-active {
+        background: #fff;
+        color: #856404;
+        border: 2px solid #ffc107;
+    }
+
+    .btn-evaluate {
+        background: #28a745;
+        color: white;
+    }
+
+    .dataset-source-badge {
+        display: inline-block;
+        background: #e8f4fd;
+        color: #1c6ea4;
+        border: 1px solid #b6dcf7;
+        border-radius: 16px;
+        padding: 5px 12px;
+        font-size: 0.85em;
+        font-weight: 600;
+        max-width: 360px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .btn-evaluate:disabled {
+        background: #c8e6c9;
+        cursor: not-allowed;
+    }
+
+    .evaluation-overlay {
+        position: fixed;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.45);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 1000;
+    }
+
+    .evaluation-overlay.hidden {
+        display: none;
+    }
+
+    .evaluation-dialog {
+        background: white;
+        border-radius: 12px;
+        width: min(900px, 94vw);
+        max-height: 88vh;
+        overflow-y: auto;
+        padding: 24px;
+        box-shadow: 0 10px 40px rgba(0, 0, 0, 0.25);
+    }
+
+    .evaluation-dialog-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        gap: 12px;
+        margin-bottom: 16px;
+    }
+
+    .evaluation-close {
+        background: none;
+        border: none;
+        font-size: 1.5em;
+        cursor: pointer;
+        color: #666;
+    }
+
+    .evaluation-metrics {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+        gap: 12px;
+        margin-bottom: 18px;
+    }
+
+    .evaluation-metric {
+        background: #f8f9fa;
+        border-radius: 8px;
+        padding: 12px;
+    }
+
+    .evaluation-metric .value {
+        font-size: 1.6em;
+        font-weight: 700;
+        color: #4facfe;
+    }
+
+    .evaluation-metric .label {
+        color: #666;
+        font-size: 0.85em;
+    }
+
+    .evaluation-metric .hint {
+        color: #999;
+        font-size: 0.8em;
+    }
+
+    .evaluation-table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-bottom: 18px;
+        font-size: 0.9em;
+    }
+
+    .evaluation-table th,
+    .evaluation-table td {
+        border-bottom: 1px solid #eee;
+        padding: 6px 8px;
+        text-align: left;
+    }
+
+    .evaluation-table th {
+        background: #f8f9fa;
+    }
+
+    .evaluation-status-wrong { color: #dc3545; font-weight: 600; }
+    .evaluation-status-missing { color: #fd7e14; font-weight: 600; }
+    .evaluation-status-device_missed { color: #6f42c1; font-weight: 600; }
+
+    .evaluation-note {
+        color: #666;
+        font-size: 0.85em;
+        margin-bottom: 12px;
+    }
 </style>
 {% endblock %}
 
@@ -327,6 +498,19 @@
         <p>正在載入資料庫內容...</p>
     </div>
 </div>
+
+<div id="evaluationOverlay" class="evaluation-overlay hidden" onclick="if (event.target === this) closeEvaluation()">
+    <div class="evaluation-dialog" role="dialog" aria-modal="true" aria-labelledby="evaluationTitle">
+        <div class="evaluation-dialog-header">
+            <div>
+                <h3 id="evaluationTitle" style="margin: 0;">🎯 正確率驗證</h3>
+                <div id="evaluationSubtitle" class="evaluation-note" style="margin: 4px 0 0;"></div>
+            </div>
+            <button class="evaluation-close" onclick="closeEvaluation()" aria-label="關閉">×</button>
+        </div>
+        <div id="evaluationBody"></div>
+    </div>
+</div>
 {% endblock %}
 
 {% block scripts %}
@@ -334,6 +518,7 @@
     // 當前分頁
     let currentTab = 'manual';
     let searchTimeout = null;
+    let videoCardData = {};
 
     // 頁面載入時自動載入資料
     document.addEventListener('DOMContentLoaded', function() {
@@ -451,6 +636,7 @@
         }
         
         let html = '<div class="video-grid">';
+        videoCardData = {};
         
         videos.forEach(video => {
             const patientId = video.patient_id || video.task_name || '';
@@ -469,6 +655,29 @@
             
             // 針對串流資料顯示 RTSP 來源，優先顯示攝影機名稱
             const displayTitle = currentTab === 'stream' ? (video.camera_name || video.video_path || 'RTSP Stream') : (video.video_name || '未命名影片');
+            const isDatasetSession = currentTab === 'manual' && video.dataset_video_id && video.dataset_video_exists;
+            if (currentTab === 'manual') {
+                videoCardData[video.session_id] = video;
+            }
+            const datasetSourceLabel = isDatasetSession
+                ? `${video.dataset_name ? `${video.dataset_name} / ` : ''}${video.dataset_video_name || video.original_video_name || ''}`
+                : '';
+            const datasetActions = isDatasetSession ? `
+                    <div class="video-card-actions dataset-actions">
+                        ${video.is_ground_truth ? `
+                        <button class="btn-ground-truth is-active" onclick="clearGroundTruth('${video.session_id}')"
+                            title="取消這個 Session 的標準答案身分">
+                            ⭐ 取消標準答案
+                        </button>` : `
+                        <button class="btn-ground-truth" onclick="setGroundTruth('${video.session_id}')"
+                            title="請先確認此 Session 已完整訂正">
+                            ☆ 設為標準答案
+                        </button>`}
+                        <button class="btn-evaluate" onclick="showEvaluation('${video.session_id}')"
+                            ${video.can_evaluate ? '' : 'disabled title="對應的資料集影片尚未設定標準答案"'}>
+                            🎯 驗證正確率
+                        </button>
+                    </div>` : '';
             
             html += `
                 <div class="video-card">
@@ -482,7 +691,11 @@
                             </h3>
                             <span class="session-id">${currentTab === 'stream' ? `${sessionCount} 次監測 · 最新 Session: ` : 'ID: '}${video.session_id}</span>
                         </div>
-                        <div class="status-pill ${statusClass}">${statusText}</div>
+                        <div class="video-card-badges">
+                            ${isDatasetSession ? `<span class="dataset-source-badge" title="資料集影片：${escapeHtml(datasetSourceLabel)}">🗂️ ${escapeHtml(datasetSourceLabel)}</span>` : ''}
+                            ${video.is_ground_truth ? '<span class="ground-truth-badge" title="這個 Session 是此影片的標準答案">⭐ Ground Truth</span>' : ''}
+                            <div class="status-pill ${statusClass}">${statusText}</div>
+                        </div>
                     </div>
                     
                     <div class="video-card-details">
@@ -524,6 +737,7 @@
                             🗑️ ${currentTab === 'stream' && sessionCount > 1 ? '刪除最新一次' : '刪除'}
                         </button>
                     </div>
+                    ${datasetActions}
                 </div>
             `;
         });
@@ -564,6 +778,209 @@
         } catch (error) {
             alert('發生錯誤：' + error.message);
         }
+    }
+
+    function escapeHtml(text) {
+        return String(text ?? '')
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+    }
+
+    function formatPercent(ratio) {
+        return ratio === null || ratio === undefined ? '-' : `${(ratio * 100).toFixed(1)}%`;
+    }
+
+    function formatSeconds(seconds) {
+        const total = Number(seconds || 0);
+        const minutes = Math.floor(total / 60);
+        const remain = total % 60;
+        return `${String(minutes).padStart(2, '0')}:${String(remain).padStart(2, '0')}`;
+    }
+
+    function formatEvaluationValue(value) {
+        if (value === null || value === undefined) return '（無）';
+        if (typeof value === 'object') return JSON.stringify(value);
+        return String(value);
+    }
+
+    async function fetchJson(url, options) {
+        const response = await fetch(url, options);
+        const data = await response.json();
+        if (!response.ok || !data.success) {
+            throw new Error(data.error || `HTTP ${response.status}`);
+        }
+        return data;
+    }
+
+    async function setGroundTruth(sessionId) {
+        const video = videoCardData[sessionId] || {};
+        const videoLabel = `${video.dataset_name ? `${video.dataset_name} / ` : ''}${video.dataset_video_name || video.original_video_name || ''}`;
+        const replaceNote = video.can_evaluate
+            ? '\n\n這部影片已有 Ground Truth，將會被這個 Session 取代。'
+            : '';
+        if (!confirm(`確定要將這個 Session 設為「${videoLabel}」的 Ground Truth 嗎？\n\n請確認所有數值與設備型號都已人工檢查並訂正完成；未訂正的數值會被視為正確答案。${replaceNote}`)) {
+            return;
+        }
+        try {
+            await fetchJson(`./api/mongodb/videos/${encodeURIComponent(sessionId)}/ground_truth`, {
+                method: 'POST',
+            });
+            loadDatabaseContent();
+        } catch (error) {
+            alert('操作失敗：' + error.message);
+        }
+    }
+
+    async function clearGroundTruth(sessionId) {
+        const video = videoCardData[sessionId] || {};
+        if (!confirm(`確定要取消這個 Session 作為「${video.dataset_video_name || video.original_video_name || ''}」Ground Truth 的身分嗎？`)) {
+            return;
+        }
+        try {
+            await fetchJson(`./api/mongodb/videos/${encodeURIComponent(sessionId)}/ground_truth`, {
+                method: 'DELETE',
+            });
+            loadDatabaseContent();
+        } catch (error) {
+            alert('操作失敗：' + error.message);
+        }
+    }
+
+    function closeEvaluation() {
+        document.getElementById('evaluationOverlay').classList.add('hidden');
+    }
+
+    async function showEvaluation(sessionId, llmModel = '') {
+        const overlay = document.getElementById('evaluationOverlay');
+        const body = document.getElementById('evaluationBody');
+        const subtitle = document.getElementById('evaluationSubtitle');
+        overlay.classList.remove('hidden');
+        subtitle.textContent = '';
+        body.innerHTML = '<div class="loading-state"><div class="spinner"></div><p>正在比對標準答案...</p></div>';
+
+        try {
+            const query = llmModel ? `?llm_model=${encodeURIComponent(llmModel)}` : '';
+            const response = await fetch(`./api/mongodb/videos/${encodeURIComponent(sessionId)}/evaluation${query}`);
+            const data = await response.json();
+            if (!data.success) throw new Error(data.error);
+            renderEvaluation(data.data);
+        } catch (error) {
+            body.innerHTML = `<div class="empty-state"><div class="empty-state-icon">⚠️</div><p>${escapeHtml(error.message)}</p></div>`;
+        }
+    }
+
+    function renderEvaluation(result) {
+        const body = document.getElementById('evaluationBody');
+        document.getElementById('evaluationSubtitle').textContent =
+            `${result.video_name || ''}｜Session ${result.session_id}`;
+
+        const modelOptions = (result.available_llm_models || []).map(model => `
+            <option value="${escapeHtml(model)}" ${model === result.llm_model ? 'selected' : ''}>${escapeHtml(model)}</option>
+        `).join('');
+        const modelSelector = (result.available_llm_models || []).length > 1 ? `
+            <div class="evaluation-note">
+                比對模型：
+                <select onchange="showEvaluation('${result.session_id}', this.value)">${modelOptions}</select>
+            </div>` : `<div class="evaluation-note">比對模型：${escapeHtml(result.llm_model || '全部')}</div>`;
+
+        const notes = [];
+        if (result.is_ground_truth_session) {
+            notes.push('這個 Session 本身就是標準答案，下方結果代表它「訂正前」模型原始輸出的正確率。');
+        }
+        if (result.ground_truth_snapshot_only) {
+            notes.push('標準答案 Session 已被刪除，使用最後一次保存的標準答案快照。');
+        }
+
+        const fieldRows = Object.entries(result.by_field || {})
+            .sort((a, b) => (a[1].accuracy ?? 0) - (b[1].accuracy ?? 0))
+            .map(([field, stats]) => `
+                <tr>
+                    <td>${escapeHtml(field)}</td>
+                    <td>${stats.total}</td>
+                    <td>${stats.correct}</td>
+                    <td>${stats.wrong}</td>
+                    <td>${stats.missing}</td>
+                    <td><strong>${formatPercent(stats.accuracy)}</strong></td>
+                </tr>
+            `).join('');
+
+        const deviceRows = Object.entries(result.by_device || {}).map(([key, stats]) => `
+            <tr>
+                <td>${escapeHtml(stats.device_name || key)}</td>
+                <td>${stats.device_matched} / ${stats.device_total}</td>
+                <td>${stats.field_correct} / ${stats.field_total}</td>
+                <td><strong>${formatPercent(stats.accuracy)}</strong></td>
+            </tr>
+        `).join('');
+
+        const statusLabels = { wrong: '數值錯誤', missing: '欄位未輸出', device_missed: '設備未偵測' };
+        const mismatchRows = (result.mismatches || []).map(row => `
+            <tr>
+                <td>${formatSeconds(row.minute)}</td>
+                <td>${escapeHtml(row.device_name || row.device_key)}</td>
+                <td>${escapeHtml(row.field)}</td>
+                <td>${escapeHtml(formatEvaluationValue(row.expected))}</td>
+                <td>${escapeHtml(formatEvaluationValue(row.actual))}</td>
+                <td class="evaluation-status-${row.status}">${statusLabels[row.status] || row.status}</td>
+            </tr>
+        `).join('');
+
+        const extraRows = (result.extra_devices || []).map(row => `
+            <tr>
+                <td>${formatSeconds(row.minute)}</td>
+                <td>${escapeHtml(row.device_name || row.device_key)}</td>
+            </tr>
+        `).join('');
+
+        body.innerHTML = `
+            ${modelSelector}
+            ${notes.map(note => `<div class="evaluation-note">ℹ️ ${escapeHtml(note)}</div>`).join('')}
+            <div class="evaluation-metrics">
+                <div class="evaluation-metric">
+                    <div class="label">整體數值正確率</div>
+                    <div class="value">${formatPercent(result.accuracy)}</div>
+                    <div class="hint">${result.field_correct} / ${result.field_total} 個欄位</div>
+                </div>
+                <div class="evaluation-metric">
+                    <div class="label">已偵測設備的數值正確率</div>
+                    <div class="value">${formatPercent(result.matched_accuracy)}</div>
+                    <div class="hint">排除漏偵測與未輸出欄位</div>
+                </div>
+                <div class="evaluation-metric">
+                    <div class="label">設備偵測率</div>
+                    <div class="value">${formatPercent(result.device_detection_rate)}</div>
+                    <div class="hint">${result.device_matched} / ${result.device_total}，多偵測 ${result.device_extra}</div>
+                </div>
+            </div>
+
+            <h4>各欄位正確率</h4>
+            <table class="evaluation-table">
+                <thead><tr><th>欄位</th><th>總數</th><th>正確</th><th>錯誤</th><th>未輸出</th><th>正確率</th></tr></thead>
+                <tbody>${fieldRows || '<tr><td colspan="6">沒有可比對的欄位</td></tr>'}</tbody>
+            </table>
+
+            <h4>各設備正確率</h4>
+            <table class="evaluation-table">
+                <thead><tr><th>設備</th><th>偵測到</th><th>欄位正確</th><th>正確率</th></tr></thead>
+                <tbody>${deviceRows || '<tr><td colspan="4">沒有設備</td></tr>'}</tbody>
+            </table>
+
+            <h4>不一致明細${result.mismatches_truncated ? '（僅顯示前 200 筆）' : ''}</h4>
+            <table class="evaluation-table">
+                <thead><tr><th>時間</th><th>設備</th><th>欄位</th><th>標準答案</th><th>模型輸出</th><th>狀態</th></tr></thead>
+                <tbody>${mismatchRows || '<tr><td colspan="6">全部正確 🎉</td></tr>'}</tbody>
+            </table>
+
+            ${extraRows ? `
+            <h4>多偵測的設備（標準答案中沒有）</h4>
+            <table class="evaluation-table">
+                <thead><tr><th>時間</th><th>設備</th></tr></thead>
+                <tbody>${extraRows}</tbody>
+            </table>` : ''}
+        `;
     }
 
     // 刪除資料

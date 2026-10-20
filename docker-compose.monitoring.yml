@@ -7,14 +7,18 @@ services:
     container_name: medical-mongodb
     restart: unless-stopped
     network_mode: host
+    # mongod 不會回收孤兒子程序；沒有 init 時逾時的 healthcheck mongosh 會累積成殭屍程序
+    init: true
     volumes:
       - ./mongodb_data:/data/db
+      # mongod.conf 的 dbPath 是相對路徑 mongodb_data/db（工作目錄為 /），實際資料在這個掛載
+      - ./mongodb_data:/mongodb_data
       - ./mongodb_config/mongod.conf:/etc/mongod.conf
     environment:
       - MONGO_INITDB_DATABASE=medical_monitor_db
     command: mongod --config /etc/mongod.conf
     healthcheck:
-      test: echo 'db.runCommand("ping").ok' | mongosh localhost:27017/medical_monitor_db --quiet
+      test: ["CMD", "mongosh", "--quiet", "--eval", "quit(db.runCommand({ping: 1}).ok ? 0 : 1)", "mongodb://localhost:27017/medical_monitor_db"]
       interval: 30s
       timeout: 10s
       retries: 3

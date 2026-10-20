@@ -73,6 +73,7 @@ document.addEventListener('DOMContentLoaded', () => {
         ],
         'local': [
             { value: 'qwen3-vl-235b-a22b-instruct-1m_moe', label: 'Qwen3-VL 235B' },
+            { value: 'qwen3.8-flash-next-reap-288-mlx', label: 'Qwen3.8 Flash Next REAP 288 (MLX)' },
             { value: 'mlx-community/glm-4.6v', label: 'GLM-4.6V (MLX Community)' },
             { value: 'unsloth/glm-4.6v', label: 'GLM-4.6V (Unsloth)' },
             { value: 'internvl3-78b', label: 'InternVL3 78B' }

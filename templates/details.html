@@ -161,6 +161,228 @@
         background: #bbdefb;
     }
 
+    .medical-value-item .values span.gt-wrong {
+        background: #ffebee;
+        color: #c62828;
+        box-shadow: inset 0 0 0 2px #e53935;
+    }
+
+    .medical-value-item .values span.gt-correct {
+        box-shadow: inset 0 0 0 1px #81c784;
+    }
+
+    .gt-compare-wrap {
+        margin: 8px 0;
+    }
+
+    .gt-compare-toggle {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        padding: 3px 10px;
+        border-radius: 999px;
+        border: 1px solid #ccc;
+        background: #f5f5f5;
+        color: #555;
+        font-size: 0.85em;
+        font-weight: 600;
+        cursor: pointer;
+    }
+
+    .gt-compare-toggle.is-correct {
+        border-color: #81c784;
+        background: #e8f5e9;
+        color: #2e7d32;
+    }
+
+    .gt-compare-toggle.is-wrong {
+        border-color: #e57373;
+        background: #ffebee;
+        color: #c62828;
+    }
+
+    .gt-compare-caret {
+        display: inline-block;
+        transition: transform 0.15s;
+    }
+
+    .gt-compare-toggle.is-open .gt-compare-caret {
+        transform: rotate(180deg);
+    }
+
+    .gt-compare.hidden {
+        display: none;
+    }
+
+    .gt-compare {
+        margin: 8px 0 10px;
+        padding: 8px 10px;
+        border: 1px solid #e0e0e0;
+        border-radius: 8px;
+        background: #fafafa;
+        font-size: 0.85em;
+    }
+
+    .gt-compare-title {
+        font-weight: 700;
+        color: #333;
+        margin-bottom: 6px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 8px;
+    }
+
+    .gt-compare-row {
+        display: grid;
+        grid-template-columns: 18px minmax(80px, 1fr) minmax(50px, auto) minmax(90px, 1.4fr);
+        gap: 6px;
+        align-items: baseline;
+        padding: 3px 4px;
+        border-radius: 4px;
+    }
+
+    .gt-compare-row.is-wrong {
+        background: #ffebee;
+    }
+
+    .gt-compare-row.is-wrong .gt-compare-icon,
+    .gt-compare-row.is-wrong .gt-compare-actual {
+        color: #c62828;
+        font-weight: 700;
+    }
+
+    .gt-compare-row.is-correct .gt-compare-icon {
+        color: #2e7d32;
+    }
+
+    .gt-compare-row.is-neutral {
+        color: #888;
+    }
+
+    .gt-compare-label,
+    .gt-compare-actual,
+    .gt-compare-result {
+        word-break: break-word;
+    }
+
+    .gt-compare-ok {
+        color: #2e7d32;
+    }
+
+    .gt-compare-expected {
+        color: #1b5e20;
+    }
+
+    .gt-compare-note {
+        color: #888;
+        padding: 3px 4px;
+    }
+
+    .stats-tabs {
+        display: flex;
+        gap: 6px;
+        margin-top: 20px;
+        border-bottom: 2px solid #dee2e6;
+    }
+
+    .stats-tabs.hidden {
+        display: none;
+    }
+
+    .stats-tab {
+        padding: 8px 16px;
+        border: 1px solid #dee2e6;
+        border-bottom: none;
+        border-radius: 8px 8px 0 0;
+        background: #f5f5f5;
+        color: #555;
+        font-weight: 600;
+        cursor: pointer;
+        margin-bottom: -2px;
+    }
+
+    .stats-tab.is-active {
+        background: #fff;
+        color: #1565c0;
+        border-color: #90caf9;
+        border-bottom: 2px solid #fff;
+    }
+
+    .gt-pane {
+        margin-top: 15px;
+    }
+
+    .gt-pane-meta {
+        font-size: 0.85em;
+        color: #555;
+        margin-bottom: 12px;
+        line-height: 1.6;
+    }
+
+    .gt-metrics {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+        gap: 12px;
+        margin-bottom: 15px;
+    }
+
+    .gt-metric {
+        background: #e3f2fd;
+        border-left: 5px solid #1976d2;
+        border-radius: 8px;
+        padding: 12px;
+    }
+
+    .gt-metric-label {
+        font-size: 0.85em;
+        color: #555;
+    }
+
+    .gt-metric-value {
+        font-size: 1.4em;
+        font-weight: bold;
+        color: #0d47a1;
+    }
+
+    .gt-metric-sub {
+        font-size: 0.75em;
+        color: #666;
+        margin-top: 4px;
+    }
+
+    .gt-section {
+        margin-top: 12px;
+    }
+
+    .gt-section summary {
+        cursor: pointer;
+        font-weight: 600;
+        color: #333;
+        padding: 6px 0;
+    }
+
+    .gt-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 0.85em;
+        margin-top: 6px;
+    }
+
+    .gt-table th,
+    .gt-table td {
+        border: 1px solid #e0e0e0;
+        padding: 6px 8px;
+        text-align: left;
+    }
+
+    .gt-table th {
+        background: #f5f5f5;
+    }
+
+    .gt-status-wrong { color: #c62828; font-weight: 600; }
+    .gt-status-missing { color: #ef6c00; font-weight: 600; }
+
     .corrected-text {
         color: #ff0000 !important; /* 強制使用紅色 */
         font-weight: bold;
@@ -544,7 +766,15 @@
             <span class="info-value" id="totalRecords">-</span>
         </div>
     </div>
-    
+
+    <div id="statsTabs" class="stats-tabs hidden" role="tablist">
+        <button type="button" class="stats-tab" data-tab="groundTruth" onclick="switchStatsTab('groundTruth')">🎯 與 Ground Truth 比對</button>
+        <button type="button" class="stats-tab" data-tab="self" onclick="switchStatsTab('self')">✍️ 人工訂正統計</button>
+    </div>
+
+    <div id="groundTruthPane" class="hidden"></div>
+
+    <div id="selfStatsPane">
     <!-- 各設備召回率統計面板 -->
     <div id="deviceErrorRateStats" style="margin-top: 20px; background: #f1f8e9; padding: 15px; border-radius: 8px; border-left: 5px solid #8bc34a; display: none;">
         <h4 style="margin-top: 0; font-size: 1.1em; color: #33691e;">📊 各設備辨識召回率統計</h4>
@@ -586,6 +816,7 @@
                 </div>
             </div>
         </div>
+    </div>
     </div>
 </div>
 
@@ -723,9 +954,15 @@
     const histogramCharts = new Map(); // 管理一般 Histogram 圖表實例
     let hoverChartInstance = null; // 全域放大圖表實例
     let currentCorrectingAnalysisId = null;
+    let groundTruthAnnotations = {};
+    let groundTruthRequestId = 0;
+    let activeStatsTab = 'groundTruth';
+    let groundTruthIsSelf = false;
+    const openGroundTruthComparisons = new Set();
 
     const LOCAL_MODELS = [
         'qwen3-vl-235b-a22b-instruct-1m_moe',
+        'qwen3.8-flash-next-reap-288-mlx',
         'mlx-community/glm-4.6v',
         'unsloth/glm-4.6v',
         'internvl3-78b'
@@ -833,6 +1070,7 @@
             document.getElementById('sessionId').textContent = sessionId;
             await loadSessionModels(sessionId);
             loadMedicalValues(sessionId, currentModel);
+            loadGroundTruthEvaluation();
         } else {
             showError('未提供 Session ID');
         }
@@ -917,6 +1155,290 @@
         }
     }
 
+    function switchStatsTab(tab) {
+        activeStatsTab = tab;
+        const hasGroundTruth = !document.getElementById('statsTabs').classList.contains('hidden');
+        const showGroundTruth = hasGroundTruth && tab === 'groundTruth';
+        document.getElementById('groundTruthPane').classList.toggle('hidden', !showGroundTruth);
+        document.getElementById('selfStatsPane').classList.toggle('hidden', showGroundTruth);
+        document.querySelectorAll('#statsTabs .stats-tab').forEach(button => {
+            const isActive = button.dataset.tab === (showGroundTruth ? 'groundTruth' : 'self');
+            button.classList.toggle('is-active', isActive);
+            button.setAttribute('aria-selected', isActive ? 'true' : 'false');
+        });
+    }
+
+    function formatGtPercent(value) {
+        return value === null || value === undefined ? '-' : `${(value * 100).toFixed(1)}%`;
+    }
+
+    function formatGtSeconds(seconds) {
+        const total = Math.max(0, Math.round(Number(seconds) || 0));
+        return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, '0')}`;
+    }
+
+    function formatGtField(field) {
+        return String(field || '').replace(/^~/, '');
+    }
+
+    function formatGtValue(value) {
+        if (value === null || value === undefined || value === '') return '（無）';
+        return typeof value === 'object' ? JSON.stringify(value) : String(value);
+    }
+
+    async function loadGroundTruthEvaluation() {
+        if (!sessionId) return;
+        const requestId = ++groundTruthRequestId;
+        const model = currentModel;
+        let result = null;
+        try {
+            const params = new URLSearchParams({ annotations: '1' });
+            if (model) params.set('llm_model', model);
+            const response = await fetch(
+                `/api/mongodb/videos/${encodeURIComponent(sessionId)}/evaluation?${params}`
+            );
+            const data = await response.json();
+            if (response.ok && data.success) result = data.data;
+        } catch (error) {
+            console.error('載入 Ground Truth 比對失敗:', error);
+        }
+        if (requestId !== groundTruthRequestId) return;
+
+        const tabs = document.getElementById('statsTabs');
+        groundTruthIsSelf = !!(result && result.is_ground_truth_session);
+        if (!result) {
+            groundTruthAnnotations = {};
+            tabs.classList.add('hidden');
+            document.getElementById('groundTruthPane').innerHTML = '';
+        } else {
+            const sameModel = result.llm_model === model;
+            groundTruthAnnotations = sameModel ? (result.screen_annotations || {}) : {};
+            renderGroundTruthPane(result, model, sameModel);
+            tabs.classList.remove('hidden');
+        }
+        switchStatsTab(activeStatsTab);
+        refreshMedicalValuesDisplay();
+    }
+
+    function reloadGroundTruthIfSelf() {
+        if (groundTruthIsSelf) loadGroundTruthEvaluation();
+    }
+
+    function renderGroundTruthPane(result, selectedModel, sameModel) {
+        const pane = document.getElementById('groundTruthPane');
+        const gtSession = result.ground_truth_session_id;
+        const metaLines = [
+            `資料集影片：<strong>${escapeHtml(result.video_name || result.video_id)}</strong>`,
+            gtSession
+                ? `標準答案 Session：<a href="/details/${encodeURIComponent(gtSession)}">${escapeHtml(gtSession)}</a>`
+                : '標準答案 Session：（已刪除，使用設定當時的快照）',
+            `比對模型：<strong>${escapeHtml(result.llm_model || '-')}</strong>（只比對模型原始輸出，不含此 Session 的人工訂正）`,
+        ];
+        if (result.is_ground_truth_session) {
+            metaLines.push('⭐ 這個 Session 本身就是標準答案，以下為模型原始輸出與人工訂正後結果的差異。');
+        }
+        if (!sameModel) {
+            metaLines.push(`⚠️ 目前選擇的模型 ${escapeHtml(selectedModel || '-')} 在此 Session 沒有分析結果，下方數值不會標示比對結果。`);
+        }
+
+        const metrics = [
+            ['整體數值正確率', formatGtPercent(result.accuracy),
+                `${result.field_correct} / ${result.field_total} 個標準答案數值`],
+            ['已偵測設備的數值正確率', formatGtPercent(result.matched_accuracy),
+                `錯誤 ${result.field_wrong}，缺漏 ${result.field_missing}`],
+            ['設備偵測率', formatGtPercent(result.device_detection_rate),
+                `${result.device_matched} / ${result.device_total} 筆（秒數 + 設備）`],
+            ['多偵測的設備', String(result.device_extra), '標準答案中沒有的設備'],
+        ].map(([label, value, sub]) => `
+            <div class="gt-metric">
+                <div class="gt-metric-label">${label}</div>
+                <div class="gt-metric-value">${value}</div>
+                <div class="gt-metric-sub">${escapeHtml(sub)}</div>
+            </div>`).join('');
+
+        const deviceRows = Object.entries(result.by_device || {}).map(([key, stats]) => `
+            <tr>
+                <td>${escapeHtml(stats.device_name || key)}</td>
+                <td>${stats.device_matched} / ${stats.device_total}</td>
+                <td>${stats.field_correct} / ${stats.field_total}</td>
+                <td>${formatGtPercent(stats.accuracy)}</td>
+            </tr>`).join('');
+
+        const fieldRows = Object.entries(result.by_field || {})
+            .sort((a, b) => (a[1].accuracy ?? 1) - (b[1].accuracy ?? 1))
+            .map(([field, stats]) => `
+            <tr>
+                <td>${escapeHtml(formatGtField(field))}</td>
+                <td>${stats.correct} / ${stats.total}</td>
+                <td class="${stats.wrong ? 'gt-status-wrong' : ''}">${stats.wrong}</td>
+                <td class="${stats.missing ? 'gt-status-missing' : ''}">${stats.missing}</td>
+                <td>${formatGtPercent(stats.accuracy)}</td>
+            </tr>`).join('');
+
+        const statusLabels = { wrong: '數值錯誤', missing: '缺少數值', device_missed: '未偵測到設備' };
+        const mismatchRows = (result.mismatches || []).map(row => `
+            <tr>
+                <td>${formatGtSeconds(row.minute)}</td>
+                <td>${escapeHtml(row.device_name || row.device_key)}</td>
+                <td>${escapeHtml(formatGtField(row.field))}</td>
+                <td>${escapeHtml(formatGtValue(row.expected))}</td>
+                <td>${escapeHtml(formatGtValue(row.actual))}</td>
+                <td class="${row.status === 'wrong' ? 'gt-status-wrong' : 'gt-status-missing'}">${statusLabels[row.status] || row.status}</td>
+            </tr>`).join('');
+
+        const extraRows = (result.extra_devices || []).map(row => `
+            <tr>
+                <td>${formatGtSeconds(row.minute)}</td>
+                <td>${escapeHtml(row.device_name || row.device_key)}</td>
+            </tr>`).join('');
+
+        pane.innerHTML = `
+            <div class="gt-pane">
+                <div class="gt-pane-meta">${metaLines.join('<br>')}</div>
+                <div class="gt-metrics">${metrics}</div>
+                <details class="gt-section" open>
+                    <summary>各設備正確率</summary>
+                    ${deviceRows ? `<table class="gt-table">
+                        <thead><tr><th>設備</th><th>偵測到</th><th>數值正確</th><th>正確率</th></tr></thead>
+                        <tbody>${deviceRows}</tbody>
+                    </table>` : '<div class="gt-pane-meta">無資料</div>'}
+                </details>
+                <details class="gt-section">
+                    <summary>各欄位正確率（${Object.keys(result.by_field || {}).length} 個欄位）</summary>
+                    ${fieldRows ? `<table class="gt-table">
+                        <thead><tr><th>欄位</th><th>正確</th><th>錯誤</th><th>缺漏</th><th>正確率</th></tr></thead>
+                        <tbody>${fieldRows}</tbody>
+                    </table>` : '<div class="gt-pane-meta">無資料</div>'}
+                </details>
+                <details class="gt-section">
+                    <summary>不一致明細（${result.field_wrong + result.field_missing} 筆${result.mismatches_truncated ? `，僅列前 ${(result.mismatches || []).length} 筆` : ''}）</summary>
+                    ${mismatchRows ? `<table class="gt-table">
+                        <thead><tr><th>時間</th><th>設備</th><th>欄位</th><th>標準答案</th><th>模型輸出</th><th>狀態</th></tr></thead>
+                        <tbody>${mismatchRows}</tbody>
+                    </table>` : '<div class="gt-pane-meta">全部一致 🎉</div>'}
+                </details>
+                ${extraRows ? `<details class="gt-section">
+                    <summary>多偵測的設備（${result.device_extra} 筆）</summary>
+                    <table class="gt-table">
+                        <thead><tr><th>時間</th><th>設備</th></tr></thead>
+                        <tbody>${extraRows}</tbody>
+                    </table>
+                </details>` : ''}
+            </div>`;
+    }
+
+    function gtCompareRow(status, label, actual, result) {
+        const icon = { correct: '✔', wrong: '✘', neutral: '–' }[status];
+        return `
+            <div class="gt-compare-row is-${status}">
+                <span class="gt-compare-icon">${icon}</span>
+                <span class="gt-compare-label">${escapeHtml(label)}</span>
+                <span class="gt-compare-actual">${escapeHtml(actual)}</span>
+                <span class="gt-compare-result">${result}</span>
+            </div>`;
+    }
+
+    function toggleGroundTruthComparison(itemId, event) {
+        event.stopPropagation();
+        if (openGroundTruthComparisons.has(itemId)) {
+            openGroundTruthComparisons.delete(itemId);
+        } else {
+            openGroundTruthComparisons.add(itemId);
+        }
+        const card = event.currentTarget.closest('.gt-compare-wrap');
+        const isOpen = openGroundTruthComparisons.has(itemId);
+        card.querySelector('.gt-compare').classList.toggle('hidden', !isOpen);
+        event.currentTarget.classList.toggle('is-open', isOpen);
+    }
+
+    function renderGroundTruthComparison(item, annotation) {
+        if (!annotation || annotation.status === 'failed') return '';
+        const isOpen = openGroundTruthComparisons.has(item.id);
+        let toggleClass = 'is-wrong';
+        let badge = '型號錯誤';
+        let panel;
+        if (annotation.status === 'duplicate') {
+            toggleClass = 'is-neutral';
+            badge = '未比對';
+            panel = '<div class="gt-compare-note">同時間同設備已有其他螢幕結果，這筆未列入比對</div>';
+        } else {
+            const built = buildGroundTruthComparisonRows(item, annotation);
+            panel = built.html;
+            if (annotation.status === 'compared' || annotation.status === 'unknown_ok') {
+                badge = built.total ? `${built.correct} / ${built.total}` : '正確';
+                toggleClass = built.correct === built.total ? 'is-correct' : 'is-wrong';
+            }
+        }
+        return `
+            <div class="gt-compare-wrap">
+                <button type="button"
+                        class="gt-compare-toggle ${toggleClass} ${isOpen ? 'is-open' : ''}"
+                        onclick="toggleGroundTruthComparison('${item.id}', event)"
+                        title="顯示／隱藏 Ground Truth 比對">
+                    🎯 ${badge} <span class="gt-compare-caret">▾</span>
+                </button>
+                <div class="gt-compare ${isOpen ? '' : 'hidden'}">
+                    <div class="gt-compare-title">🎯 Ground Truth 比對</div>
+                    ${panel}
+                </div>
+            </div>`;
+    }
+
+    function buildGroundTruthComparisonRows(item, annotation) {
+
+        const rows = [];
+        let correct = 0;
+        let total = 0;
+        const modelText = item.model || '-';
+        const isUnknownOk = annotation.status === 'unknown_ok';
+        if (annotation.status === 'compared') {
+            rows.push(gtCompareRow('correct', '型號', modelText,
+                `<span class="gt-compare-ok">正確</span>`));
+        } else if (isUnknownOk) {
+            rows.push(gtCompareRow('correct', '型號', modelText,
+                '<span class="gt-compare-ok">正確（標準答案此處也無可辨識設備）</span>'));
+        } else {
+            const expectedDevices = annotation.expected_devices || [];
+            const result = expectedDevices.length > 0
+                ? `正確：<strong class="gt-compare-expected">${escapeHtml(expectedDevices.join('、'))}</strong>`
+                : (annotation.status === 'extra_device'
+                    ? '<span class="gt-compare-expected">標準答案此時間沒有這台設備</span>'
+                    : '<span class="gt-compare-expected">無法辨識型號</span>');
+            rows.push(gtCompareRow('wrong', '型號', modelText, result));
+        }
+
+        if (annotation.status === 'compared' || isUnknownOk) {
+            const fields = annotation.fields || {};
+            const neutralText = isUnknownOk ? '標準答案此處沒有可辨識設備' : '標準答案沒有此欄位';
+            Object.entries(item.medical_values || {}).forEach(([key, value]) => {
+                const field = fields[key];
+                if (!field) return;
+                const actual = formatGtValue(value);
+                if (field.status === 'correct') {
+                    correct += 1;
+                    total += 1;
+                    rows.push(gtCompareRow('correct', key, actual,
+                        '<span class="gt-compare-ok">正確</span>'));
+                } else if (field.status === 'wrong') {
+                    total += 1;
+                    rows.push(gtCompareRow('wrong', key, actual,
+                        `正確：<strong class="gt-compare-expected">${escapeHtml(formatGtValue(field.expected))}</strong>`));
+                } else {
+                    rows.push(gtCompareRow('neutral', key, actual, neutralText));
+                }
+            });
+            (annotation.missing_fields || []).forEach(row => {
+                total += 1;
+                rows.push(gtCompareRow('wrong', formatGtField(row.field), '（未抓到）',
+                    `正確：<strong class="gt-compare-expected">${escapeHtml(formatGtValue(row.expected))}</strong>`));
+            });
+        } else {
+            rows.push('<div class="gt-compare-note">型號不在標準答案中，數值未列入比對</div>');
+        }
+
+        return { html: rows.join(''), correct, total };
+    }
+
     function updateModelSelect() {
         const select = document.getElementById('globalModelSelect');
         select.innerHTML = '';
@@ -942,6 +1464,8 @@
             '圖表顯示此病患的歷史數值資料';
         hideDetailsAlert();
         document.getElementById('btnAnalyzeMissing').style.display = 'none';
+        groundTruthAnnotations = {};
+        loadGroundTruthEvaluation();
         await loadMedicalValues(sessionId, currentModel);
     }
 
@@ -1455,21 +1979,29 @@
                 // 如果點擊的是 span (數值標籤) 或 div.model (型號區域) 或 btn-resend，不觸發模態視窗
                 if (e.target.tagName === 'SPAN' || e.target.parentElement.tagName === 'SPAN' || 
                     e.target.closest('.model-selector') || e.target.closest('.btn-resend') ||
-                    e.target.closest('.quality-marker')) return;
+                    e.target.closest('.quality-marker') || e.target.closest('.gt-compare-wrap')) return;
                 showImageModal(item);
             };
             
+            const gtAnnotation = groundTruthAnnotations[item.id];
             let valuesHtml = '';
             if (item.medical_values && Object.keys(item.medical_values).length > 0) {
                 valuesHtml = Object.entries(item.medical_values)
                     .map(([key, value]) => {
                         const correctedValue = item.corrected_medical_values[key];
                         const hasCorrection = correctedValue !== undefined && correctedValue !== null;
+                        const gtField = gtAnnotation && gtAnnotation.fields ? gtAnnotation.fields[key] : null;
+                        const gtStatus = gtField ? gtField.status : null;
+                        const gtClass = gtStatus === 'wrong' ? 'gt-wrong' : (gtStatus === 'correct' ? 'gt-correct' : '');
+                        const gtHint = gtStatus === 'wrong'
+                            ? `\nGround Truth：${formatGtValue(gtField.expected)}`
+                            : (gtStatus === 'correct' ? '\n與 Ground Truth 一致' : '');
                         
                         return `
-                            <span onclick="promptCorrection('${item.id}', '${key}', '${value}', event)" 
+                            <span class="${gtClass}"
+                                  onclick="promptCorrection('${item.id}', '${key}', '${value}', event)" 
                                   oncontextmenu="undoValueCorrection('${item.id}', '${key}', event)"
-                                  title="左鍵：訂正數值\n右鍵：撤銷訂正">
+                                  title="左鍵：訂正數值\n右鍵：撤銷訂正${escapeHtml(gtHint).replace(/"/g, '&quot;')}">
                                 ${key}: 
                                 <span class="${hasCorrection ? 'original-text' : ''}">${value}</span>
                                 ${hasCorrection ? `<span class="corrected-text">${correctedValue}</span>` : ''}
@@ -1561,6 +2093,7 @@
                     <span class="${hasModelCorrection ? 'original-text' : ''}">${item.model}</span>
                     ${hasModelCorrection ? `<span class="corrected-text">${item.corrected_model}</span>` : ''}
                 </div>
+                ${renderGroundTruthComparison(item, gtAnnotation)}
                 ${qualityHtml}
                 ${item.is_resent ? '<div style="margin-top:5px; text-align:right;"><span class="new-result-tag">✨ 最新重送結果 (未存檔)</span></div>' : ''}
             `;
@@ -1648,6 +2181,7 @@
                 if (item) {
                     item.corrected_model = selectedModel;
                     refreshMedicalValuesDisplay();
+                    reloadGroundTruthIfSelf();
                     updateCorrectionStats(medicalValuesData);
                     loadDeviceErrorRateStats(sessionId); // 新增：型號訂正後重新載入設備統計
                 }
@@ -1677,6 +2211,7 @@
                 if (item && item.corrected_medical_values) {
                     delete item.corrected_medical_values[key];
                     refreshMedicalValuesDisplay();
+                    reloadGroundTruthIfSelf();
                     updateCorrectionStats(medicalValuesData);
                     loadDeviceErrorRateStats(sessionId);
                 }
@@ -1703,6 +2238,7 @@
                 if (item) {
                     delete item.corrected_model;
                     refreshMedicalValuesDisplay();
+                    reloadGroundTruthIfSelf();
                     updateCorrectionStats(medicalValuesData);
                     loadDeviceErrorRateStats(sessionId);
                 }
@@ -1779,6 +2315,7 @@
                     if (item) {
                         item.corrected_medical_values[key] = newValue.trim();
                         refreshMedicalValuesDisplay();
+                        reloadGroundTruthIfSelf();
                         updateCorrectionStats(medicalValuesData);
                         loadDeviceErrorRateStats(sessionId); // 新增：訂正後重新載入設備統計
                     }

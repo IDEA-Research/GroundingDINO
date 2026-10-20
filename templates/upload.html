@@ -314,6 +314,55 @@
         background: #fff;
     }
 
+    .dataset-evaluation {
+        margin: 10px 0;
+        padding: 10px 12px;
+        border-radius: 8px;
+        background: #f1f8f4;
+        border: 1px solid #c3e6cb;
+    }
+
+    .dataset-evaluation.hidden {
+        display: none;
+    }
+
+    .dataset-evaluation p,
+    .dataset-evaluation ul {
+        margin: 4px 0;
+    }
+
+    .dataset-evaluation-note {
+        color: #666;
+        font-size: 0.85em;
+    }
+
+    .dataset-evaluation-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 10px;
+        flex-wrap: wrap;
+    }
+
+    .dataset-evaluation-recalc {
+        padding: 5px 12px;
+        border: 1px solid #81c784;
+        border-radius: 6px;
+        background: #fff;
+        color: #2e7d32;
+        font-weight: 600;
+        cursor: pointer;
+    }
+
+    .dataset-evaluation-recalc:disabled {
+        opacity: 0.6;
+        cursor: wait;
+    }
+
+    .dataset-evaluation-skipped {
+        color: #888;
+    }
+
     .source-card {
         overflow: hidden;
         border: 1px solid #dbe2ea;
@@ -908,6 +957,7 @@
                     <button type="button" class="btn" id="runDatasetBtn" title="執行整個資料集" aria-label="執行整個資料集">🚀 開始處理</button>
                     <div id="datasetVideoList" class="dataset-video-list">請先選擇資料集</div>
                 </div>
+                <div id="datasetLatestRun" class="dataset-evaluation hidden"></div>
 
                 <div id="datasetBatchStatus" class="dataset-batch-status hidden">
                     <p id="datasetBatchSummary">批次準備中...</p>
@@ -916,6 +966,7 @@
                         <div class="progress-bar" id="datasetProgressBar"></div>
                     </div>
                     <p id="datasetProgressText">整體進度：0%</p>
+                    <div id="datasetEvaluation" class="dataset-evaluation hidden"></div>
                     <button type="button" class="btn btn-secondary" id="stopDatasetBtn">停止整批</button>
                 </div>
             </section>
@@ -1247,6 +1298,7 @@
         ],
         'local': [
             { value: 'qwen3-vl-235b-a22b-instruct-1m_moe', label: 'Qwen3-VL 235B' },
+            { value: 'qwen3.8-flash-next-reap-288-mlx', label: 'Qwen3.8 Flash Next REAP 288 (MLX)' },
             { value: 'mlx-community/glm-4.6v', label: 'GLM-4.6V (MLX Community)' },
             { value: 'unsloth/glm-4.6v', label: 'GLM-4.6V (Unsloth)' },
             { value: 'internvl3-78b', label: 'InternVL3 78B' }
@@ -1675,8 +1727,10 @@
         if (!datasetId) {
             list.textContent = '請先選擇資料集';
             runButton.disabled = true;
+            renderLatestDatasetRun(null);
             return;
         }
+        loadLatestDatasetRun(datasetId);
         try {
             const result = await readJsonResponse(
                 await fetch(`/api/datasets/${encodeURIComponent(datasetId)}/videos`)
@@ -1693,7 +1747,8 @@
             result.data.forEach((video, index) => {
                 const row = document.createElement('div');
                 const sizeMb = Number(video.size_bytes || 0) / (1024 * 1024);
-                row.textContent = `${index + 1}. ${video.original_name}（${sizeMb.toFixed(1)} MB）`;
+                const groundTruthMark = video.ground_truth_session_id ? '　⭐ 已設定標準答案' : '';
+                row.textContent = `${index + 1}. ${video.original_name}（${sizeMb.toFixed(1)} MB）${groundTruthMark}`;
                 list.appendChild(row);
             });
         } catch (error) {
@@ -1834,6 +1889,8 @@
             document.getElementById('datasetProgressBar').style.width = `${percent}%`;
             document.getElementById('datasetProgressText').textContent = `整體進度：${percent}%`;
 
+            renderDatasetEvaluation(run);
+
             if (['completed', 'failed', 'stopped'].includes(run.status)) {
                 clearInterval(datasetPollingInterval);
                 datasetPollingInterval = null;
@@ -1857,6 +1914,135 @@
             }
         } finally {
             datasetPollInFlight = false;
+        }
+    }
+
+    function formatEvaluationPercent(ratio) {
+        return ratio === null || ratio === undefined ? '-' : `${(ratio * 100).toFixed(1)}%`;
+    }
+
+    const FINISHED_RUN_STATUSES = ['completed', 'failed', 'stopped'];
+    const RUN_STATUS_LABELS = { completed: '完成', failed: '失敗', stopped: '已停止', running: '執行中', queued: '排隊中' };
+
+    function renderDatasetEvaluation(run, containerId = 'datasetEvaluation', heading = '') {
+        const container = document.getElementById(containerId);
+        const evaluation = run.evaluation;
+        const finished = FINISHED_RUN_STATUSES.includes(run.status);
+        if (!evaluation && !finished) {
+            container.classList.add('hidden');
+            container.innerHTML = '';
+            return;
+        }
+
+        const header = document.createElement('div');
+        header.className = 'dataset-evaluation-header';
+        const title = document.createElement('strong');
+        title.textContent = heading || '🎯 自動驗證正確率';
+        header.appendChild(title);
+        if (finished) {
+            const button = document.createElement('button');
+            button.type = 'button';
+            button.className = 'dataset-evaluation-recalc';
+            button.textContent = '🔄 重新計算正確率';
+            button.title = '以目前的標準答案（含最新訂正）重新比對這次批次的所有影片';
+            button.addEventListener('click', () => recalculateDatasetEvaluation(run.run_id, button));
+            header.appendChild(button);
+        }
+
+        const children = [header];
+        if (evaluation) {
+            const summary = document.createElement('p');
+            summary.textContent =
+                `整體數值正確率 ${formatEvaluationPercent(evaluation.accuracy)}`
+                + `（${evaluation.field_correct} / ${evaluation.field_total}）｜`
+                + `設備偵測率 ${formatEvaluationPercent(evaluation.device_detection_rate)}｜`
+                + `已驗證 ${evaluation.evaluated_videos} 部影片`;
+            children.push(summary);
+        } else {
+            const empty = document.createElement('p');
+            empty.textContent = '這次批次沒有可驗證的影片（影片尚未設定標準答案）。';
+            children.push(empty);
+        }
+
+        const list = document.createElement('ul');
+        (run.items || []).forEach(item => {
+            if (item.evaluation) {
+                const li = document.createElement('li');
+                li.textContent = `${item.video_name}：${formatEvaluationPercent(item.evaluation.accuracy)}`
+                    + `（設備偵測率 ${formatEvaluationPercent(item.evaluation.device_detection_rate)}）`;
+                list.appendChild(li);
+            } else if (item.evaluation_error) {
+                const li = document.createElement('li');
+                li.className = 'dataset-evaluation-skipped';
+                li.textContent = `${item.video_name}：未驗證（${item.evaluation_error}）`;
+                list.appendChild(li);
+            }
+        });
+        if (list.children.length) children.push(list);
+
+        const note = document.createElement('p');
+        note.className = 'dataset-evaluation-note';
+        note.textContent = evaluation && evaluation.evaluated_at
+            ? `計算時間：${new Date(evaluation.evaluated_at).toLocaleString('zh-TW', { hour12: false })}。訂正標準答案後請按「重新計算」更新；詳細不一致內容可到資料庫頁面的卡片點「驗證正確率」查看。`
+            : '只有已設定標準答案的影片會納入計算；訂正標準答案後請按「重新計算」更新。';
+        children.push(note);
+
+        container.replaceChildren(...children);
+        container.classList.remove('hidden');
+    }
+
+    function renderLatestDatasetRun(run) {
+        const container = document.getElementById('datasetLatestRun');
+        if (!run || run.run_id === currentDatasetRunId) {
+            container.classList.add('hidden');
+            container.innerHTML = '';
+            return;
+        }
+        const createdAt = run.created_at
+            ? new Date(run.created_at).toLocaleString('zh-TW', { hour12: false })
+            : '-';
+        const heading = `📋 最近一次批次：${run.model || '-'}｜${createdAt}｜${RUN_STATUS_LABELS[run.status] || run.status}`;
+        renderDatasetEvaluation(run, 'datasetLatestRun', heading);
+    }
+
+    async function loadLatestDatasetRun(datasetId) {
+        try {
+            const result = await readJsonResponse(
+                await fetch(`/api/datasets/${encodeURIComponent(datasetId)}/latest-run`)
+            );
+            if (document.getElementById('datasetSelect').value !== datasetId) return;
+            renderLatestDatasetRun(result.data);
+        } catch (error) {
+            console.error('讀取最近一次批次失敗:', error);
+            renderLatestDatasetRun(null);
+        }
+    }
+
+    async function recalculateDatasetEvaluation(runId, button) {
+        button.disabled = true;
+        button.textContent = '⏳ 計算中...';
+        try {
+            const result = await readJsonResponse(await fetch(
+                `/api/dataset-runs/${encodeURIComponent(runId)}/evaluate`,
+                { method: 'POST' }
+            ));
+            const run = result.data;
+            if (run.run_id === currentDatasetRunId) {
+                renderDatasetEvaluation(run);
+            } else {
+                renderLatestDatasetRun(run);
+            }
+            const evaluation = run.evaluation;
+            showMessage(
+                evaluation
+                    ? `已重新計算：整體數值正確率 ${formatEvaluationPercent(evaluation.accuracy)}`
+                    : '已重新計算：沒有可驗證的影片',
+                'success'
+            );
+        } catch (error) {
+            showMessage('重新計算正確率失敗: ' + error.message, 'error');
+            button.disabled = false;
+            button.textContent = '🔄 重新計算正確率';
         }
     }
 

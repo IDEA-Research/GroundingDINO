@@ -37,6 +37,8 @@ load_dotenv()
 # 添加當前目錄到路徑
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
+from screen_bbox import cxcywh_to_xyxy, same_screen  # noqa: E402
+
 # 設定 GroundingDINO 環境
 torch_lib_path = os.path.join(os.path.dirname(torch.__file__), 'lib')
 current_ld_path = os.environ.get('LD_LIBRARY_PATH', '')
@@ -598,8 +600,21 @@ class VideoScreenDigitExtractor:
 
         return device_model.strip()
 
+    @staticmethod
+    def group_same_screen(analyses):
+        """依 bbox 把同型號的螢幕分成「同一台設備」的群組；沒有 bbox 時全部視為同一台。"""
+        groups = []
+        for analysis in analyses:
+            for group in groups:
+                if any(same_screen(analysis.get('bbox'), member.get('bbox')) for member in group):
+                    group.append(analysis)
+                    break
+            else:
+                groups.append([analysis])
+        return groups
+
     def merge_duplicate_devices(self, screen_analyses):
-        """合併同一 frame 中的重複設備，保留最完整的數據"""
+        """合併同一 frame 中位置重疊的同型號設備，保留最完整的數據"""
         if len(screen_analyses) <= 1:
             return screen_analyses
         
@@ -628,15 +643,18 @@ class VideoScreenDigitExtractor:
             if device_model == 'failed':
                 # 分析失敗的直接添加
                 merged_analyses.extend(analyses)
-            elif len(analyses) == 1:
-                # 只有一個，直接添加
-                merged_analyses.append(analyses[0])
-            else:
-                # 有多個相同設備，需要合併
-                print(f"    發現 {len(analyses)} 個 {device_model} 設備，正在合併...")
-                best_analysis = self.select_best_device_analysis(analyses, device_model)
-                merged_analyses.append(best_analysis)
+                continue
+            screen_groups = self.group_same_screen(analyses)
+            if len(screen_groups) > 1:
+                print(f"    {device_model} 位於 {len(screen_groups)} 個不同位置，視為不同設備")
+            for group in screen_groups:
+                if len(group) == 1:
+                    merged_analyses.append(group[0])
+                else:
+                    print(f"    發現 {len(group)} 個位置重疊的 {device_model}，正在合併...")
+                    merged_analyses.append(self.select_best_device_analysis(group, device_model))
         
+        merged_analyses.sort(key=lambda item: item['screen_number'])
         return merged_analyses
     
     def select_best_device_analysis(self, analyses, device_model):
@@ -784,7 +802,9 @@ class VideoScreenDigitExtractor:
             # 檢測螢幕
             t0 = time.time() # 測量GroundingDINO 時間
             print("detect screens by using grounding dino")
-            screen_paths = self.detect_screens_in_image(image_path, analysis_dir)
+            detected_screens = self.detect_screens_with_boxes(image_path, analysis_dir)
+            screen_paths = [path for path, _ in detected_screens]
+            screen_boxes = [bbox for _, bbox in detected_screens]
             dino_time = time.time() - t0
             print(f"[效能分析] GroundingDINO 偵測耗時: {dino_time:.2f} 秒")
             frame_result["screens_detected"] = len(screen_paths)
@@ -810,7 +830,8 @@ class VideoScreenDigitExtractor:
                     
                     if analysis_result["success"]:
                         res = analysis_result["result"]
-                        model_name = res.get('model', 'unknown')
+                        model_name = self.normalize_device_model(res.get('model', 'unknown'))
+                        res['model'] = model_name
                         print(f"      螢幕 {idx} 檢測到設備: {model_name}")
                     else:
                         print(f"      螢幕 {idx} 分析失敗: {analysis_result['error']}")
@@ -819,6 +840,7 @@ class VideoScreenDigitExtractor:
                         "screen_number": idx,
                         "screen_path": path,
                         "screen_path_for_vlm": path_for_vlm,
+                        "bbox": screen_boxes[idx - 1],
                         "analysis": analysis_result
                     }
                 except Exception as e:
@@ -827,6 +849,7 @@ class VideoScreenDigitExtractor:
                         "screen_number": idx,
                         "screen_path": path,
                         "screen_path_for_vlm": path,
+                        "bbox": screen_boxes[idx - 1],
                         "analysis": {"success": False, "error": str(e)}
                     }
 
@@ -910,7 +933,11 @@ class VideoScreenDigitExtractor:
         self.generate_report(final_result, analysis_dir)
     
     def detect_screens_in_image(self, image_path, output_dir):
-        """使用 GroundingDINO 檢測圖片中的螢幕"""
+        """使用 GroundingDINO 檢測圖片中的螢幕，回傳裁切圖路徑"""
+        return [path for path, _ in self.detect_screens_with_boxes(image_path, output_dir)]
+
+    def detect_screens_with_boxes(self, image_path, output_dir):
+        """回傳 [(裁切圖路徑, 正規化 xyxy bbox)]，bbox 為未外擴邊框前的偵測框"""
         
         # 載入模型與執行 GPU 偵測 (使用 GPU 鎖同步，避免 OOM)
         with self.gpu_lock:
@@ -954,13 +981,10 @@ class VideoScreenDigitExtractor:
             image_pil, merged_boxes, merged_labels, screen_dir, prefix=prefix
         )
         
-        # 返回裁切的螢幕圖片路徑
-        screen_paths = []
-        for cropped_img, filename in cropped_images:
-            screen_path = os.path.join(screen_dir, filename)
-            screen_paths.append(screen_path)
-        
-        return screen_paths
+        return [
+            (os.path.join(screen_dir, filename), cxcywh_to_xyxy(box.tolist()))
+            for (_, filename), box in zip(cropped_images, merged_boxes)
+        ]
     
     def encode_image_to_base64(self, image_path, max_edge=1024):
         """將圖片編碼為 base64 (加入地端模型所需的 Resize 邏輯)"""
