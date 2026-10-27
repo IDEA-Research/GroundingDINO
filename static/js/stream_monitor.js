@@ -766,7 +766,6 @@ document.addEventListener('DOMContentLoaded', () => {
     // 渲染單個串流卡片
     function renderStreamCard(stream) {
         const isRunning = stream.current_status;
-        const statusBadgeClass = isRunning ? 'bg-success' : 'bg-danger';
         const statusText = isRunning ? '運行中' : '已停止';
         const cardClass = isRunning ? 'active' : 'inactive';
         const patientId = stream.patient_id || stream.task_name || '';
@@ -801,17 +800,7 @@ document.addEventListener('DOMContentLoaded', () => {
                             <a href="/details/${encodeURIComponent(stream.session_id)}?tab=stream&page=1&page_size=12" class="stream-history-link" title="查看此病患的歷史資料">
                                 歷史資料
                             </a>
-                        </h5>
-                        <span class="badge ${statusBadgeClass} badge-custom" style="font-size: 0.7rem; padding: 4px 8px;">${statusText}</span>
-                    </div>
-                    
-                    <div class="stream-info-item" style="margin-bottom: 5px;">
-                        <span class="stream-info-label" style="width: 60px; font-size: 0.8rem;">RTSP:</span>
-                        <span class="stream-info-value" style="font-size: 0.7rem; max-width: 120px; overflow: hidden; text-overflow: ellipsis; display: inline-block; vertical-align: bottom;">${stream.rtsp_url}</span>
-                    </div>
-                    <div class="stream-info-item" style="margin-bottom: 5px;">
-                        <span class="stream-info-label" style="width: 60px; font-size: 0.8rem;">間隔:</span>
-                        <span class="stream-info-value" style="font-size: 0.7rem;">${captureIntervalMinutes} 分鐘</span>
+                        </div>
                     </div>
 
                     <div class="monitor-card-body">
