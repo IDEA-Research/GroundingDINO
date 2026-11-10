@@ -1049,7 +1049,14 @@
         if (others.length > 0) {
             parts.push(`<br><small>其他錯誤：${others.map(escapeHtml).join('； ')}</small>`);
         }
-        parts.push('<br>請檢查 OpenRouter API Key 是否正確，或嘗試其他模型。');
+        const provider = providerForModel(model);
+        if (provider === 'ondevice') {
+            parts.push('<br>請確認本機 OCR 服務（on_device_models/ocr_server.py，port 18765）是否已啟動，或嘗試其他模型。');
+        } else if (provider === 'local') {
+            parts.push('<br>請確認地端模型伺服器是否可連線，或嘗試其他模型。');
+        } else {
+            parts.push('<br>請檢查 OpenRouter API Key 是否正確，或嘗試其他模型。');
+        }
         return parts.join('');
     }
 

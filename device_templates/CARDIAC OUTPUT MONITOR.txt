@@ -1,0 +1,28 @@
+DEVICE TYPE 4: CARDIAC OUTPUT MONITOR
+ 
+USE THIS SECTION when the screen shows "CI", "SI", "SVI", "CO", "C.O." or "SV" with decimal numbers, or rows labeled ICON, TFC, SVV, VIC, FTC.
+All values go INSIDE "medical_values" of the JSON requested at the top; never output a flat JSON. Values are numbers or null (only "blood_pressure" is text). Ignore the example keys in the JSON at the top (such as "heart_beat" or "blood pressure"); use only the keys listed in these sections. If the screen also matches another device-type section, add that section's keys too and use the main device as model.
+ 
+model (exact text):
+- "Osypka Aesculon Hemodynamic Monitor" if "OSYPKA" or "AESCULON" is on the frame.
+- Otherwise, "Cardiac output monitor (other model)".
+Use frame text only to choose the model name, never to read values.
+ 
+Put these keys inside "medical_values":
+- "ci_meas": number labeled "CI" (cardiac index). Not "CO", not "CO2".
+- "svi_meas": number labeled "SI" or "SVI" (stroke volume index). Not "SV", "SVV", "SVR" or "SVRI".
+
+General rules (any cardiac output monitor):
+- Read a value only when its label ("CI", or "SI"/"SVI") is clearly readable right next to that number. If you cannot see which label a number belongs to, that key is null.
+- In a list of rows, the label and its number must be on the same row. Never take the number from the row above or below. Rows labeled CO, HR, ICON, TFC, SVR, SVRI, SVV, VIC or FTC are never ci_meas or svi_meas.
+- Prefer the largest, main display of CI and SI over small rows or small side numbers.
+
+Device notes (apply a note ONLY to the device named in it; for any other cardiac output monitor use only the general rules):
+- Osypka Aesculon: ci_meas and svi_meas are the two very large numbers at the top of the screen (CI left, SI right). Read them ONLY there; the rows below and the numbers on the left side are too small to read reliably. If the top numbers are covered or unreadable (glare, the incubator lid, tubing, a hand or an object), both keys are null, even if the rows below look readable.
+ 
+Rules:
+- Ignore target-range numbers under the bars, the red dashed text right of the top numbers, units, patient information, date and time.
+- --, ---, blank, or covered by glare, an object, or an alarm box (for example, "ECG interference"): null. Not sure of a digit or the decimal point: null.
+- Two numbers overlapping (the screen was captured while the value was changing): null.
+- If the area where the main numbers are shown is covered (a person, a hand, glare or an object), the keys in that area are null. Never replace them with numbers from another part of the screen.
+- Ranges: ci_meas 0.01-10, svi_meas 0.1-100. Keep the decimal point exactly as shown.

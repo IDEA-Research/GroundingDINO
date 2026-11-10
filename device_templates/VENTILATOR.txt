@@ -1,0 +1,42 @@
+DEVICE TYPE 2: VENTILATOR 
+
+USE THIS SECTION when the screen shows at least two of "Ppeak", "PIP", "Pmean", "PEEP", "PEEP/CPAP", "FiO2", "O2 conc.", "Oxygen", "VT", "MV", "MVe", "I:E", or a pressure unit "cmH2O", "mbar" or "hPa".
+All values go INSIDE "medical_values" of the JSON requested at the top; never output a flat JSON. Values are numbers or null (only "blood_pressure" is text). Ignore the example keys in the JSON at the top (such as "heart_beat" or "blood pressure"); use only the keys listed in these sections. If the screen also matches another device-type section, add that section's keys too and use the main device as model.
+
+model (exact text):
+Decide the model from the frame text OR the device's own on-screen menu text (either is enough; the frame name is often outside the image):
+- "SERVO-U Ventilator": "SERVO-U" on the frame, OR the screen shows SERVO-U menu text such as a left-hand menu "STANDBY", "DISCONNECTION", "MODES", "ALARM LIMITS", "TRENDS & LOGS", "MANEUVERS", "VIEWS", "LOCK SCREEN", "O2 BOOST" at the bottom left, or bottom settings "PC above PEEP" / "PS above PEEP".
+- "Dräger Evita V600": only if "Evita V600" or "V600" is printed on the frame or a sticker. Other Dräger models with a similar screen are NOT V600.
+- "Dräger Infinity C500": "Infinity C500" or "C500" on the frame, OR a Dräger screen with two central columns of label + number (VT, PIP, Pmean, FiO2 ... / RR, MVe, I:E ...) and a right-hand column of buttons such as "Views...", "Alarms...", "Freeze waveforms", "Main screen", "Ventilation settings...".
+- Otherwise "Ventilator (other model)".
+Use frame text and menu text only to choose the model name, never to read values.
+
+Put these keys inside "medical_values" (uppercase exactly as written):
+- "PIP": label "Ppeak" or "PIP".
+- "MAP": label "Pmean" or "MAP" (mean AIRWAY pressure; if the unit is mmHg it is blood pressure: null).
+- "FiO2": label "FiO2", "O2 conc." or "Oxygen".
+- "PEEP": label "PEEP" or "PEEP/CPAP".
+
+MEASURED values only (CRITICAL):
+- Measured values are in the measurement panel next to the waveforms (tiles, cells or columns of label + number).
+- Set values are inside round knobs or circular buttons, or in the row of setting buttons along the bottom edge. NEVER read them, even when they carry the same label.
+- If the measurement panel has no PEEP (or no FiO2), that key is null.
+Device notes (apply a note ONLY to the device named in it, identified as above; for any other ventilator use only the general rules):
+- Infinity C500: measured columns usually hold VT, PIP, Pmean, FiO2, R, C20/Cdyn and RR, MVe, I:E, % leak, Cdyn, TC. PEEP is normally only a bottom knob (a setting). Read PEEP only if it appears in the measured columns; otherwise PEEP is null.
+- Evita V600: the right-hand panel is a grid of 2 columns x 4 rows. Its labels are tiny and often unreadable, so use this fixed map:
+  row 1: VT (left), RR (right) -> not read.
+  row 2: Pmean (left) -> "MAP"; Ppeak (right) -> "PIP". Both are small pressures, usually with one decimal (for example 5.7 and 6.9).
+  row 3: FiO2 (left) -> "FiO2", a whole number such as 23 (this is %, never a pressure); C20/Cdyn (right) -> not read.
+  row 4: not read.
+  The panel usually has no PEEP cell. Read PEEP only if a measured PEEP appears in the panel; otherwise "PEEP" is null. The round knobs below the waveforms (for example 23, 5.0, 0.02, 12.0, 0.50) are settings: never read them.
+- SERVO-U: read the right-hand tiles Ppeak, Pmean, PEEP, and O2 conc.; the bottom row (O2 conc., PEEP, rate, PC above PEEP, PS above PEEP) is settings.
+
+Rules:
+- Read each value by its label (or by the fixed map in the device notes when the labels are unreadable). Ignore alarm limits (small numbers in tile corners), units, waveform axis numbers.
+- NEVER assign a number to a key because of its size. If you cannot tell which label a number belongs to, and the device notes do not say, that key is null.
+- OFF, Off, --, ---, blank, or covered by glare, a hand, tubing or an object: null. Not sure of a digit: null.
+- Two numbers overlapping (the screen was captured while the value was changing): null.
+- If the area where the main numbers are shown is covered (a person, a hand, glare or an object), the keys in that area are null. Never replace them with numbers from another part of the screen.
+- Keep the decimal point exactly as shown (for example 6.4 stays 6.4); never round to a whole number.
+- Ranges: PIP 0-120, MAP 0-80, PEEP 0-50, FiO2 21-100 (if written 0.21-1.00, multiply by 100). Outside after a second look: null.
+- PIP > MAP > PEEP must hold; if not, look again (check that you did not read a bottom setting knob or misplace a decimal point); if it still does not hold, set the conflicting keys to null. Never swap or move values between keys to make this rule hold.

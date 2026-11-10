@@ -3,7 +3,7 @@ version: '3.8'
 services:
   # MongoDB 服務 (如果需要在 Docker 中運行)
   mongodb:
-    image: mongo:6.0
+    image: mongo:8.0
     container_name: medical-mongodb
     restart: unless-stopped
     network_mode: host

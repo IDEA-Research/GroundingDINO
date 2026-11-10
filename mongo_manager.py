@@ -5,6 +5,7 @@ MongoDB 管理模組 (檔案系統儲存版本)
 """
 
 import os
+import re
 import sys
 import time
 import signal
@@ -105,42 +106,11 @@ security:
                 self.setup_database()
             return True
         
-        # 創建配置檔案（如果不存在）
-        if not self.config_file.exists():
-            self.create_config_file()
-        
-        try:
-            print("🚀 正在啟動 MongoDB...")
-            
-            # 啟動 MongoDB 進程
-            self.mongod_process = subprocess.Popen([
-                self._mongod_executable(), '--config', str(self.config_file)
-            ], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-            self._we_started_mongodb = True
-            
-            # 等待 MongoDB 啟動
-            max_wait = 30
-            for i in range(max_wait):
-                if self.is_mongodb_running():
-                    print("✅ MongoDB 啟動成功！")
-                    self.connect_to_mongodb()
-                    self.setup_database()
-                    # 自動啟動醫療監控服務
-                    self.start_medical_monitoring()
-                    return True
-                time.sleep(1)
-                print(f"⏳ 等待 MongoDB 啟動... ({i+1}/{max_wait})")
-            
-            print("❌ MongoDB 啟動超時")
-            return False
-            
-        except FileNotFoundError:
-            print("❌ 找不到 mongod 命令，請確保 MongoDB 已安裝到 conda 環境")
-            print("💡 安裝命令: conda install -c conda-forge mongodb")
-            return False
-        except Exception as e:
-            print(f"❌ 啟動 MongoDB 時發生錯誤: {e}")
-            return False
+        # mongodb_data/db 由 docker medical-mongodb (mongo:8.0) 管理且 FCV 為 8.0，
+        # 不可再用 conda 環境中較舊版本的 mongod 開啟同一份資料
+        print("❌ MongoDB (docker medical-mongodb) 未回應，不會在本機另外啟動 mongod")
+        print("💡 請執行: docker compose -f docker-compose.monitoring.yml up -d mongodb")
+        return False
     
     def is_mongodb_running(self):
         """檢查 MongoDB 是否正在運行"""
@@ -1413,8 +1383,68 @@ security:
             screen["minute"] = minute_by_frame.get(screen.get("frame_result_id"))
         return screens
 
-    def set_dataset_ground_truth(self, session_id):
-        """將資料集批次產生的 session 設為其來源影片的標準答案。"""
+    @staticmethod
+    def _video_name_key(name):
+        """去掉上傳時加的 uuid 前綴與副檔名，空白/底線視為相同，用來比對同一支影片。"""
+        name = re.sub(r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}_', '', name or '')
+        name = re.sub(r'\.(mp4|avi|mov|mkv|m4v|webm)$', '', name, flags=re.IGNORECASE)
+        return re.sub(r'[\s_]+', '_', name).strip('_').lower()
+
+    def get_ground_truth_candidates(self, session_id):
+        """列出可指定的資料集影片（檔名相同的排前面），並附上 session 的涵蓋程度。"""
+        from dataset_evaluation import build_entries
+
+        if self.db is None:
+            return None, "MongoDB 未連接"
+        video_analysis = self.db.video_analysis.find_one(
+            {"session_id": session_id},
+            {"video_name": 1, "original_video_name": 1, "dataset_video_id": 1},
+        )
+        if not video_analysis:
+            return None, "找不到該 Session"
+        session_key = self._video_name_key(
+            video_analysis.get("original_video_name") or video_analysis.get("video_name")
+        )
+        dataset_names = {
+            item["dataset_id"]: item.get("name")
+            for item in self.db.datasets.find({}, {"dataset_id": 1, "name": 1})
+        }
+        candidates = []
+        for video in self.db.dataset_videos.find({}, {
+            "video_id": 1, "dataset_id": 1, "original_name": 1, "ground_truth_session_id": 1,
+        }):
+            candidates.append({
+                "video_id": video["video_id"],
+                "video_name": video.get("original_name"),
+                "dataset_id": video.get("dataset_id"),
+                "dataset_name": dataset_names.get(video.get("dataset_id")),
+                "name_match": bool(session_key) and self._video_name_key(video.get("original_name")) == session_key,
+                "is_source_video": video["video_id"] == video_analysis.get("dataset_video_id"),
+                "ground_truth_session_id": video.get("ground_truth_session_id"),
+            })
+        candidates.sort(key=lambda c: (
+            not (c["is_source_video"] or c["name_match"]),
+            c["dataset_name"] or "",
+            c["video_name"] or "",
+        ))
+        screens = self._get_session_screens(session_id)
+        entries, _ = build_entries(screens, use_corrections=True)
+        summary = {
+            "entry_count": len(entries),
+            "capture_count": len({key[0] for key in entries}),
+            "corrected_count": sum(
+                1 for screen in screens
+                if screen.get("is_corrected") or screen.get("is_model_corrected")
+            ),
+        }
+        return {"candidates": candidates, "session": summary}, None
+
+    def set_dataset_ground_truth(self, session_id, video_id=None):
+        """將 session 設為資料集影片的標準答案。
+
+        未指定 video_id 時使用資料集批次 session 的來源影片；
+        指定時可把舊的（非資料集批次產生的）已訂正 session 指定給任一資料集影片。
+        """
         from dataset_evaluation import build_entries, count_entries, serialize_entries
 
         if self.db is None:
@@ -1422,12 +1452,18 @@ security:
         video_analysis = self.db.video_analysis.find_one({"session_id": session_id})
         if not video_analysis:
             return None, "找不到該 Session"
-        video_id = video_analysis.get("dataset_video_id")
+        video_id = video_id or video_analysis.get("dataset_video_id")
         if not video_id:
-            return None, "只有資料集批次分析產生的 Session 可以設為標準答案"
+            return None, "請指定要作為哪一部資料集影片的標準答案"
         dataset_video = self.db.dataset_videos.find_one({"video_id": video_id})
         if not dataset_video:
-            return None, "來源資料集影片已不存在"
+            return None, "資料集影片不存在"
+        current = self.get_ground_truth_video_for_session(session_id)
+        if current and current["video_id"] != video_id:
+            return None, (
+                f"這個 Session 已是「{current.get('original_name')}」的標準答案，"
+                "請先取消再指定給其他影片"
+            )
 
         entries, duplicates = build_entries(
             self._get_session_screens(session_id), use_corrections=True
@@ -1508,7 +1544,7 @@ security:
         )
 
     def evaluate_session(self, session_id, llm_model=None, include_screen_annotations=False):
-        """以來源影片的標準答案比對 session 的模型原始輸出。"""
+        """以來源影片（或此 session 被指定的影片）的標準答案比對 session 的模型原始輸出。"""
         from dataset_evaluation import (
             annotate_screens,
             build_entries,
@@ -1523,7 +1559,11 @@ security:
             return None, "找不到該 Session"
         video_id = video_analysis.get("dataset_video_id")
         if not video_id:
-            return None, "只有資料集批次分析產生的 Session 可以驗證正確率"
+            # 被指定為標準答案的舊 session：比對它訂正前後的差異
+            assigned_video = self.get_ground_truth_video_for_session(session_id)
+            video_id = assigned_video and assigned_video.get("video_id")
+        if not video_id:
+            return None, "只有資料集批次分析產生、或已被指定為標準答案的 Session 可以驗證正確率"
         dataset_video = self.db.dataset_videos.find_one(
             {"video_id": video_id}, {"original_name": 1}
         )
@@ -1685,6 +1725,11 @@ security:
                 video["dataset_video_name"] = (source_video or {}).get("original_name")
                 video["dataset_name"] = dataset_names.get((source_video or {}).get("dataset_id"))
                 video["is_ground_truth"] = video.get("session_id") in ground_truth_video_by_session
+                ground_truth_video = ground_truth_video_by_session.get(video.get("session_id"))
+                video["ground_truth_video_name"] = (ground_truth_video or {}).get("original_name")
+                video["ground_truth_dataset_name"] = dataset_names.get(
+                    (ground_truth_video or {}).get("dataset_id")
+                )
                 video["can_evaluate"] = bool(
                     source_video and source_video.get("ground_truth_session_id")
                 )

@@ -1,7 +1,8 @@
 #!/bin/bash
 
 # 醫療監控系統停止腳本
-# 停止 medical_mongodb_exporter.py、Prometheus 和 Grafana 服務
+# 停止 Prometheus 和 Grafana 服務
+# medical_mongodb_exporter.py 由 medical-mongodb-exporter.service 管理 (PartOf base，會隨 base 一起停止)
 
 set -e  # 遇到錯誤立即退出
 
@@ -27,49 +28,6 @@ log_warning() {
 
 log_error() {
     echo -e "${RED}[ERROR]${NC} $1"
-}
-
-# 停止 Medical MongoDB Exporter
-stop_medical_exporter() {
-    log_info "停止 Medical MongoDB Exporter..."
-    
-    # 通過 PID 檔案停止
-    if [ -f "medical_exporter.pid" ]; then
-        local pid=$(cat medical_exporter.pid)
-        if ps -p $pid > /dev/null 2>&1; then
-            kill $pid
-            sleep 3
-            if ps -p $pid > /dev/null 2>&1; then
-                log_warning "進程 $pid 仍在運行，強制終止..."
-                kill -9 $pid
-            fi
-            rm -f medical_exporter.pid
-            log_success "Medical Exporter (PID: $pid) 已停止"
-        else
-            log_warning "PID $pid 的進程已不存在"
-            rm -f medical_exporter.pid
-        fi
-    else
-        log_info "未找到 PID 檔案，嘗試按進程名稱終止..."
-    fi
-    
-    # 按進程名稱停止
-    local pids=$(pgrep -f "medical_mongodb_exporter.py" || true)
-    if [ -n "$pids" ]; then
-        log_info "發現運行中的 Medical Exporter 進程: $pids"
-        pkill -f "medical_mongodb_exporter.py"
-        sleep 2
-        
-        # 檢查是否還有進程運行
-        local remaining_pids=$(pgrep -f "medical_mongodb_exporter.py" || true)
-        if [ -n "$remaining_pids" ]; then
-            log_warning "仍有進程運行，強制終止..."
-            pkill -9 -f "medical_mongodb_exporter.py"
-        fi
-        log_success "Medical Exporter 進程已停止"
-    else
-        log_info "未發現運行中的 Medical Exporter 進程"
-    fi
 }
 
 # 停止 Docker 監控服務
@@ -175,9 +133,6 @@ main() {
     echo "🛑 醫療監控系統停止腳本"
     echo "=================================="
     echo ""
-    
-    # 停止 Medical Exporter
-    stop_medical_exporter
     
     # 停止監控服務
     stop_monitoring_services

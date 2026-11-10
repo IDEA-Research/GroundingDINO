@@ -1,0 +1,27 @@
+DEVICE TYPE 1: PATIENT MONITOR 
+
+USE THIS SECTION when the screen shows "HR", "PR", or "Pulse" with a 2- or 3-digit number, "SpO2" with a number of 100 or less, or a blood pressure written as "number/number (number)" labeled NIBP, NBP, ABP, ART, or BP.
+All values go INSIDE "medical_values" of the JSON requested at the top; never output a flat JSON. Values are numbers or null (only "blood_pressure" is text). Ignore the example keys in the JSON at the top (such as "heart_beat" or "blood pressure"); use only the keys listed in these sections. If the screen also matches another device-type section, add that section's keys too and use the main device as model.
+ 
+model (exact text):
+- If "PHILIPS" is on the frame: "Philips IntelliVue " + the model printed on the frame + " Patient Monitor", for example "Philips IntelliVue MP30 Patient Monitor" or "Philips IntelliVue MP60 Patient Monitor". If no model number is printed, use "Philips IntelliVue MP30 Patient Monitor".
+- Otherwise, "Patient monitor (other model)".
+Use frame text only to choose the model name, never to read values.
+ 
+Put these keys inside "medical_values" (no other keys from this section):
+- "heart_rate": number labeled "HR" (the label is often tiny, at the upper-left of the number, above two small alarm-limit numbers). If the "HR" label is too small to read, you may use the large number at the right end of the ECG row ONLY when that row is clearly the ECG waveform (labeled ECG, I, II, III, aVR, aVL, aVF or V, usually the top waveform) and the number is in the same large style as the other main numbers. A small number next to any other waveform (pleth, resp, pressure) is never heart_rate. Do not use the separate number labeled "PR" or "Pulse" (usually smaller, next to HR).
+- "respiration_rate": number labeled "RR" or "Resp".
+- "spo2": number labeled "SpO2" (if "SpO2" and "SpO2b" are both shown, use "SpO2").
+- "blood_pressure": TEXT "systolic/diastolic", for example "62/35". Do not include the mean.
+- "bp_map": the mean in brackets, as a number.
+For blood pressure use ABP or ART if shown; otherwise, NIBP, NBP or BP. If any part is not readable, leave that part out: "blood_pressure" is null unless both systolic and diastolic are readable.
+Blood pressure exists ONLY when the screen shows a large value written with a slash, "systolic/diastolic". Never build "a/b" from two separate numbers. An NBP/NIBP tile that shows only small numbers stacked vertically (often under the word "Mean", "Sys" or "Dia") has no measurement yet: those are alarm limits, so "blood_pressure" and "bp_map" are null.
+ 
+Rules:
+- Read every value by its label, not by its position or color. On Philips screens the right-hand column usually shows HR, RR, blood pressure and SpO2, but if a label is missing, that key is null; never shift values up.
+- Ignore alarm limits (small numbers at the edge of a tile), units, faint or small numbers in the central waveform area, date and time.
+- OFF, --, ---, ?, blank, or covered by glare, a hand or an object: null. Not sure of a digit: null.
+- Two numbers overlapping (the screen was captured while the value was changing): null.
+- If the area where the main numbers are shown is covered (a person, a hand, glare or an object), the keys in that area are null. Never replace them with numbers from another part of the screen.
+- Ranges: heart_rate 20-300, respiration_rate 0-150, spo2 0-100, systolic 10-200, diastolic 5-150, bp_map 5-170. Outside after a second look: null.
+- systolic > bp_map > diastolic must hold; if not, set "blood_pressure" and "bp_map" to null. Do not compare heart rate with respiration rate.

@@ -1,0 +1,28 @@
+DEVICE TYPE 3: CEREBRAL OXIMETER
+
+USE THIS SECTION when the screen shows "rSO2", "rcSO2", "StO2", "SctO2", "INVOS", "SOMANETICS", or "FORE-SIGHT", or is split into "L" and "R" zones each with one large 2-digit number and a trend graph.
+All values go INSIDE "medical_values" of the JSON requested at the top; never output a flat JSON. Values are numbers or null (only "blood_pressure" is text). Ignore the example keys in the JSON at the top (such as "heart_beat" or "blood pressure"); use only the keys listed in these sections. If the screen also matches another device-type section, add that section's keys too and use the main device as model.
+ 
+model (exact text):
+- "Medtronic INVOS 5100C" if "SOMANETICS" or "INVOS" is on the frame, OR the screen shows INVOS menu buttons such as "BASELINE + EVENTS", "AUC SUMMARY", "ALARM AUDIO ON/OFF", "NEXT MENU", or a title line with "NEONATAL" and "rSO2".
+- Otherwise "Cerebral oximeter (other model)".
+Use frame text and menu text only to choose the model name, never to read values.
+ 
+Put these keys inside "medical_values" (case exactly as written):
+- "rSO2_left": real-time value of the left channel ("L", "Lt", "Left"): the largest number next to the letter.
+- "rSO2_left_avg": the smaller number labeled "Avg" below it. No "Avg" label: null.
+- "rSO2_right": real-time value of the right channel ("R", "Rt", "Right").
+- "rSO2_right_avg": the smaller number labeled "Avg" below it. No "Avg" label: null.
+On INVOS the screen has an upper zone (letter "L") and a lower zone (letter "R"):
+- The "Avg" number sits in the UPPER zone, just below the large left number and ABOVE the letter "R". It is "rSO2_left_avg", never "rSO2_right".
+- "rSO2_right" is only a LARGE number on the same line as the letter "R". If the lower zone next to "R" shows lines of text, "rSO2_right" and "rSO2_right_avg" are null.
+- The same applies the other way: the right channel's "Avg" is in the lower zone below the right number.
+ 
+Rules:
+- Ignore "AUC" and its value ("min%"), "Base" or "BL" baseline values, "SSI" and its bar, trend-graph axis numbers, menu buttons. Channels other than L and R are not read.
+- A channel zone showing text messages instead of a number (for example "sensor not connected", "poor signal"): both keys of that channel are null.
+- --, OFF, blank, or covered: null. Not sure of a digit: null.
+- Two numbers overlapping (the screen was captured while the value was changing): null.
+- If the area where the main numbers are shown is covered (a person, a hand, glare or an object), the keys in that area are null. Never replace them with numbers from another part of the screen.
+- Whole numbers from 15 to 95 only. 0, decimals or values outside: null.
+- "8" is often misread as "6" (or "0"). If an Avg differs from its real-time value by more than 15, recheck the tens digit of the Avg. Never change the real-time value because of this check.

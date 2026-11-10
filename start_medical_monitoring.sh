@@ -1,7 +1,8 @@
 #!/bin/bash
 
 # 醫療監控系統啟動腳本
-# 檢查 MongoDB 連接狀態，啟動 medical_mongodb_exporter.py，以及 Prometheus 和 Grafana 服務
+# 檢查 MongoDB 連接狀態、啟動 Grafana，並確認系統的 prometheus.service 正常
+# medical_mongodb_exporter.py 由 medical-mongodb-exporter.service 管理
 
 set -e  # 遇到錯誤立即退出
 
@@ -138,43 +139,9 @@ install_dependencies() {
     fi
 }
 
-# 啟動 Medical MongoDB Exporter
-start_medical_exporter() {
-    log_info "啟動 Medical MongoDB Exporter..."
-    
-    # 檢查端口 8000
-    if ! check_port 8000 "Medical Exporter"; then
-        log_warning "端口 8000 已被佔用，嘗試終止現有進程..."
-        pkill -f "medical_mongodb_exporter.py" || true
-        sleep 2
-    fi
-    
-    # 啟動 exporter
-    nohup python3 medical_mongodb_exporter.py \
-        --mongodb-uri mongodb://localhost:27017 \
-        --database medical_monitor_db \
-        --port 8000 \
-        --interval 15 \
-        --log-level INFO > medical_exporter.log 2>&1 &
-    
-    local exporter_pid=$!
-    echo $exporter_pid > medical_exporter.pid
-    
-    # 等待服務啟動
-    sleep 5
-    
-    # 檢查服務是否正常運行
-    if curl -f http://localhost:8000/metrics > /dev/null 2>&1; then
-        log_success "Medical MongoDB Exporter 在 port 8000 啟動成功 (PID: $exporter_pid)"
-    else
-        log_error "Medical MongoDB Exporter 啟動失敗"
-        return 1
-    fi
-}
-
 # 使用 Docker Compose 啟動監控服務
 start_monitoring_services() {
-    log_info "啟動 Prometheus 和 Grafana 服務..."
+    log_info "啟動 Grafana 服務並檢查 Prometheus..."
     
     # 檢查 Docker
     check_command "docker" || return 1
@@ -192,18 +159,19 @@ start_monitoring_services() {
     
     log_info "使用 Compose 命令: $compose_cmd"
     
-    # 啟動監控服務（跳過 medical-mongodb-exporter，因為我們已經本地啟動了）
-    $compose_cmd -f docker-compose.monitoring.yml up -d prometheus grafana
+    # Prometheus 使用系統的 prometheus.service (/etc/prometheus/prometheus.yml，佔用 port 9090)，
+    # compose 的 prometheus container 同樣以 host 網路綁 9090，不可啟動
+    $compose_cmd -f docker-compose.monitoring.yml up -d grafana
     
     # 等待服務啟動
     log_info "等待服務啟動 (30秒)..."
     sleep 30
     
-    # 檢查 Prometheus
+    # 檢查 Prometheus (系統 prometheus.service)
     if curl -f http://localhost:9090/-/healthy > /dev/null 2>&1; then
-        log_success "Prometheus 在 port 9090 啟動成功"
+        log_success "Prometheus 在 port 9090 運行中"
     else
-        log_error "Prometheus 啟動失敗"
+        log_error "Prometheus (prometheus.service) 未回應 port 9090"
         return 1
     fi
     
@@ -237,7 +205,7 @@ display_service_urls() {
     echo "  • 系統總覽儀表板: http://localhost:3000/d/system-overview-dashboard"
     echo ""
     echo "📝 日誌檔案："
-    echo "  • Medical Exporter: $(pwd)/medical_exporter.log"
+    echo "  • Medical Exporter: journalctl -u medical-mongodb-exporter.service"
     echo "  • Docker Logs:      docker-compose -f docker-compose.monitoring.yml logs"
     echo ""
     echo "⚠️  停止服務："
@@ -260,17 +228,24 @@ main() {
     # 安裝依賴
     # install_dependencies
     
+    # 開機時 MongoDB container 可能尚未就緒，先等待最多 MONGO_WAIT_SECONDS 秒
+    local mongo_wait=${MONGO_WAIT_SECONDS:-120}
+    local waited=0
+    until check_mongodb; do
+        if [ "$waited" -ge "$mongo_wait" ]; then
+            break
+        fi
+        log_warning "MongoDB 尚未就緒，5 秒後重試 (已等待 ${waited}s / ${mongo_wait}s)"
+        sleep 5
+        waited=$((waited + 5))
+    done
+
     # 檢查並啟動 MongoDB
     if ! check_mongodb; then
         if ! start_local_mongodb; then
             log_error "無法啟動 MongoDB，請檢查配置"
             exit 1
         fi
-    fi
-    
-    # 啟動 Medical Exporter
-    if ! start_medical_exporter; then
-        exit 1
     fi
     
     # 啟動監控服務

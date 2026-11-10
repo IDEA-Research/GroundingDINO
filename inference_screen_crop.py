@@ -50,6 +50,31 @@ def calculate_containment(box1, box2):
     return intersection / smaller_area if smaller_area > 0 else 0.0
 
 
+def find_group_boxes(boxes_xyxy, containment_threshold=0.8):
+    """Return indices of boxes that enclose two or more separate screens."""
+    areas = [
+        max(0.0, (b[2] - b[0]) * (b[3] - b[1])) for b in boxes_xyxy
+    ]
+    group = set()
+    for k, outer in enumerate(boxes_xyxy):
+        inner = [
+            j for j, box in enumerate(boxes_xyxy)
+            if j != k
+            and areas[j] < areas[k]
+            and calculate_containment(outer, box) > containment_threshold
+        ]
+        # A bezel box wraps one screen; a box wrapping distinct screens is a group.
+        for a in range(len(inner)):
+            for b in range(a + 1, len(inner)):
+                box_a, box_b = boxes_xyxy[inner[a]], boxes_xyxy[inner[b]]
+                if calculate_containment(box_a, box_b) <= containment_threshold:
+                    group.add(k)
+                    break
+            if k in group:
+                break
+    return group
+
+
 def merge_overlapping_boxes(
     boxes, labels, iou_threshold=0.3, containment_threshold=0.8
 ):
@@ -64,6 +89,10 @@ def merge_overlapping_boxes(
         else torch.as_tensor(boxes, dtype=torch.float32)
     )
     boxes_xyxy = box_ops.box_cxcywh_to_xyxy(boxes_tensor).numpy()
+    group = find_group_boxes(boxes_xyxy, containment_threshold)
+    keep = [i for i in range(len(boxes_xyxy)) if i not in group]
+    boxes_xyxy = boxes_xyxy[keep]
+    labels = [labels[i] for i in keep]
     merged_boxes = []
     merged_labels = []
     used = [False] * len(boxes_xyxy)
@@ -72,7 +101,8 @@ def merge_overlapping_boxes(
         if used[i]:
             continue
 
-        current_box = boxes_xyxy[i].copy()
+        seed_box = boxes_xyxy[i]
+        current_box = seed_box.copy()
         current_label = labels[i]
         used[i] = True
 
@@ -82,8 +112,9 @@ def merge_overlapping_boxes(
                 continue
 
             candidate_box = boxes_xyxy[j]
-            iou = calculate_iou(current_box, candidate_box)
-            containment = calculate_containment(current_box, candidate_box)
+            # Compare with the seed, not the growing union, so merges cannot chain.
+            iou = calculate_iou(seed_box, candidate_box)
+            containment = calculate_containment(seed_box, candidate_box)
             if iou > iou_threshold or containment > containment_threshold:
                 current_box[0] = min(current_box[0], candidate_box[0])
                 current_box[1] = min(current_box[1], candidate_box[1])
@@ -234,7 +265,6 @@ def get_grounding_output(model, image, caption, box_threshold, text_threshold=No
     if not caption.endswith("."):
         caption = caption + "."
     device = "cuda" if not cpu_only else "cpu"
-    device="cpu"
     model = model.to(device)
     image = image.to(device)
     with torch.no_grad():

@@ -511,6 +511,26 @@
         <div id="evaluationBody"></div>
     </div>
 </div>
+
+<div id="assignGroundTruthOverlay" class="evaluation-overlay hidden" onclick="if (event.target === this) closeAssignGroundTruth()">
+    <div class="evaluation-dialog" role="dialog" aria-modal="true" aria-labelledby="assignGroundTruthTitle" style="width: min(620px, 94vw);">
+        <div class="evaluation-dialog-header">
+            <div>
+                <h3 id="assignGroundTruthTitle" style="margin: 0;">☆ 指定為影片標準答案</h3>
+                <div id="assignGroundTruthSubtitle" class="evaluation-note" style="margin: 4px 0 0;"></div>
+            </div>
+            <button class="evaluation-close" onclick="closeAssignGroundTruth()" aria-label="關閉">×</button>
+        </div>
+        <label for="assignGroundTruthSelect" style="display: block; font-weight: 600; margin-bottom: 6px;">資料集影片</label>
+        <select id="assignGroundTruthSelect" onchange="updateAssignGroundTruthNote()"
+            style="width: 100%; padding: 10px; border: 2px solid #e9ecef; border-radius: 8px; font-size: 15px;"></select>
+        <div id="assignGroundTruthNote" style="margin: 12px 0;"></div>
+        <div class="video-card-actions" style="justify-content: flex-end;">
+            <button class="btn-ground-truth is-active" style="flex: 0 0 auto;" onclick="closeAssignGroundTruth()">取消</button>
+            <button id="assignGroundTruthConfirm" class="btn-ground-truth" style="flex: 0 0 auto;" onclick="confirmAssignGroundTruth()">設為標準答案</button>
+        </div>
+    </div>
+</div>
 {% endblock %}
 
 {% block scripts %}
@@ -677,7 +697,25 @@
                             ${video.can_evaluate ? '' : 'disabled title="對應的資料集影片尚未設定標準答案"'}>
                             🎯 驗證正確率
                         </button>
-                    </div>` : '';
+                    </div>` : (currentTab === 'manual' ? `
+                    <div class="video-card-actions dataset-actions">
+                        ${video.is_ground_truth ? `
+                        <button class="btn-ground-truth is-active" onclick="clearGroundTruth('${video.session_id}')"
+                            title="取消這個 Session 的標準答案身分">
+                            ⭐ 取消標準答案
+                        </button>
+                        <button class="btn-evaluate" onclick="showEvaluation('${video.session_id}')"
+                            title="比對這個 Session 訂正前的模型輸出與訂正後的結果">
+                            🎯 驗證正確率
+                        </button>` : `
+                        <button class="btn-ground-truth" onclick="openAssignGroundTruth('${video.session_id}')"
+                            title="把這個已訂正的 Session 指定為某部資料集影片的標準答案">
+                            ☆ 指定為影片標準答案
+                        </button>`}
+                    </div>` : '');
+            const groundTruthLabel = video.ground_truth_video_name
+                ? `${video.ground_truth_dataset_name ? `${video.ground_truth_dataset_name} / ` : ''}${video.ground_truth_video_name}`
+                : '';
             
             html += `
                 <div class="video-card">
@@ -693,7 +731,9 @@
                         </div>
                         <div class="video-card-badges">
                             ${isDatasetSession ? `<span class="dataset-source-badge" title="資料集影片：${escapeHtml(datasetSourceLabel)}">🗂️ ${escapeHtml(datasetSourceLabel)}</span>` : ''}
-                            ${video.is_ground_truth ? '<span class="ground-truth-badge" title="這個 Session 是此影片的標準答案">⭐ Ground Truth</span>' : ''}
+                            ${video.is_ground_truth ? (isDatasetSession
+                                ? '<span class="ground-truth-badge" title="這個 Session 是此影片的標準答案">⭐ Ground Truth</span>'
+                                : `<span class="ground-truth-badge" title="這個 Session 是「${escapeHtml(groundTruthLabel)}」的標準答案">⭐ Ground Truth：${escapeHtml(groundTruthLabel)}</span>`) : ''}
                             <div class="status-pill ${statusClass}">${statusText}</div>
                         </div>
                     </div>
@@ -834,9 +874,83 @@
         }
     }
 
+    let assignGroundTruthSessionId = null;
+
+    async function openAssignGroundTruth(sessionId) {
+        assignGroundTruthSessionId = sessionId;
+        const video = videoCardData[sessionId] || {};
+        const overlay = document.getElementById('assignGroundTruthOverlay');
+        const select = document.getElementById('assignGroundTruthSelect');
+        const note = document.getElementById('assignGroundTruthNote');
+        const confirmButton = document.getElementById('assignGroundTruthConfirm');
+        document.getElementById('assignGroundTruthSubtitle').textContent =
+            `Session：${video.video_name || sessionId}`;
+        select.innerHTML = '<option value="">載入中...</option>';
+        select.disabled = true;
+        confirmButton.disabled = true;
+        note.textContent = '';
+        overlay.classList.remove('hidden');
+        try {
+            const { data, session } = await fetchJson(`./api/mongodb/videos/${encodeURIComponent(sessionId)}/ground_truth_candidates`);
+            if (assignGroundTruthSessionId !== sessionId) return;
+            document.getElementById('assignGroundTruthSubtitle').textContent =
+                `Session：${video.video_name || sessionId}｜${session.capture_count} 個擷取時間點、${session.entry_count} 組（時間, 設備）、${session.corrected_count} 筆人工訂正`;
+            if (!data.length) {
+                select.innerHTML = '<option value="">尚無資料集影片</option>';
+                return;
+            }
+            select.innerHTML = data.map(item => {
+                const label = `${item.name_match ? '✓ 檔名相符｜' : ''}${item.dataset_name ? `${item.dataset_name} / ` : ''}${item.video_name || item.video_id}${item.ground_truth_session_id ? '（已有標準答案）' : ''}`;
+                return `<option value="${escapeHtml(item.video_id)}" data-has-gt="${item.ground_truth_session_id ? '1' : ''}">${escapeHtml(label)}</option>`;
+            }).join('');
+            select.disabled = false;
+            confirmButton.disabled = false;
+            updateAssignGroundTruthNote();
+        } catch (error) {
+            select.innerHTML = '<option value="">載入失敗</option>';
+            note.textContent = '載入資料集影片失敗：' + error.message;
+        }
+    }
+
+    function updateAssignGroundTruthNote() {
+        const option = document.getElementById('assignGroundTruthSelect').selectedOptions[0];
+        const notes = ['請確認這個 Session 的數值與設備型號都已人工訂正完成；未訂正的數值會被視為正確答案。',
+            '比對時以「擷取秒數 + 設備型號」配對，Session 的擷取間隔需與資料集批次分析相同（預設 60 秒）。',
+            '標準答案沒有的（時間, 設備）組會被算成「多偵測」，請確認這個 Session 每個時間點的設備都有被偵測到。'];
+        if (option && option.dataset.hasGt) notes.push('⚠️ 這部影片已有標準答案，將會被這個 Session 取代。');
+        if (option && !option.textContent.startsWith('✓')) notes.push('⚠️ 檔名與這個 Session 的影片不同，請確認是同一部影片。');
+        document.getElementById('assignGroundTruthNote').innerHTML =
+            notes.map(text => `<div class="evaluation-note">${escapeHtml(text)}</div>`).join('');
+    }
+
+    function closeAssignGroundTruth() {
+        assignGroundTruthSessionId = null;
+        document.getElementById('assignGroundTruthOverlay').classList.add('hidden');
+    }
+
+    async function confirmAssignGroundTruth() {
+        const sessionId = assignGroundTruthSessionId;
+        const videoId = document.getElementById('assignGroundTruthSelect').value;
+        if (!sessionId || !videoId) return;
+        const confirmButton = document.getElementById('assignGroundTruthConfirm');
+        confirmButton.disabled = true;
+        try {
+            await fetchJson(`./api/mongodb/videos/${encodeURIComponent(sessionId)}/ground_truth`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ video_id: videoId }),
+            });
+            closeAssignGroundTruth();
+            loadDatabaseContent();
+        } catch (error) {
+            alert('操作失敗：' + error.message);
+            confirmButton.disabled = false;
+        }
+    }
+
     async function clearGroundTruth(sessionId) {
         const video = videoCardData[sessionId] || {};
-        if (!confirm(`確定要取消這個 Session 作為「${video.dataset_video_name || video.original_video_name || ''}」Ground Truth 的身分嗎？`)) {
+        if (!confirm(`確定要取消這個 Session 作為「${video.dataset_video_name || video.ground_truth_video_name || video.original_video_name || ''}」Ground Truth 的身分嗎？`)) {
             return;
         }
         try {

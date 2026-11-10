@@ -1025,12 +1025,15 @@ def evaluate_dataset_run_api(run_id):
 
 @app.route('/api/mongodb/videos/<session_id>/ground_truth', methods=['POST', 'DELETE'])
 def dataset_ground_truth_api(session_id):
-    """將資料集 Session 設為（或取消）來源影片的標準答案。"""
+    """將 Session 設為（或取消）資料集影片的標準答案；body 可帶 video_id 指定影片。"""
     if not mongo_manager:
         return jsonify({'error': 'MongoDB 未啟用'}), 503
     try:
         if request.method == 'POST':
-            info, error = mongo_manager.set_dataset_ground_truth(session_id)
+            data = request.get_json(silent=True) or {}
+            info, error = mongo_manager.set_dataset_ground_truth(
+                session_id, data.get('video_id') or None
+            )
             if error:
                 return jsonify({'error': error}), 400
             return jsonify({
@@ -1044,6 +1047,20 @@ def dataset_ground_truth_api(session_id):
             return jsonify({'error': '這個 Session 目前不是標準答案'}), 409
         mongo_manager.clear_dataset_ground_truth(dataset_video['video_id'])
         return jsonify({'success': True, 'message': '已取消標準答案'})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/mongodb/videos/<session_id>/ground_truth_candidates')
+def ground_truth_candidates_api(session_id):
+    """列出可以把這個 Session 指定為標準答案的資料集影片。"""
+    if not mongo_manager:
+        return jsonify({'error': 'MongoDB 未啟用'}), 503
+    try:
+        result, error = mongo_manager.get_ground_truth_candidates(session_id)
+        if error:
+            return jsonify({'error': error}), 400
+        return jsonify({'success': True, 'data': result['candidates'], 'session': result['session']})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
