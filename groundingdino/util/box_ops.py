@@ -75,7 +75,7 @@ def box_iou_pairwise(boxes1, boxes2):
 
     union = area1 + area2 - inter
 
-    iou = inter / union
+    iou = inter / (union + 1e-6)
     return iou, union
 
 
@@ -101,7 +101,7 @@ def generalized_box_iou_pairwise(boxes1, boxes2):
     wh = (rb - lt).clamp(min=0)  # [N,2]
     area = wh[:, 0] * wh[:, 1]
 
-    return iou - (area - union) / area
+    return iou - (area - union) / (area + 1e-6)
 
 
 def masks_to_boxes(masks):
